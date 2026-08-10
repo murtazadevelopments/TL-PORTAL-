@@ -39,11 +39,16 @@ npm run dev
 2. In the Hostinger dashboard, add at least:
    - `DATABASE_URL`
    - `JWT_SECRET`
-   - `SUPABASE_URL` (must start with `https://`)
+   - `SUPABASE_URL` (must be a full URL, e.g. `https://xxxx.supabase.co`)
    - `SUPABASE_SECRET_KEY`
    - `PORT` (if the platform requires a specific port)
-3. Restart the Node app after saving env vars.
-4. If the process crashes with `Missing or invalid Supabase config`, the log will say which of `SUPABASE_URL` / `SUPABASE_SECRET_KEY` is missing or malformed.
+3. Restart / redeploy the Node app after saving env vars.
+4. If logs show `injected env (0) from .env`, that only means no local `.env` file was loaded — **that is normal on Hostinger**. Your vars must come from the Hostinger env panel.
+5. If the process crashes with `SUPABASE_URL=INVALID`, the value in Hostinger is set but not a valid URL. Common mistakes:
+   - Missing `https://` (use `https://xxxx.supabase.co`, not only `xxxx.supabase.co`)
+   - Extra quotes saved into the value (`"https://..."` — remove the quotes in the panel)
+   - Pasted the wrong value (e.g. `DATABASE_URL` / a secret key into `SUPABASE_URL`)
+   - Trailing spaces or a line break in the value
 
 ## Scripts
 
