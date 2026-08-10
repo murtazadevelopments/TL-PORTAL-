@@ -1,4 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+// Always load server/.env relative to this file (cwd may differ on Hostinger)
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 
