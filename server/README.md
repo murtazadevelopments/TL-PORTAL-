@@ -16,7 +16,7 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `JWT_SECRET` | **Yes** | Secret used to sign/verify auth JWTs |
 | `SUPABASE_URL` | **Yes** | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
-| `CORS_ORIGINS` | No | Comma-separated allowed frontends (defaults include portal + Hostinger URL) |
+| `ALLOWED_ORIGINS` | No | Comma-separated frontend origins (defaults include portal + Hostinger URL + localhost) |
 
 ## Local setup
 

@@ -8,6 +8,7 @@ const fs = require('fs');
 
 const app = express();
 
+// Frontend JWT is sent as Authorization: Bearer (not cookies) — credentials not required.
 const defaultOrigins = [
   'https://portal.texturedlab.com',
   'https://www.portal.texturedlab.com',
@@ -16,22 +17,31 @@ const defaultOrigins = [
   'http://127.0.0.1:5173',
 ];
 
-const allowedOrigins = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+function parseOrigins(value) {
+  return String(value || '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
 
-const origins = allowedOrigins.length ? allowedOrigins : defaultOrigins;
+// Prefer ALLOWED_ORIGINS; keep CORS_ORIGINS as a legacy alias
+const originsFromEnv = parseOrigins(
+  process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGINS
+);
+const allowedOrigins = originsFromEnv.length ? originsFromEnv : defaultOrigins;
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || origins.includes(origin)) {
+      // Non-browser clients (curl, health checks) send no Origin
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       console.warn(`CORS blocked origin: ${origin}`);
       return callback(null, false);
     },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 app.use(express.json({ limit: '2mb' }));
