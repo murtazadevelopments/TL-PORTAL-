@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Textured Lab employee portal — Express API + Vite React client",
   "scripts": {
-    "build": "npm install --prefix client && npm run build --prefix client && npm install --prefix server && node scripts/sync-client-dist.js",
+    "build": "node scripts/hostinger-build.js",
     "start": "node server/index.js",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client"

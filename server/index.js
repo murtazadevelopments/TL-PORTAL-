@@ -26,7 +26,6 @@ const origins = allowedOrigins.length ? allowedOrigins : defaultOrigins;
 app.use(
   cors({
     origin(origin, callback) {
-      // Never throw — throwing breaks OPTIONS preflight with a 500
       if (!origin || origins.includes(origin)) {
         return callback(null, true);
       }
@@ -47,7 +46,6 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Mount API routes; if env/config is broken, keep process alive and return JSON 503
 let apiBootError = null;
 try {
   app.use('/api/auth', require('./routes/authRoutes'));
@@ -65,18 +63,22 @@ try {
   });
 }
 
-// Serve Vite build (copied to server/public during `npm run build`)
+// Serve Vite build from server/public (created by root `npm run build`)
 const publicDir = path.join(__dirname, 'public');
 if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir, { index: false }));
-  app.get(/^\/(?!api).*/, (req, res) => {
-    res.sendFile(path.join(publicDir, 'index.html'));
+
+  // Express 5-safe SPA fallback (avoid RegExp routes — they can crash boot)
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api')) return next();
+    return res.sendFile(path.join(publicDir, 'index.html'));
   });
 }
 
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const PORT = Number(process.env.PORT) || 5001;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on 0.0.0.0:${PORT}`);
   if (apiBootError) {
     console.error('API routes unavailable until env is fixed:', apiBootError.message);
   }
