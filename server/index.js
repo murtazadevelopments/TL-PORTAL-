@@ -14,6 +14,7 @@ const app = express();
 const defaultOrigins = [
   'https://portal.texturedlab.com',
   'https://www.portal.texturedlab.com',
+  'https://mediumpurple-chicken-145151.hostingersite.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
