@@ -4,8 +4,7 @@ import api from '../api/client';
 import Navbar from '../components/Navbar';
 
 const EMPLOYEE_EDIT_FIELDS = [
-  'first_name',
-  'father_name',
+  'name',
   'contact_number',
   'address',
   'date_of_joining',
@@ -16,6 +15,9 @@ const EMPLOYEE_EDIT_FIELDS = [
   'account_title',
   'iban',
   'account_number',
+  'education',
+  'last_job_status',
+  'cnic_number',
 ];
 
 const FIELD_LABELS = {
@@ -50,8 +52,7 @@ function Dashboard() {
   const [profile, setProfile] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
   const [form, setForm] = useState({
-    first_name: '',
-    father_name: '',
+    name: '',
     contact_number: '',
     address: '',
     date_of_joining: '',
@@ -62,11 +63,23 @@ function Dashboard() {
     account_title: '',
     iban: '',
     account_number: '',
+    education: '',
+    last_job_status: '',
+    cnic_number: '',
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showIncompleteBanner, setShowIncompleteBanner] = useState(false);
 
   useEffect(() => {
@@ -79,8 +92,7 @@ function Dashboard() {
         setProfile(data);
         setAvatarBroken(false);
         setForm({
-          first_name: data.first_name || '',
-          father_name: data.father_name || '',
+          name: data.name || '',
           contact_number: data.contact_number || '',
           address: data.address || '',
           date_of_joining: data.date_of_joining
@@ -93,6 +105,9 @@ function Dashboard() {
           account_title: data.account_title || '',
           iban: data.iban || '',
           account_number: data.account_number || '',
+          education: data.education || '',
+          last_job_status: data.last_job_status || '',
+          cnic_number: data.cnic_number || '',
         });
 
         const dismissed = sessionStorage.getItem('profileIncompleteDismissed') === '1';
@@ -126,6 +141,40 @@ function Dashboard() {
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
+
+  function handlePasswordChange(e) {
+    setPasswordForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (passwordForm.new_password.length < 6) {
+      setPasswordError('New password must be at least 6 characters.');
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setPasswordError('New passwords do not match.');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const { data } = await api.post('/api/auth/change-password', {
+        current_password: passwordForm.current_password,
+        new_password: passwordForm.new_password,
+      });
+      setPasswordSuccess(data.message || 'Password changed.');
+      setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+      setShowPasswordForm(false);
+    } catch (err) {
+      setPasswordError(err.response?.data?.message || 'Failed to change password.');
+    } finally {
+      setChangingPassword(false);
+    }
   }
 
   async function handleSave(e) {
@@ -224,7 +273,7 @@ function Dashboard() {
                 />
               ) : (
                 <div className="avatar placeholder">
-                  {(profile.first_name || '?').charAt(0).toUpperCase()}
+                  {(profile.name || '?').charAt(0).toUpperCase()}
                 </div>
               )}
 
@@ -330,29 +379,16 @@ function Dashboard() {
             >
               <h2>Edit profile</h2>
 
-              <div className="grid-2">
-                <label>
-                  First name
-                  <input
-                    type="text"
-                    name="first_name"
-                    value={form.first_name}
-                    onChange={handleChange}
-                    required
-                  />
-                </label>
-
-                <label>
-                  Father name
-                  <input
-                    type="text"
-                    name="father_name"
-                    value={form.father_name}
-                    onChange={handleChange}
-                    required
-                  />
-                </label>
-              </div>
+              <label>
+                Name
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  required
+                />
+              </label>
 
               <label>
                 Contact number
@@ -362,6 +398,42 @@ function Dashboard() {
                   value={form.contact_number}
                   onChange={handleChange}
                 />
+              </label>
+
+              <label>
+                CNIC number (optional)
+                <input
+                  type="text"
+                  name="cnic_number"
+                  value={form.cnic_number}
+                  onChange={handleChange}
+                />
+              </label>
+
+              <label>
+                Education
+                <input
+                  type="text"
+                  name="education"
+                  value={form.education}
+                  onChange={handleChange}
+                />
+              </label>
+
+              <label>
+                Last job status
+                <select
+                  name="last_job_status"
+                  value={form.last_job_status}
+                  onChange={handleChange}
+                >
+                  <option value="">Select status</option>
+                  <option value="still_employed">Still employed elsewhere</option>
+                  <option value="resigned">Resigned</option>
+                  <option value="terminated">Terminated</option>
+                  <option value="fresh_graduate">Fresh graduate</option>
+                  <option value="other">Other</option>
+                </select>
               </label>
 
               <label>
@@ -464,6 +536,85 @@ function Dashboard() {
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
             </form>
+
+            <section className="form" style={{ marginTop: '2rem' }}>
+              <h2>Security</h2>
+              {!showPasswordForm ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setPasswordError('');
+                    setPasswordSuccess('');
+                    setShowPasswordForm(true);
+                  }}
+                >
+                  Change password
+                </button>
+              ) : (
+                <form onSubmit={handleChangePassword} className="form" style={{ marginTop: 0 }}>
+                  <label>
+                    Current password
+                    <input
+                      type="password"
+                      name="current_password"
+                      value={passwordForm.current_password}
+                      onChange={handlePasswordChange}
+                      required
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  <label>
+                    New password
+                    <input
+                      type="password"
+                      name="new_password"
+                      value={passwordForm.new_password}
+                      onChange={handlePasswordChange}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  <label>
+                    Confirm new password
+                    <input
+                      type="password"
+                      name="confirm_password"
+                      value={passwordForm.confirm_password}
+                      onChange={handlePasswordChange}
+                      required
+                      minLength={6}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  {passwordError && <p className="error">{passwordError}</p>}
+                  {passwordSuccess && <p className="success">{passwordSuccess}</p>}
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <button type="submit" className="btn btn-primary" disabled={changingPassword}>
+                      {changingPassword ? 'Updating…' : 'Update password'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={changingPassword}
+                      onClick={() => {
+                        setShowPasswordForm(false);
+                        setPasswordError('');
+                        setPasswordSuccess('');
+                        setPasswordForm({
+                          current_password: '',
+                          new_password: '',
+                          confirm_password: '',
+                        });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
           </>
         )}
 

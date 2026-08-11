@@ -35,7 +35,7 @@ const EMPTY_FILTERS = {
 };
 
 function fullName(row) {
-  return [row.first_name, row.father_name].filter(Boolean).join(' ') || '—';
+  return row?.name || '—';
 }
 
 function statusClass(status) {
@@ -490,7 +490,7 @@ function AdminDashboard() {
                           <img className="thumb" src={row.profile_picture_url} alt="" />
                         ) : (
                           <div className="thumb">
-                            {(row.first_name || '?').charAt(0).toUpperCase()}
+                            {(row.name || '?').charAt(0).toUpperCase()}
                           </div>
                         )}
                       </td>
@@ -580,7 +580,7 @@ function AdminDashboard() {
                     <img className="thumb large" src={detail.profile_picture_url} alt="" />
                   ) : (
                     <div className="thumb large">
-                      {(detail.first_name || '?').charAt(0).toUpperCase()}
+                      {(detail.name || '?').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div>
@@ -594,6 +594,14 @@ function AdminDashboard() {
                 </div>
 
                 <div className="detail-grid">
+                  <p>
+                    <span className="label">Education</span>
+                    <strong>{detail.education || '—'}</strong>
+                  </p>
+                  <p>
+                    <span className="label">Last job status</span>
+                    <strong>{detail.last_job_status || '—'}</strong>
+                  </p>
                   <p>
                     <span className="label">Email</span>
                     <strong>{detail.email || '—'}</strong>

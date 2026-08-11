@@ -1,25 +1,28 @@
 const pool = require('../config/db');
-const { attachReadableUrls, resolveStorageUrl, BUCKETS } = require('../utils/storageUrls');
+const { supabase, BUCKETS } = require('../config/supabaseClient');
+const { attachReadableUrls, resolveStorageUrl } = require('../utils/storageUrls');
+const {
+  notifyEmployeeAdminUpdated,
+  summarizeChanges,
+} = require('../services/notifications');
 
-/** Columns returned in the employee list (never includes password). */
 const LIST_COLUMNS = `
-  id, employee_id, username, first_name, father_name, email, contact_number,
+  id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
-  profile_picture_url
+  education, last_job_status, profile_picture_url, created_at
 `;
 
-/** Full profile for admin detail view (never includes password). */
 const DETAIL_COLUMNS = `
-  id, employee_id, username, first_name, father_name, email, contact_number,
+  id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
+  education, last_job_status,
   date_of_joining, date_joined, created_at, updated_at,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name
 `;
 
-/** Only these fields may be updated via PUT /api/admin/employees/:id */
 const ALLOWED_UPDATE_FIELDS = [
   'employee_id',
   'status',
@@ -44,6 +47,21 @@ function isEmptyValue(value) {
   return value === undefined || value === null || String(value).trim() === '';
 }
 
+function storagePathFromUrl(value) {
+  if (!value) return null;
+  const v = String(value);
+  if (v.startsWith('http://') || v.startsWith('https://')) return null;
+  return v;
+}
+
+async function removeStorageObject(bucket, objectPath) {
+  if (!objectPath) return;
+  const { error } = await supabase.storage.from(bucket).remove([objectPath]);
+  if (error) {
+    console.warn(`Storage delete failed (${bucket}/${objectPath}):`, error.message);
+  }
+}
+
 async function withListUrls(row) {
   if (!row) return null;
   return {
@@ -52,9 +70,6 @@ async function withListUrls(row) {
   };
 }
 
-/**
- * GET /api/admin/employees
- */
 async function listEmployees(req, res) {
   try {
     const { rows } = await pool.query(
@@ -69,9 +84,6 @@ async function listEmployees(req, res) {
   }
 }
 
-/**
- * GET /api/admin/employees/:id
- */
 async function getEmployeeById(req, res) {
   try {
     const { id } = req.params;
@@ -93,10 +105,6 @@ async function getEmployeeById(req, res) {
   }
 }
 
-/**
- * PUT /api/admin/employees/:id
- * Updates only admin-managed fields. All 7 fields are required on every save.
- */
 async function updateEmployee(req, res) {
   try {
     const { id } = req.params;
@@ -126,13 +134,15 @@ async function updateEmployee(req, res) {
     }
 
     const { rows: existingRows } = await pool.query(
-      `SELECT id FROM users WHERE id = $1 LIMIT 1`,
+      `SELECT ${DETAIL_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [id]
     );
 
     if (!existingRows[0]) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
+
+    const before = existingRows[0];
 
     const next = {
       employee_id: String(body.employee_id).trim(),
@@ -180,6 +190,11 @@ async function updateEmployee(req, res) {
     );
 
     const employee = await attachReadableUrls(rows[0]);
+    const changed = summarizeChanges(before, employee, ALLOWED_UPDATE_FIELDS);
+    if (changed.length) {
+      await notifyEmployeeAdminUpdated(employee, changed);
+    }
+
     return res.json(employee);
   } catch (err) {
     if (err.code === '23505') {
@@ -190,8 +205,50 @@ async function updateEmployee(req, res) {
   }
 }
 
+/**
+ * DELETE /api/admin/employees/:id
+ * Removes DB row and best-effort deletes storage objects.
+ */
+async function deleteEmployee(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (String(id) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot delete your own admin account.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, role, cnic_front_url, cnic_back_url, cv_url, profile_picture_url
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [id]
+    );
+
+    const employee = rows[0];
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    await Promise.all([
+      removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_front_url)),
+      removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_back_url)),
+      removeStorageObject(BUCKETS.cv, storagePathFromUrl(employee.cv_url)),
+      removeStorageObject(BUCKETS.profile, storagePathFromUrl(employee.profile_picture_url)),
+    ]);
+
+    await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+
+    return res.json({ message: 'Employee deleted.' });
+  } catch (err) {
+    console.error('deleteEmployee error:', err);
+    return res.status(500).json({ message: 'Server error deleting employee.' });
+  }
+}
+
 module.exports = {
   listEmployees,
   getEmployeeById,
   updateEmployee,
+  deleteEmployee,
 };

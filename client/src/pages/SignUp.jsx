@@ -5,16 +5,29 @@ import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
 import logo from '../assets/logo.png';
 
+const LAST_JOB_OPTIONS = [
+  { value: 'still_employed', label: 'Still employed elsewhere' },
+  { value: 'resigned', label: 'Resigned' },
+  { value: 'terminated', label: 'Terminated' },
+  { value: 'fresh_graduate', label: 'Fresh graduate' },
+  { value: 'other', label: 'Other' },
+];
+
 const INITIAL = {
   username: '',
-  first_name: '',
-  father_name: '',
+  name: '',
   email: '',
   password: '',
   contact_number: '',
   address: '',
   cnic_number: '',
   department: '',
+  education: '',
+  last_job_status: '',
+  bank_name: '',
+  account_title: '',
+  account_number: '',
+  iban: '',
 };
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
@@ -29,6 +42,7 @@ function SignUp() {
     profile_picture: null,
   });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   function handleChange(e) {
@@ -47,6 +61,7 @@ function SignUp() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     const normalizedUsername = form.username.trim().toLowerCase();
     if (
@@ -60,29 +75,28 @@ function SignUp() {
       return;
     }
 
-    if (!files.cnic_front || !files.cnic_back || !files.cv || !files.profile_picture) {
-      setError('Please upload CNIC front, CNIC back, CV, and profile picture.');
+    if (!files.cv || !files.profile_picture) {
+      setError('Please upload CV and profile picture.');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Multipart signup — do NOT JSON.stringify; let the browser set the boundary
       const body = new FormData();
       Object.entries({ ...form, username: normalizedUsername }).forEach(([key, value]) => {
         if (value !== '' && value != null) body.append(key, value);
       });
-      body.append('cnic_front', files.cnic_front);
-      body.append('cnic_back', files.cnic_back);
+      if (files.cnic_front) body.append('cnic_front', files.cnic_front);
+      if (files.cnic_back) body.append('cnic_back', files.cnic_back);
       body.append('cv', files.cv);
       body.append('profile_picture', files.profile_picture);
 
-      // Let the browser set multipart Content-Type + boundary
       const { data } = await api.post('/api/auth/signup', body);
 
       localStorage.setItem('token', data.token);
-      navigate('/dashboard');
+      setSuccess(data.message || 'Congrats, your account has been created!');
+      setTimeout(() => navigate('/dashboard'), 1500);
     } catch (err) {
       const status = err.response?.status;
       const apiMsg = err.response?.data?.message;
@@ -127,29 +141,10 @@ function SignUp() {
             </span>
           </label>
 
-          <div className="grid-2">
-            <label>
-              First name
-              <input
-                type="text"
-                name="first_name"
-                value={form.first_name}
-                onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label>
-              Father name
-              <input
-                type="text"
-                name="father_name"
-                value={form.father_name}
-                onChange={handleChange}
-                required
-              />
-            </label>
-          </div>
+          <label>
+            Name
+            <input type="text" name="name" value={form.name} onChange={handleChange} required />
+          </label>
 
           <label>
             Email
@@ -172,29 +167,16 @@ function SignUp() {
             autoComplete="new-password"
           />
 
-          <div className="grid-2">
-            <label>
-              Contact number
-              <input
-                type="tel"
-                name="contact_number"
-                value={form.contact_number}
-                onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label>
-              CNIC number
-              <input
-                type="text"
-                name="cnic_number"
-                value={form.cnic_number}
-                onChange={handleChange}
-                required
-              />
-            </label>
-          </div>
+          <label>
+            Contact number
+            <input
+              type="tel"
+              name="contact_number"
+              value={form.contact_number}
+              onChange={handleChange}
+              required
+            />
+          </label>
 
           <label>
             Address
@@ -204,6 +186,85 @@ function SignUp() {
               value={form.address}
               onChange={handleChange}
               required
+            />
+          </label>
+
+          <label>
+            Education
+            <input
+              type="text"
+              name="education"
+              value={form.education}
+              onChange={handleChange}
+              required
+              placeholder="e.g. Bachelors in Computer Science"
+            />
+          </label>
+
+          <label>
+            Last job status
+            <select
+              name="last_job_status"
+              value={form.last_job_status}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select status</option>
+              {LAST_JOB_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <h2>Banking details</h2>
+          <div className="grid-2">
+            <label>
+              Bank name
+              <input
+                type="text"
+                name="bank_name"
+                value={form.bank_name}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label>
+              Account title
+              <input
+                type="text"
+                name="account_title"
+                value={form.account_title}
+                onChange={handleChange}
+                required
+              />
+            </label>
+          </div>
+          <div className="grid-2">
+            <label>
+              Account number
+              <input
+                type="text"
+                name="account_number"
+                value={form.account_number}
+                onChange={handleChange}
+                required
+              />
+            </label>
+            <label>
+              IBAN
+              <input type="text" name="iban" value={form.iban} onChange={handleChange} required />
+            </label>
+          </div>
+
+          <label>
+            CNIC number (optional)
+            <input
+              type="text"
+              name="cnic_number"
+              value={form.cnic_number}
+              onChange={handleChange}
             />
           </label>
 
@@ -219,24 +280,21 @@ function SignUp() {
 
           <div className="grid-2">
             <label>
-              CNIC front
+              CNIC front (optional)
               <input
                 type="file"
                 name="cnic_front"
                 accept="image/*"
                 onChange={handleFileChange}
-                required
               />
             </label>
-
             <label>
-              CNIC back
+              CNIC back (optional)
               <input
                 type="file"
                 name="cnic_back"
                 accept="image/*"
                 onChange={handleFileChange}
-                required
               />
             </label>
           </div>
@@ -252,7 +310,6 @@ function SignUp() {
                 required
               />
             </label>
-
             <label>
               Profile picture
               <input
@@ -266,8 +323,9 @@ function SignUp() {
           </div>
 
           {error && <p className="error">{error}</p>}
+          {success && <p className="success">{success}</p>}
 
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          <button type="submit" className="btn btn-primary" disabled={loading || Boolean(success)}>
             {loading ? 'Creating account…' : 'Create account'}
           </button>
         </form>

@@ -87,6 +87,12 @@ function SignIn() {
           </button>
         </form>
 
+        <p className="muted center auth-links">
+          <Link to="/forgot-username">Forgot username?</Link>
+          {' · '}
+          <Link to="/forgot-password">Forgot password?</Link>
+        </p>
+
         <p className="muted center">
           No account? <Link to="/signup">Create one</Link>
         </p>
