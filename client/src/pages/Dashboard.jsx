@@ -74,7 +74,7 @@ function Dashboard() {
 
     async function loadProfile() {
       try {
-        const { data } = await api.get('/users/me');
+        const { data } = await api.get('/api/users/me');
         if (!active) return;
         setProfile(data);
         setAvatarBroken(false);
@@ -141,7 +141,7 @@ function Dashboard() {
     }
 
     try {
-      const { data } = await api.put('/users/me', payload);
+      const { data } = await api.put('/api/users/me', payload);
       setProfile(data);
       setSuccess('Profile updated.');
 

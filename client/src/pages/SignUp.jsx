@@ -79,7 +79,7 @@ function SignUp() {
       body.append('profile_picture', files.profile_picture);
 
       // Let the browser set multipart Content-Type + boundary
-      const { data } = await api.post('/auth/signup', body);
+      const { data } = await api.post('/api/auth/signup', body);
 
       localStorage.setItem('token', data.token);
       navigate('/dashboard');

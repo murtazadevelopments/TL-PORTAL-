@@ -25,7 +25,7 @@ function SignIn() {
     setLoading(true);
 
     try {
-      const { data } = await api.post('/auth/login', {
+      const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
       });

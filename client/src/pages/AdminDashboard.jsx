@@ -79,7 +79,7 @@ function AdminDashboard() {
 
     async function verifyAdmin() {
       try {
-        const { data } = await api.get('/users/me');
+        const { data } = await api.get('/api/users/me');
         if (!active) return;
         if (data.role !== 'admin') {
           navigate('/dashboard', { replace: true });
@@ -105,7 +105,7 @@ function AdminDashboard() {
     setLoading(true);
     setListError('');
     try {
-      const { data } = await api.get('/admin/employees');
+      const { data } = await api.get('/api/admin/employees');
       setEmployees(Array.isArray(data) ? data : []);
     } catch (err) {
       if (err.response?.status === 403) {
@@ -195,7 +195,7 @@ function AdminDashboard() {
     setFieldErrors({});
 
     try {
-      const { data } = await api.get(`/admin/employees/${id}`);
+      const { data } = await api.get(`/api/admin/employees/${id}`);
       setDetail(data);
       setEditForm({
         employee_id: data.employee_id || '',
@@ -285,7 +285,7 @@ function AdminDashboard() {
     };
 
     try {
-      const { data } = await api.put(`/admin/employees/${selectedId}`, payload);
+      const { data } = await api.put(`/api/admin/employees/${selectedId}`, payload);
       setDetail(data);
       setSaveSuccess('Changes saved.');
 
