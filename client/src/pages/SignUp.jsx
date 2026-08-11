@@ -78,9 +78,8 @@ function SignUp() {
       body.append('cv', files.cv);
       body.append('profile_picture', files.profile_picture);
 
-      const { data } = await api.post('/auth/signup', body, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      // Let the browser set multipart Content-Type + boundary
+      const { data } = await api.post('/auth/signup', body);
 
       localStorage.setItem('token', data.token);
       navigate('/dashboard');

@@ -11,7 +11,31 @@ const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
-app.use(cors());
+const defaultOrigins = [
+  'https://portal.texturedlab.com',
+  'https://www.portal.texturedlab.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const origins = allowedOrigins.length ? allowedOrigins : defaultOrigins;
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow non-browser tools (no Origin) and listed frontends
+      if (!origin || origins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+  })
+);
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
