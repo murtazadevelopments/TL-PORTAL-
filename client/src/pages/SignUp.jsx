@@ -84,7 +84,12 @@ function SignUp() {
       localStorage.setItem('token', data.token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to create account.');
+      const status = err.response?.status;
+      const apiMsg = err.response?.data?.message;
+      if (apiMsg) setError(apiMsg);
+      else if (status === 503 || !err.response)
+        setError('Server unavailable. The API is not running — check Hostinger Node deploy and env vars.');
+      else setError('Unable to create account.');
     } finally {
       setLoading(false);
     }

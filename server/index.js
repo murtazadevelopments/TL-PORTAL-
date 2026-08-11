@@ -4,10 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
-
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+const fs = require('fs');
 
 const app = express();
 
@@ -29,24 +26,58 @@ const origins = allowedOrigins.length ? allowedOrigins : defaultOrigins;
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow non-browser tools (no Origin) and listed frontends
+      // Never throw — throwing breaks OPTIONS preflight with a 500
       if (!origin || origins.includes(origin)) {
         return callback(null, true);
       }
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
+      console.warn(`CORS blocked origin: ${origin}`);
+      return callback(null, false);
     },
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'Server is running' });
+  res.json({
+    status: 'Server is running',
+    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
+    hasJwtSecret: Boolean(process.env.JWT_SECRET),
+    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+    hasSupabaseKey: Boolean(process.env.SUPABASE_SECRET_KEY),
+  });
 });
 
-// Auth + profile + admin modules (extend later with sales / projects routers)
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/admin', adminRoutes);
+// Mount API routes; if env/config is broken, keep process alive and return JSON 503
+let apiBootError = null;
+try {
+  app.use('/api/auth', require('./routes/authRoutes'));
+  app.use('/api/users', require('./routes/userRoutes'));
+  app.use('/api/admin', require('./routes/adminRoutes'));
+} catch (err) {
+  apiBootError = err;
+  console.error('API failed to load (check Hostinger env vars):', err.message);
+  app.use('/api', (req, res) => {
+    res.status(503).json({
+      message:
+        apiBootError?.message ||
+        'API is not configured. Set DATABASE_URL, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY in Hostinger.',
+    });
+  });
+}
+
+// Serve Vite build (copied to server/public during `npm run build`)
+const publicDir = path.join(__dirname, 'public');
+if (fs.existsSync(publicDir)) {
+  app.use(express.static(publicDir, { index: false }));
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+  });
+}
 
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  if (apiBootError) {
+    console.error('API routes unavailable until env is fixed:', apiBootError.message);
+  }
+});

@@ -2,6 +2,8 @@
 
 Node/Express API for the Textured Lab employee portal. Uses PostgreSQL (`pg`) for data and Supabase Storage for document uploads.
 
+In production, this process also serves the Vite client from `server/public` (copied during root `npm run build`).
+
 ## Required environment variables
 
 Set these in **Hostinger’s environment variable panel** (or a local `server/.env` for development).  
@@ -14,43 +16,32 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `JWT_SECRET` | **Yes** | Secret used to sign/verify auth JWTs |
 | `SUPABASE_URL` | **Yes** | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
-
-### Optional / unused by current runtime code
-
-These may appear in a local `.env` from earlier setup, but are **not** read by the running Express app today:
-
-| Variable | Notes |
-|---|---|
-| `SUPABASE_PUBLISHABLE_KEY` | Publishable/anon-style key — not used by `supabaseClient.js` |
-| `SUPABASE_JWKS_URL` | JWKS URL — not used by current JWT middleware (`JWT_SECRET` is used instead) |
+| `CORS_ORIGINS` | No | Comma-separated allowed frontends (defaults include portal + Hostinger URL) |
 
 ## Local setup
 
 ```bash
 cd server
-cp .env.example .env   # if you maintain an example file; otherwise create .env manually
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-## Hostinger deployment checklist
+## Hostinger deployment (unified API + UI)
 
-1. Do **not** expect `.env` from git — it is ignored.
-2. In the Hostinger dashboard, add at least:
-   - `DATABASE_URL`
-   - `JWT_SECRET`
-   - `SUPABASE_URL` (must be a full URL, e.g. `https://xxxx.supabase.co`)
-   - `SUPABASE_SECRET_KEY`
-   - `PORT` (if the platform requires a specific port)
-3. Restart / redeploy the Node app after saving env vars.
-4. If logs show `injected env (0) from .env`, that only means no local `.env` file was loaded — **that is normal on Hostinger**. Your vars must come from the Hostinger env panel.
-5. If the process crashes with `SUPABASE_URL=INVALID`, the value in Hostinger is set but not a valid URL. Common mistakes:
-   - Missing `https://` (use `https://xxxx.supabase.co`, not only `xxxx.supabase.co`)
-   - Extra quotes saved into the value (`"https://..."` — remove the quotes in the panel)
-   - Pasted the wrong value (e.g. `DATABASE_URL` / a secret key into `SUPABASE_URL`)
-   - Trailing spaces or a line break in the value
+The Hostinger URL was previously serving **only the React static build**. `/api/*` returned **503** because Express was not the process handling the site.
+
+Deploy the **repo root** as a **Node.js** app (not a static-only site):
+
+1. Repository root = project root (contains `package.json`, `client/`, `server/`).
+2. Build command: `npm run build`
+3. Start command: `npm start` (runs `node server/index.js`)
+4. Set env vars: `DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`
+5. After deploy, open `https://YOUR-HOST/api/health` — must return JSON `{ "status": "Server is running", ... }`. If you still see HTML 503, Node is not running.
+
+Client calls use same-origin `/api/...` (empty `VITE_API_URL`), so the SPA and API share one Hostinger URL with no CORS pain.
 
 ## Scripts
 
-- `npm run dev` — nodemon
-- `npm start` — `node index.js`
+- From repo root: `npm run build`, `npm start`
+- From `server/`: `npm run dev`, `npm start`

@@ -32,7 +32,12 @@ function SignIn() {
       localStorage.setItem('token', data.token);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to sign in.');
+      const status = err.response?.status;
+      const apiMsg = err.response?.data?.message;
+      if (apiMsg) setError(apiMsg);
+      else if (status === 503 || !err.response)
+        setError('Server unavailable. The API is not running — check Hostinger Node deploy and env vars.');
+      else setError('Unable to sign in.');
     } finally {
       setLoading(false);
     }

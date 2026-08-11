@@ -11,7 +11,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "build": "echo \"No build step required\""
+    "build": "echo \"Use repo root npm run build on Hostinger\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

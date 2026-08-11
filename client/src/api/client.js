@@ -1,11 +1,17 @@
 import axios from 'axios';
 
-// Vite bakes VITE_* at build time. Paths below include `/api/...`.
-const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    'https://mediumpurple-chicken-145151.hostingersite.com',
-});
+/**
+ * Same-origin by default so production (Express + SPA on one Hostinger site)
+ * calls /api/* on the current host. Override with VITE_API_URL only if the
+ * API is on a different origin.
+ */
+const raw = import.meta.env.VITE_API_URL;
+const baseURL =
+  raw === undefined || raw === null || String(raw).trim() === ''
+    ? ''
+    : String(raw).trim().replace(/\/$/, '');
+
+const api = axios.create({ baseURL });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
