@@ -69,7 +69,6 @@ try {
   await client.access({ host, user, password, port, secure });
   console.log(`Uploading ${localDir} → ${remoteDir}`);
   await client.ensureDir(remoteDir);
-  await client.clearWorkingDir();
   await client.uploadFromDir(localDir);
   console.log('FTP deploy finished.');
 } catch (err) {
