@@ -1,22 +1,34 @@
 import axios from 'axios';
 
 /**
- * Same-origin by default so production (Express + SPA on one Hostinger site)
- * calls /api/* on the current host. Override with VITE_API_URL only if the
- * API is on a different origin.
+ * Backend origin from Vite env (no trailing slash).
+ * Supports VITE_API_BASE_URL (preferred) and legacy VITE_API_URL.
+ * Paths in the app are always `/api/...` so we never get `//api`.
  */
-const raw = import.meta.env.VITE_API_URL;
-const baseURL =
-  raw === undefined || raw === null || String(raw).trim() === ''
-    ? ''
-    : String(raw).trim().replace(/\/$/, '');
+function normalizeBaseUrl(value) {
+  if (value === undefined || value === null) return '';
+  const trimmed = String(value).trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/\/+$/, '');
+}
 
-const api = axios.create({ baseURL });
+const baseURL = normalizeBaseUrl(
+  import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL
+);
+
+const api = axios.create({
+  baseURL,
+  withCredentials: true,
+});
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Ensure request path starts with a single leading slash when joining baseURL
+  if (typeof config.url === 'string' && config.url.length > 0 && !config.url.startsWith('http')) {
+    config.url = `/${config.url.replace(/^\/+/, '')}`;
   }
   return config;
 });

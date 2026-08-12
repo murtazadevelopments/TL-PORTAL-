@@ -8,12 +8,11 @@ const fs = require('fs');
 
 const app = express();
 
-// Frontend JWT is sent as Authorization: Bearer (not cookies) — credentials not required.
+// JWT is sent as Authorization: Bearer; credentials enabled for cookie-ready CORS.
 const defaultOrigins = [
   'https://portal.texturedlab.com',
   'https://www.portal.texturedlab.com',
   'https://seagreen-weasel-875788.hostingersite.com',
-  'https://mediumpurple-chicken-145151.hostingersite.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
@@ -41,6 +40,7 @@ app.use(
       console.warn(`CORS blocked origin: ${origin}`);
       return callback(null, false);
     },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
