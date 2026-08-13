@@ -73,6 +73,7 @@ try {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
   app.use('/api/admin', require('./routes/adminRoutes'));
+  app.use('/api/roles', require('./routes/rolesRoutes'));
 } catch (err) {
   apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);

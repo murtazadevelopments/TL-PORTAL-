@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
+import { canAccessAdmin } from '../utils/permissions';
 import './Navbar.css';
 
 function Navbar({ onLogout, showLogout = false, role = null }) {
@@ -11,7 +12,7 @@ function Navbar({ onLogout, showLogout = false, role = null }) {
       </Link>
 
       <div className="navbar-actions">
-        {showLogout && role === 'admin' && (
+        {showLogout && canAccessAdmin(role) && (
           <Link to="/admin" className="nav-link">
             Admin Panel
           </Link>

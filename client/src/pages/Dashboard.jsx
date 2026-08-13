@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
+import AvatarEditor from '../components/AvatarEditor';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
@@ -80,6 +81,8 @@ function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [showAvatarEditor, setShowAvatarEditor] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
   const [showIncompleteBanner, setShowIncompleteBanner] = useState(false);
 
   useEffect(() => {
@@ -225,6 +228,30 @@ function Dashboard() {
     editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  async function handleAvatarSave(blob) {
+    setAvatarSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const body = new FormData();
+      body.append('profile_picture', blob, 'profile.jpg');
+      const { data } = await api.put('/api/users/me/avatar', body);
+      setProfile(data);
+      setAvatarBroken(false);
+      setShowAvatarEditor(false);
+      setSuccess('Profile photo updated.');
+    } catch (err) {
+      if (err.response?.status === 401) {
+        localStorage.removeItem('token');
+        navigate('/');
+        return;
+      }
+      setError(err.response?.data?.message || 'Failed to update profile photo.');
+    } finally {
+      setAvatarSaving(false);
+    }
+  }
+
   const showAvatar = profile?.profile_picture_url && !avatarBroken;
 
   return (
@@ -264,18 +291,27 @@ function Dashboard() {
         {!loading && profile && (
           <>
             <section className="profile-header">
-              {showAvatar ? (
-                <img
-                  className="avatar"
-                  src={profile.profile_picture_url}
-                  alt=""
-                  onError={() => setAvatarBroken(true)}
-                />
-              ) : (
-                <div className="avatar placeholder">
-                  {(profile.name || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <div className="avatar-block">
+                {showAvatar ? (
+                  <img
+                    className="avatar"
+                    src={profile.profile_picture_url}
+                    alt=""
+                    onError={() => setAvatarBroken(true)}
+                  />
+                ) : (
+                  <div className="avatar placeholder">
+                    {(profile.name || '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost avatar-edit-btn"
+                  onClick={() => setShowAvatarEditor(true)}
+                >
+                  Change / adjust photo
+                </button>
+              </div>
 
               <div className="meta">
                 <p>
@@ -620,6 +656,14 @@ function Dashboard() {
 
         {!loading && !profile && error && <p className="error">{error}</p>}
       </main>
+
+      <AvatarEditor
+        open={showAvatarEditor}
+        currentUrl={profile?.profile_picture_url || null}
+        saving={avatarSaving}
+        onClose={() => !avatarSaving && setShowAvatarEditor(false)}
+        onSave={handleAvatarSave}
+      />
     </div>
   );
 }
