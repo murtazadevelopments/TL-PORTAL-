@@ -5,11 +5,12 @@ const {
   notifyEmployeeAdminUpdated,
   summarizeChanges,
 } = require('../services/notifications');
+const { writeAuditLog } = require('../utils/auditLog');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
-  education, last_job_status, profile_picture_url, created_at
+  education, last_job_status, profile_picture_url, created_at, is_active
 `;
 
 const DETAIL_COLUMNS = `
@@ -17,7 +18,7 @@ const DETAIL_COLUMNS = `
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
   education, last_job_status,
-  date_of_joining, date_joined, created_at, updated_at,
+  date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name
@@ -73,7 +74,12 @@ async function withListUrls(row) {
 async function listEmployees(req, res) {
   try {
     const { rows } = await pool.query(
-      `SELECT ${LIST_COLUMNS} FROM users ORDER BY created_at DESC NULLS LAST, id DESC`
+      `
+        SELECT ${LIST_COLUMNS}
+        FROM users
+        WHERE is_active = true
+        ORDER BY created_at DESC NULLS LAST, id DESC
+      `
     );
 
     const employees = await Promise.all(rows.map(withListUrls));
@@ -89,7 +95,12 @@ async function getEmployeeById(req, res) {
     const { id } = req.params;
 
     const { rows } = await pool.query(
-      `SELECT ${DETAIL_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
+      `
+        SELECT ${DETAIL_COLUMNS}
+        FROM users
+        WHERE id = $1 AND is_active = true
+        LIMIT 1
+      `,
       [id]
     );
 
@@ -134,7 +145,7 @@ async function updateEmployee(req, res) {
     }
 
     const { rows: existingRows } = await pool.query(
-      `SELECT ${DETAIL_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
+      `SELECT ${DETAIL_COLUMNS} FROM users WHERE id = $1 AND is_active = true LIMIT 1`,
       [id]
     );
 
@@ -174,7 +185,7 @@ async function updateEmployee(req, res) {
           shift = $6,
           salary = $7,
           updated_at = NOW()
-        WHERE id = $8
+        WHERE id = $8 AND is_active = true
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
@@ -207,19 +218,60 @@ async function updateEmployee(req, res) {
 
 /**
  * DELETE /api/admin/employees/:id
- * Removes DB row and best-effort deletes storage objects.
+ * Soft-delete: set is_active = false (admin + CEO).
  */
-async function deleteEmployee(req, res) {
+async function deactivateEmployee(req, res) {
   try {
     const { id } = req.params;
 
     if (String(id) === String(req.user.id)) {
-      return res.status(400).json({ message: 'You cannot delete your own admin account.' });
+      return res.status(400).json({ message: 'You cannot deactivate your own account.' });
     }
 
     const { rows } = await pool.query(
       `
-        SELECT id, role, cnic_front_url, cnic_back_url, cv_url, profile_picture_url
+        UPDATE users
+        SET is_active = false, updated_at = NOW()
+        WHERE id = $1 AND is_active = true
+        RETURNING id, employee_id, username, name, email, role, is_active
+      `,
+      [id]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Employee not found or already deactivated.' });
+    }
+
+    return res.json({
+      message: 'Employee deactivated.',
+      user: rows[0],
+    });
+  } catch (err) {
+    console.error('deactivateEmployee error:', err);
+    return res.status(500).json({ message: 'Server error deactivating employee.' });
+  }
+}
+
+/**
+ * DELETE /api/admin/employees/:id/purge
+ * Hard-delete: permanent removal (CEO only). Body: { reason }
+ */
+async function purgeEmployee(req, res) {
+  try {
+    const { id } = req.params;
+    const reason = String(req.body?.reason || '').trim();
+
+    if (!reason) {
+      return res.status(400).json({ message: 'reason is required for permanent purge.' });
+    }
+
+    if (String(id) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot purge your own account.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, role, username, name, cnic_front_url, cnic_back_url, cv_url, profile_picture_url
         FROM users WHERE id = $1 LIMIT 1
       `,
       [id]
@@ -230,6 +282,15 @@ async function deleteEmployee(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
 
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username || null,
+      action: 'purge',
+      targetTable: 'users',
+      targetId: id,
+      reason,
+    });
+
     await Promise.all([
       removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_front_url)),
       removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_back_url)),
@@ -239,10 +300,39 @@ async function deleteEmployee(req, res) {
 
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
 
-    return res.json({ message: 'Employee deleted.' });
+    return res.json({ message: 'Employee permanently purged.' });
   } catch (err) {
-    console.error('deleteEmployee error:', err);
-    return res.status(500).json({ message: 'Server error deleting employee.' });
+    console.error('purgeEmployee error:', err);
+    return res.status(500).json({ message: 'Server error purging employee.' });
+  }
+}
+
+/**
+ * GET /api/admin/deactivated
+ * Soft-deleted users for admin review.
+ */
+async function listDeactivated(req, res) {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT ${LIST_COLUMNS}
+        FROM users
+        WHERE is_active = false
+        ORDER BY updated_at DESC NULLS LAST, id DESC
+      `
+    );
+
+    const employees = await Promise.all(rows.map(withListUrls));
+    return res.json({
+      users: employees,
+      // Reserved for future soft-deletable resources (documents, tasks, etc.)
+      documents: [],
+      tasks: [],
+      team_assignments: [],
+    });
+  } catch (err) {
+    console.error('listDeactivated error:', err);
+    return res.status(500).json({ message: 'Server error fetching deactivated records.' });
   }
 }
 
@@ -250,5 +340,7 @@ module.exports = {
   listEmployees,
   getEmployeeById,
   updateEmployee,
-  deleteEmployee,
+  deactivateEmployee,
+  purgeEmployee,
+  listDeactivated,
 };

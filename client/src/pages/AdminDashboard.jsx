@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
+import { canAccessAdmin } from '../utils/permissions';
 import './AdminDashboard.css';
 
 const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
@@ -63,7 +64,7 @@ function AdminDashboard() {
   const [listError, setListError] = useState('');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [statusTab, setStatusTab] = useState('active');
+  const [statusTab, setStatusTab] = useState('all');
 
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -71,6 +72,7 @@ function AdminDashboard() {
   const [editForm, setEditForm] = useState(EMPTY_EDIT);
   const [fieldErrors, setFieldErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
@@ -81,11 +83,35 @@ function AdminDashboard() {
       try {
         const { data } = await api.get('/api/users/me');
         if (!active) return;
-        if (data.role !== 'admin') {
+        if (!canAccessAdmin(data.role)) {
           navigate('/dashboard', { replace: true });
           return;
         }
         setRole(data.role);
+        // Load list in the same flow so CEO/admin never sit on an empty table
+        setLoading(true);
+        setListError('');
+        try {
+          const { data: employeesData } = await api.get('/api/admin/employees');
+          if (!active) return;
+          setEmployees(Array.isArray(employeesData) ? employeesData : []);
+        } catch (err) {
+          if (!active) return;
+          if (err.response?.status === 403) {
+            setListError(
+              'Admin API denied this role. Redeploy the backend with requireRole (CEO bypass), then sign in again.'
+            );
+            return;
+          }
+          if (err.response?.status === 401) {
+            localStorage.removeItem('token');
+            navigate('/', { replace: true });
+            return;
+          }
+          setListError(err.response?.data?.message || 'Failed to load employees.');
+        } finally {
+          if (active) setLoading(false);
+        }
       } catch (err) {
         if (!active) return;
         localStorage.removeItem('token');
@@ -109,7 +135,9 @@ function AdminDashboard() {
       setEmployees(Array.isArray(data) ? data : []);
     } catch (err) {
       if (err.response?.status === 403) {
-        navigate('/dashboard', { replace: true });
+        setListError(
+          'Admin API denied this role. Redeploy the backend with requireRole (CEO bypass), then sign in again.'
+        );
         return;
       }
       if (err.response?.status === 401) {
@@ -122,10 +150,6 @@ function AdminDashboard() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (role === 'admin') loadEmployees();
-  }, [role]);
 
   const stats = useMemo(() => {
     const total = employees.length;
@@ -360,6 +384,13 @@ function AdminDashboard() {
         </section>
 
         <div className="status-tabs">
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'all' ? 'active' : ''}`}
+            onClick={() => setStatusTab('all')}
+          >
+            All <span className="tab-badge">{employees.length}</span>
+          </button>
           <button
             type="button"
             className={`status-tab ${statusTab === 'active' ? 'active' : ''}`}
@@ -804,6 +835,33 @@ function AdminDashboard() {
                   <div className="modal-actions">
                     <button type="button" className="btn btn-ghost" onClick={closeDetail}>
                       Close
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={deactivating || saving}
+                      onClick={async () => {
+                        const label = detail.name || detail.username || 'this employee';
+                        const ok = window.confirm(
+                          `Deactivate ${label}? They will disappear from the active list and cannot sign in. This can be reviewed under deactivated records; permanent purge is CEO-only.`
+                        );
+                        if (!ok) return;
+                        setDeactivating(true);
+                        setSaveError('');
+                        try {
+                          await api.delete(`/api/admin/employees/${selectedId}`);
+                          setEmployees((prev) => prev.filter((e) => e.id !== selectedId));
+                          closeDetail();
+                        } catch (err) {
+                          setSaveError(
+                            err.response?.data?.message || 'Failed to deactivate employee.'
+                          );
+                        } finally {
+                          setDeactivating(false);
+                        }
+                      }}
+                    >
+                      {deactivating ? 'Deactivating…' : 'Deactivate'}
                     </button>
                     <button type="submit" className="btn btn-primary" disabled={saving}>
                       {saving ? 'Saving…' : 'Save Changes'}

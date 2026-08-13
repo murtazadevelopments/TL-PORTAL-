@@ -62,4 +62,22 @@ function extFromFile(file, fallback) {
   return fallback;
 }
 
-module.exports = { signupUpload, extFromFile };
+/**
+ * Authenticated profile-picture upload (single image field).
+ */
+function profilePictureUpload(req, res, next) {
+  upload.single('profile_picture')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+
+    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+  });
+}
+
+module.exports = { signupUpload, profilePictureUpload, extFromFile };

@@ -1,0 +1,126 @@
+.avatar-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.avatar-editor-panel {
+  width: min(440px, 100%);
+  background: var(--surface, #12141a);
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 16px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  margin: auto;
+}
+
+.avatar-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.avatar-editor-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.avatar-editor-stage {
+  margin: 1rem auto;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--border-strong, #3d4a63);
+  background: #0a0c10;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.avatar-editor-stage.dragging {
+  cursor: grabbing;
+}
+
+.avatar-editor-stage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+.avatar-manual {
+  border: 1px solid var(--border, #2a3140);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem 0.9rem;
+  margin: 0 0 0.85rem;
+}
+
+.avatar-manual legend {
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #9aa3b5);
+}
+
+.avatar-control {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted, #9aa3b5);
+  margin-bottom: 0.65rem;
+}
+
+.avatar-control input[type='range'] {
+  width: 100%;
+}
+
+.avatar-nudge {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  margin-top: 0.25rem;
+}
+
+.avatar-nudge-label {
+  font-size: 0.8rem;
+  color: var(--muted, #9aa3b5);
+}
+
+.avatar-nudge-pad {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+}
+
+.avatar-nudge-mid {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.avatar-nudge .btn {
+  min-width: 2.4rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.avatar-reset {
+  font-size: 0.8rem;
+}
+
+.avatar-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}

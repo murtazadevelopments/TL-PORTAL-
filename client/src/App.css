@@ -295,6 +295,20 @@
   color: var(--green);
 }
 
+.avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.avatar-edit-btn {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
 .meta {
   display: grid;
   gap: 0.4rem;

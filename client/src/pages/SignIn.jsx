@@ -30,7 +30,14 @@ function SignIn() {
         password: form.password,
       });
       localStorage.setItem('token', data.token);
-      navigate('/dashboard');
+      const role = String(data.user?.role || '')
+        .trim()
+        .toLowerCase();
+      if (role === 'ceo' || role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       const status = err.response?.status;
       const apiMsg = err.response?.data?.message;

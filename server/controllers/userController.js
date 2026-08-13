@@ -1,4 +1,6 @@
 const pool = require('../config/db');
+const { supabase, BUCKETS } = require('../config/supabaseClient');
+const { extFromFile } = require('../middleware/uploadMiddleware');
 const { attachReadableUrls } = require('../utils/storageUrls');
 const {
   notifyAdminsEmployeeSelfUpdate,
@@ -10,7 +12,7 @@ const USER_PUBLIC_COLUMNS = `
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
   education, last_job_status,
-  date_of_joining, date_joined, created_at, updated_at,
+  date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name
@@ -42,6 +44,12 @@ async function getMe(req, res) {
 
     if (!rows[0]) {
       return res.status(404).json({ message: 'User not found.' });
+    }
+
+    if (rows[0].is_active === false) {
+      return res.status(403).json({
+        message: 'This account has been deactivated. Contact an administrator.',
+      });
     }
 
     const user = await attachReadableUrls(rows[0]);
@@ -168,4 +176,68 @@ async function updateMe(req, res) {
   }
 }
 
-module.exports = { getMe, updateMe };
+/**
+ * PUT /api/users/me/avatar
+ * multipart field: profile_picture
+ */
+async function updateProfilePicture(req, res) {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ message: 'profile_picture file is required.' });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, employee_id, is_active
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [req.user.id]
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (existing.is_active === false) {
+      return res.status(403).json({
+        message: 'This account has been deactivated. Contact an administrator.',
+      });
+    }
+
+    const prefix =
+      existing.employee_id ||
+      (existing.username ? `user-${existing.username}` : `user-${existing.id}`);
+    const objectPath = `${prefix}/profile${extFromFile(file, '.jpg')}`;
+
+    const { error } = await supabase.storage.from(BUCKETS.profile).upload(objectPath, file.buffer, {
+      contentType: file.mimetype || 'image/jpeg',
+      upsert: true,
+      cacheControl: '3600',
+    });
+
+    if (error) {
+      return res.status(400).json({ message: error.message || 'Failed to upload profile picture.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET profile_picture_url = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING ${USER_PUBLIC_COLUMNS}
+      `,
+      [objectPath, req.user.id]
+    );
+
+    const user = await attachReadableUrls(rows[0]);
+    await notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)']);
+
+    return res.json(user);
+  } catch (err) {
+    console.error('updateProfilePicture error:', err);
+    return res.status(500).json({ message: 'Server error updating profile picture.' });
+  }
+}
+
+module.exports = { getMe, updateMe, updateProfilePicture };

@@ -8,7 +8,7 @@ async function getAdminEmails() {
     .filter(Boolean);
 
   const { rows } = await pool.query(
-    `SELECT email FROM users WHERE role = 'admin' AND email IS NOT NULL`
+    `SELECT email FROM users WHERE role IN ('admin', 'ceo') AND email IS NOT NULL`
   );
   const fromDb = rows.map((r) => String(r.email).trim().toLowerCase()).filter(Boolean);
 
