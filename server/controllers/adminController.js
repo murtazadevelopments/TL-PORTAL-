@@ -3,6 +3,7 @@ const { supabase, BUCKETS } = require('../config/supabaseClient');
 const { attachReadableUrls, resolveStorageUrl } = require('../utils/storageUrls');
 const {
   notifyEmployeeAdminUpdated,
+  notifyAccountApproved,
   summarizeChanges,
 } = require('../services/notifications');
 const { writeAuditLog } = require('../utils/auditLog');
@@ -33,6 +34,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'branch',
   'shift',
   'salary',
+  'date_of_joining',
 ];
 
 const REQUIRED_ADMIN_FIELDS = [
@@ -144,14 +146,14 @@ async function updateEmployee(req, res) {
     if (keys.length === 0) {
       return res.status(400).json({
         message:
-          'All fields are required: employee_id, status, department, designation, branch, shift, salary.',
+          'Required fields: employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining.',
       });
     }
 
     const rejected = keys.filter((key) => !ALLOWED_UPDATE_FIELDS.includes(key));
     if (rejected.length > 0) {
       return res.status(400).json({
-        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, and salary can be updated.`,
+        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, salary, and date_of_joining can be updated.`,
       });
     }
 
@@ -182,6 +184,12 @@ async function updateEmployee(req, res) {
       branch: String(body.branch).trim(),
       shift: String(body.shift).trim(),
       salary: Number(body.salary),
+      date_of_joining:
+        body.date_of_joining === undefined
+          ? before.date_of_joining
+          : body.date_of_joining === null || String(body.date_of_joining).trim() === ''
+            ? null
+            : String(body.date_of_joining).trim().slice(0, 10),
     };
 
     if (!['active', 'inactive'].includes(next.status)) {
@@ -203,8 +211,9 @@ async function updateEmployee(req, res) {
           branch = $5,
           shift = $6,
           salary = $7,
+          date_of_joining = $8,
           updated_at = NOW()
-        WHERE id = $8 AND is_active = true
+        WHERE id = $9 AND is_active = true
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
@@ -215,6 +224,7 @@ async function updateEmployee(req, res) {
         next.branch,
         next.shift,
         next.salary,
+        next.date_of_joining,
         id,
       ]
     );
@@ -223,6 +233,31 @@ async function updateEmployee(req, res) {
     const changed = summarizeChanges(before, employee, ALLOWED_UPDATE_FIELDS);
     if (changed.length) {
       await notifyEmployeeAdminUpdated(employee, changed);
+    }
+
+    const beforeStatus = String(before.status || '')
+      .trim()
+      .toLowerCase();
+    const afterStatus = String(employee.status || '')
+      .trim()
+      .toLowerCase();
+    if (beforeStatus !== 'active' && afterStatus === 'active') {
+      try {
+        await notifyAccountApproved(employee);
+        await writeAuditLog({
+          actorId: req.user.id,
+          actorUsername: req.user.username,
+          action: 'account_approved',
+          targetTable: 'users',
+          targetId: employee.id,
+          reason: `Status changed from ${beforeStatus || 'unset'} to active`,
+        });
+      } catch (notifyErr) {
+        console.warn(
+          '[account_approved] notify/audit failed:',
+          notifyErr.message || notifyErr
+        );
+      }
     }
 
     return res.json(employee);

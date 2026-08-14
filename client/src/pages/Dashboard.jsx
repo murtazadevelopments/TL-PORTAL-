@@ -8,7 +8,6 @@ const EMPLOYEE_EDIT_FIELDS = [
   'name',
   'contact_number',
   'address',
-  'date_of_joining',
   'date_of_birth',
   'reference_person_name',
   'emergency_contact_name',
@@ -23,7 +22,6 @@ const EMPLOYEE_EDIT_FIELDS = [
 ];
 
 const FIELD_LABELS = {
-  date_of_joining: 'Date of joining',
   date_of_birth: 'Date of birth',
   reference_person_name: 'Reference person',
   emergency_contact_name: 'Emergency contact name',
@@ -35,7 +33,6 @@ const FIELD_LABELS = {
 };
 
 const INCOMPLETE_CHECK_FIELDS = [
-  'date_of_joining',
   'reference_person_name',
   'emergency_contact_name',
   'emergency_contact_number',
@@ -58,7 +55,6 @@ function Dashboard() {
     name: '',
     contact_number: '',
     address: '',
-    date_of_joining: '',
     date_of_birth: '',
     reference_person_name: '',
     emergency_contact_name: '',
@@ -107,9 +103,6 @@ function Dashboard() {
           name: data.name || '',
           contact_number: data.contact_number || '',
           address: data.address || '',
-          date_of_joining: data.date_of_joining
-            ? String(data.date_of_joining).slice(0, 10)
-            : '',
           date_of_birth: data.date_of_birth
             ? String(data.date_of_birth).slice(0, 10)
             : '',
@@ -593,16 +586,6 @@ function Dashboard() {
                   type="text"
                   name="address"
                   value={form.address}
-                  onChange={handleChange}
-                />
-              </label>
-
-              <label>
-                Date of joining
-                <input
-                  type="date"
-                  name="date_of_joining"
-                  value={form.date_of_joining}
                   onChange={handleChange}
                 />
               </label>

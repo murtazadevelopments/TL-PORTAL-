@@ -19,6 +19,7 @@ const {
   updateNotificationSettings,
 } = require('../controllers/notificationSettingsController');
 const { listLoginLogs } = require('../controllers/loginLogsController');
+const { listTeams, createTeam } = require('../controllers/teamsController');
 
 const router = express.Router();
 
@@ -30,6 +31,15 @@ router.get(
   requireRole('admin'),
   requirePermission('employees:deactivate'),
   listDeactivated
+);
+
+// Teams / departments catalog
+router.get('/teams', requireRole('admin'), listTeams);
+router.post(
+  '/teams',
+  requireRole('admin'),
+  requirePermission('teams:create'),
+  createTeam
 );
 
 // CEO role-assignment helpers (register before /employees/:id)

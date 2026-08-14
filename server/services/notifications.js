@@ -143,11 +143,38 @@ async function notifyUserSignup(user) {
     subject: 'Welcome to Textured Lab — account created',
     html: `
       <p>Congrats, <strong>${escapeHtml(user.name)}</strong>!</p>
-      <p>Your employee portal account has been created.</p>
+      <p>Your employee portal account has been created and is <strong>pending admin approval</strong>.</p>
       <p>Username: <strong>${escapeHtml(user.username)}</strong></p>
-      <p>An administrator will assign your Employee ID and work details.</p>
+      <p>You will be able to sign in after an administrator activates your account. You will receive another email when that happens.</p>
     `,
   });
+}
+
+async function notifyAccountApproved(user) {
+  if (!user?.email) return null;
+  const { frontendBaseUrl } = require('../utils/frontendUrl');
+  const loginUrl = `${frontendBaseUrl()}/`;
+
+  const result = await sendEmailSafe({
+    emailType: 'account_approved',
+    to: user.email,
+    subject: 'Your Portal TL account has been approved',
+    text: `Hi ${user.name || ''},\n\nYour Portal TL account has been approved. You can now sign in:\n${loginUrl}\n\nUsername: ${user.username || ''}\n`,
+    html: `
+      <p>Hi ${escapeHtml(user.name || '')},</p>
+      <p>Your Portal TL account has been <strong>approved</strong>. You can now sign in.</p>
+      <p>Username: <strong>${escapeHtml(user.username || '')}</strong></p>
+      <p><a href="${escapeHtml(loginUrl)}">Sign in to Portal TL</a></p>
+    `,
+  });
+
+  await logEmail({
+    emailType: 'account_approved',
+    recipient: user.email,
+    meta: { userId: user.id, ok: Boolean(result) },
+  });
+
+  return result;
 }
 
 async function notifyUsernameReminder(userOrUsers) {
@@ -334,6 +361,7 @@ module.exports = {
   notifyAdminsNewSignup,
   notifyDesignatedNewSignup,
   notifyUserSignup,
+  notifyAccountApproved,
   notifyUsernameReminder,
   notifyPasswordReset,
   notifyEmployeeAdminUpdated,

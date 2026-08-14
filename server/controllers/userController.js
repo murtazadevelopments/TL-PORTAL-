@@ -30,12 +30,26 @@ const EMPLOYEE_UPDATE_WHITELIST = [
   'account_title',
   'iban',
   'account_number',
-  'date_of_joining',
   'date_of_birth',
   'education',
   'last_job_status',
   'cnic_number',
 ];
+
+/** Silently ignored if an employee sends them (admin-only). */
+const EMPLOYEE_IGNORED_FIELDS = new Set([
+  'date_of_joining',
+  'date_joined',
+  'employee_id',
+  'status',
+  'department',
+  'designation',
+  'branch',
+  'shift',
+  'salary',
+  'role',
+  'is_active',
+]);
 
 async function getMe(req, res) {
   try {
@@ -51,6 +65,19 @@ async function getMe(req, res) {
     if (rows[0].is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',
+      });
+    }
+
+    const accountStatus = String(rows[0].status || '')
+      .trim()
+      .toLowerCase();
+    const meRole = String(rows[0].role || '')
+      .trim()
+      .toLowerCase();
+    if (meRole === 'employee' && accountStatus !== 'active') {
+      return res.status(403).json({
+        message: 'Your account is pending admin approval.',
+        pendingApproval: true,
       });
     }
 
@@ -77,6 +104,13 @@ async function getMe(req, res) {
 async function updateMe(req, res) {
   try {
     const body = req.body || {};
+
+    // Admin-only keys are dropped silently (no error) if present
+    for (const key of EMPLOYEE_IGNORED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        delete body[key];
+      }
+    }
 
     const updates = {};
     for (const key of EMPLOYEE_UPDATE_WHITELIST) {
@@ -123,12 +157,6 @@ async function updateMe(req, res) {
       education: nextText('education'),
       last_job_status: nextText('last_job_status'),
       cnic_number: nextText('cnic_number'),
-      date_of_joining:
-        updates.date_of_joining !== undefined
-          ? updates.date_of_joining === null || updates.date_of_joining === ''
-            ? null
-            : updates.date_of_joining
-          : current.date_of_joining,
       date_of_birth:
         updates.date_of_birth !== undefined
           ? updates.date_of_birth === null || updates.date_of_birth === ''
@@ -158,10 +186,9 @@ async function updateMe(req, res) {
           education = $11,
           last_job_status = $12,
           cnic_number = $13,
-          date_of_joining = $14,
-          date_of_birth = $15,
+          date_of_birth = $14,
           updated_at = NOW()
-        WHERE id = $16
+        WHERE id = $15
         RETURNING ${USER_PUBLIC_COLUMNS}
       `,
       [
@@ -178,7 +205,6 @@ async function updateMe(req, res) {
         next.education,
         next.last_job_status,
         next.cnic_number,
-        next.date_of_joining,
         next.date_of_birth,
         req.user.id,
       ]

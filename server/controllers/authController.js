@@ -18,6 +18,7 @@ const {
   approxLocationFromIp,
 } = require('../utils/requestMeta');
 const { recordLoginLog } = require('./loginLogsController');
+const { frontendBaseUrl } = require('../utils/frontendUrl');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -59,30 +60,6 @@ function omitPassword(row) {
 
 function getFile(req, field) {
   return req.files?.[field]?.[0] || null;
-}
-
-const PUBLIC_FRONTEND_URL = 'https://texturedlab.org';
-
-/**
- * Base URL for links in emails (password reset, etc.).
- * Never emit localhost in emails unless ALLOW_LOCAL_RESET_LINKS=1 —
- * recipients open mail on other devices where localhost is useless.
- */
-function frontendBaseUrl() {
-  let base = String(process.env.FRONTEND_URL || PUBLIC_FRONTEND_URL)
-    .trim()
-    .replace(/\/$/, '');
-  if (base && !/^https?:\/\//i.test(base)) {
-    base = `https://${base}`;
-  }
-  const allowLocal = process.env.ALLOW_LOCAL_RESET_LINKS === '1';
-  if (!allowLocal && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base)) {
-    console.warn(
-      `[email-links] FRONTEND_URL=${base} is local; using ${PUBLIC_FRONTEND_URL} for email links`
-    );
-    base = PUBLIC_FRONTEND_URL;
-  }
-  return base || PUBLIC_FRONTEND_URL;
 }
 
 async function uploadToBucket(bucket, objectPath, file) {
@@ -231,7 +208,7 @@ async function signup(req, res) {
         cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
         role, department, education, last_job_status,
         bank_name, account_title, account_number, iban,
-        date_joined
+        status, date_joined
       )
       VALUES (
         NULL, $1, $2, $3, $4,
@@ -239,7 +216,7 @@ async function signup(req, res) {
         $8, $9, $10, $11,
         $12, $13, $14, $15,
         $16, $17, $18, $19,
-        NOW()
+        'inactive', NOW()
       )
       RETURNING ${USER_PUBLIC_COLUMNS}
     `;
@@ -267,7 +244,6 @@ async function signup(req, res) {
     ]);
 
     const user = await attachReadableUrls(rows[0]);
-    const token = signToken(user);
 
     // Best-effort emails — never fail signup if Resend/settings misconfigured
     try {
@@ -279,10 +255,12 @@ async function signup(req, res) {
       console.error('[signup] notification emails failed:', emailErr.message || emailErr);
     }
 
+    // Pending approval — do not issue a JWT
     return res.status(201).json({
-      token,
       user,
-      message: 'Congrats, your account has been created!',
+      pendingApproval: true,
+      message:
+        'Your account has been created and is pending admin approval. You will be able to sign in once an administrator activates your account.',
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -334,6 +312,20 @@ async function login(req, res) {
     if (user.is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',
+      });
+    }
+
+    const accountStatus = String(user.status || '')
+      .trim()
+      .toLowerCase();
+    const role = String(user.role || '')
+      .trim()
+      .toLowerCase();
+    // Signup-approval gate applies to employees only (admins/CEO manage the queue)
+    if (role === 'employee' && accountStatus !== 'active') {
+      return res.status(403).json({
+        message: 'Your account is pending admin approval.',
+        pendingApproval: true,
       });
     }
 

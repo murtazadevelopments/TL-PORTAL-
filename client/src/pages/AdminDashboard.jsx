@@ -12,21 +12,23 @@ const SHIFT_OPTIONS = ['Evening', 'Night'];
 const ADMIN_FIELD_LABELS = {
   employee_id: 'Employee ID',
   status: 'Status',
-  department: 'Department',
+  department: 'Department / Team',
   designation: 'Designation',
   branch: 'Branch',
   shift: 'Shift',
   salary: 'Salary',
+  date_of_joining: 'Date of joining',
 };
 
 const EMPTY_EDIT = {
   employee_id: '',
-  status: 'active',
+  status: 'inactive',
   department: '',
   designation: '',
   branch: '',
   shift: '',
   salary: '',
+  date_of_joining: '',
 };
 
 const EMPTY_FILTERS = {
@@ -52,7 +54,10 @@ function isBlank(value) {
 
 function missingAdminFields(row) {
   if (!row) return [];
-  return Object.keys(ADMIN_FIELD_LABELS).filter((key) => isBlank(row[key]));
+  // date_of_joining is optional for save validation of incomplete banner
+  return Object.keys(ADMIN_FIELD_LABELS)
+    .filter((key) => key !== 'date_of_joining')
+    .filter((key) => isBlank(row[key]));
 }
 
 function AdminDashboard() {
@@ -77,6 +82,12 @@ function AdminDashboard() {
   const [deactivating, setDeactivating] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
+
+  const [teams, setTeams] = useState([]);
+  const [showAddTeam, setShowAddTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [teamError, setTeamError] = useState('');
 
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignInitial, setAssignInitial] = useState(null);
@@ -207,42 +218,58 @@ function AdminDashboard() {
     isCeo(role) || hasPermission(permissions, 'employees:deactivate');
   const canViewDocuments =
     isCeo(role) || hasPermission(permissions, 'documents:view');
+  const canCreateTeams =
+    isCeo(role) || hasPermission(permissions, 'teams:create');
+
+  async function loadTeams() {
+    try {
+      const { data } = await api.get('/api/admin/teams');
+      setTeams(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to load teams:', err.response?.data?.message || err.message);
+    }
+  }
+
+  useEffect(() => {
+    if (!role) return;
+    if (isCeo(role) || hasPermission(permissions, 'employees:view') || canAccessAdmin(role)) {
+      loadTeams();
+    }
+  }, [role, permissions]);
 
   const stats = useMemo(() => {
     const total = employees.length;
     const active = employees.filter((e) => e.status === 'active').length;
-    const inactive = employees.filter((e) => e.status === 'inactive').length;
+    const inactive = employees.filter((e) => e.status !== 'active').length;
     const pendingId = employees.filter((e) => isBlank(e.employee_id)).length;
     return { total, active, inactive, pendingId };
   }, [employees]);
 
   const departmentOptions = useMemo(() => {
-    const values = [
-      ...new Set(
-        employees
-          .map((e) => e.department)
-          .filter((d) => d != null && String(d).trim() !== '')
-          .map((d) => String(d).trim())
-      ),
-    ];
-    return values.sort((a, b) => a.localeCompare(b));
-  }, [employees]);
+    const fromTeams = teams.map((t) => String(t.name).trim()).filter(Boolean);
+    const fromEmployees = employees
+      .map((e) => e.department)
+      .filter((d) => d != null && String(d).trim() !== '')
+      .map((d) => String(d).trim());
+    return [...new Set([...fromTeams, ...fromEmployees])].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [employees, teams]);
 
   const tabCounts = useMemo(() => {
     const active = employees.filter((e) => e.status === 'active').length;
-    const inactive = employees.filter((e) => e.status === 'inactive').length;
-    return { active, inactive };
+    const pending = employees.filter((e) => e.status !== 'active').length;
+    return { active, pending };
   }, [employees]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return employees.filter((e) => {
-      // Active / Inactive tab
       if (statusTab === 'active' && e.status !== 'active') return false;
+      if (statusTab === 'pending' && e.status === 'active') return false;
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
 
-      // Dropdown filters
       if (filters.status !== 'all' && e.status !== filters.status) return false;
       if (
         filters.department !== 'all' &&
@@ -253,7 +280,6 @@ function AdminDashboard() {
       if (filters.branch !== 'all' && e.branch !== filters.branch) return false;
       if (filters.shift !== 'all' && e.shift !== filters.shift) return false;
 
-      // Search
       if (!q) return true;
       const name = fullName(e).toLowerCase();
       const username = String(e.username || '').toLowerCase();
@@ -280,13 +306,19 @@ function AdminDashboard() {
       setDetail(data);
       setEditForm({
         employee_id: data.employee_id || '',
-        status: data.status === 'inactive' ? 'inactive' : data.status === 'active' ? 'active' : '',
+        status: data.status === 'inactive' ? 'inactive' : data.status === 'active' ? 'active' : 'inactive',
         department: data.department || '',
         designation: data.designation || '',
         branch: data.branch || '',
         shift: data.shift || '',
         salary: data.salary ?? '',
+        date_of_joining: data.date_of_joining
+          ? String(data.date_of_joining).slice(0, 10)
+          : '',
       });
+      setShowAddTeam(false);
+      setNewTeamName('');
+      setTeamError('');
     } catch (err) {
       setSaveError(err.response?.data?.message || 'Failed to load employee details.');
     } finally {
@@ -326,6 +358,7 @@ function AdminDashboard() {
   function validateAdminForm() {
     const errors = {};
     for (const key of Object.keys(ADMIN_FIELD_LABELS)) {
+      if (key === 'date_of_joining') continue; // optional
       if (isBlank(editForm[key])) {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
@@ -339,6 +372,40 @@ function AdminDashboard() {
     return errors;
   }
 
+  async function handleCreateTeam(e) {
+    e?.preventDefault?.();
+    const name = newTeamName.trim();
+    if (!name) {
+      setTeamError('Enter a team name.');
+      return;
+    }
+    if (!canCreateTeams) {
+      setTeamError('You do not have permission to create teams.');
+      return;
+    }
+    setCreatingTeam(true);
+    setTeamError('');
+    try {
+      const { data } = await api.post('/api/admin/teams', { name });
+      setTeams((prev) =>
+        [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      );
+      setEditForm((prev) => ({ ...prev, department: data.name }));
+      setFieldErrors((prev) => {
+        if (!prev.department) return prev;
+        const next = { ...prev };
+        delete next.department;
+        return next;
+      });
+      setNewTeamName('');
+      setShowAddTeam(false);
+    } catch (err) {
+      setTeamError(err.response?.data?.message || 'Failed to create team.');
+    } finally {
+      setCreatingTeam(false);
+    }
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     if (!selectedId) return;
@@ -350,7 +417,7 @@ function AdminDashboard() {
     const errors = validateAdminForm();
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setSaveError('All fields are required before saving.');
+      setSaveError('All required fields must be filled before saving.');
       setSaveSuccess('');
       return;
     }
@@ -367,12 +434,19 @@ function AdminDashboard() {
       branch: editForm.branch,
       shift: editForm.shift,
       salary: Number(editForm.salary),
+      date_of_joining: editForm.date_of_joining
+        ? editForm.date_of_joining
+        : null,
     };
 
     try {
       const { data } = await api.put(`/api/admin/employees/${selectedId}`, payload);
       setDetail(data);
-      setSaveSuccess('Changes saved.');
+      setSaveSuccess(
+        data.status === 'active' && editForm.status === 'active'
+          ? 'Changes saved.'
+          : 'Changes saved.'
+      );
 
       setEmployees((prev) =>
         prev.map((row) =>
@@ -386,6 +460,7 @@ function AdminDashboard() {
                 branch: data.branch,
                 shift: data.shift,
                 salary: data.salary,
+                date_of_joining: data.date_of_joining,
                 profile_picture_url: data.profile_picture_url || row.profile_picture_url,
               }
             : row
@@ -554,7 +629,7 @@ function AdminDashboard() {
             <span className="stat-value">{stats.active}</span>
           </article>
           <article className="stat-card">
-            <span className="stat-label">Inactive</span>
+            <span className="stat-label">Pending Approval</span>
             <span className="stat-value">{stats.inactive}</span>
           </article>
           <article className="stat-card">
@@ -580,10 +655,10 @@ function AdminDashboard() {
           </button>
           <button
             type="button"
-            className={`status-tab ${statusTab === 'inactive' ? 'active' : ''}`}
-            onClick={() => setStatusTab('inactive')}
+            className={`status-tab ${statusTab === 'pending' ? 'active' : ''}`}
+            onClick={() => setStatusTab('pending')}
           >
-            Inactive <span className="tab-badge">{tabCounts.inactive}</span>
+            Pending Approval <span className="tab-badge">{tabCounts.pending}</span>
           </button>
         </div>
 
@@ -605,7 +680,7 @@ function AdminDashboard() {
           >
             <option value="all">Status: All</option>
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="inactive">Inactive / Pending</option>
           </select>
 
           <select
@@ -733,7 +808,11 @@ function AdminDashboard() {
                       <td>{row.shift || '—'}</td>
                       <td>
                         <span className={`status-pill ${statusClass(row.status)}`}>
-                          {row.status || 'unset'}
+                          {row.status === 'active'
+                            ? 'active'
+                            : row.status === 'inactive'
+                              ? 'pending'
+                              : row.status || 'unset'}
                         </span>
                       </td>
                     </tr>
@@ -849,13 +928,11 @@ function AdminDashboard() {
                     <strong>{detail.address || '—'}</strong>
                   </p>
                   <p>
-                    <span className="label">Date of joining</span>
+                    <span className="label">Account created</span>
                     <strong>
-                      {detail.date_of_joining
-                        ? new Date(detail.date_of_joining).toLocaleDateString()
-                        : detail.date_joined
-                          ? new Date(detail.date_joined).toLocaleDateString()
-                          : '—'}
+                      {detail.date_joined
+                        ? new Date(detail.date_joined).toLocaleDateString()
+                        : '—'}
                     </strong>
                   </p>
                   <p>
@@ -964,7 +1041,7 @@ function AdminDashboard() {
                     <select name="status" value={editForm.status} onChange={handleEditChange}>
                       <option value="">Select status</option>
                       <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
+                      <option value="inactive">Inactive / Pending Approval</option>
                     </select>
                     {fieldErrors.status && (
                       <span className="field-error">{fieldErrors.status}</span>
@@ -973,16 +1050,91 @@ function AdminDashboard() {
 
                   <label className={fieldErrors.department ? 'has-error' : ''}>
                     Department / Team
-                    <input
-                      type="text"
+                    <select
                       name="department"
                       value={editForm.department}
                       onChange={handleEditChange}
-                    />
+                    >
+                      <option value="">Select team</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.name}>
+                          {t.name}
+                        </option>
+                      ))}
+                      {editForm.department &&
+                        !teams.some((t) => t.name === editForm.department) && (
+                          <option value={editForm.department}>
+                            {editForm.department} (legacy)
+                          </option>
+                        )}
+                    </select>
                     {fieldErrors.department && (
                       <span className="field-error">{fieldErrors.department}</span>
                     )}
                   </label>
+
+                  {canCreateTeams && canEditEmployees && (
+                    <div style={{ marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
+                      {!showAddTeam ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
+                          onClick={() => {
+                            setShowAddTeam(true);
+                            setTeamError('');
+                          }}
+                        >
+                          + Add New Team
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <input
+                            type="text"
+                            value={newTeamName}
+                            onChange={(e) => setNewTeamName(e.target.value)}
+                            placeholder="New team name"
+                            style={{ flex: '1 1 160px', minWidth: 0 }}
+                            disabled={creatingTeam}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{ padding: '0.35rem 0.75rem' }}
+                            disabled={creatingTeam}
+                            onClick={handleCreateTeam}
+                          >
+                            {creatingTeam ? 'Adding…' : 'Add'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ padding: '0.35rem 0.65rem' }}
+                            disabled={creatingTeam}
+                            onClick={() => {
+                              setShowAddTeam(false);
+                              setNewTeamName('');
+                              setTeamError('');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {teamError && (
+                        <p className="error" style={{ margin: '0.35rem 0 0' }}>
+                          {teamError}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <label className={fieldErrors.designation ? 'has-error' : ''}>
                     Designation
@@ -994,6 +1146,19 @@ function AdminDashboard() {
                     />
                     {fieldErrors.designation && (
                       <span className="field-error">{fieldErrors.designation}</span>
+                    )}
+                  </label>
+
+                  <label className={fieldErrors.date_of_joining ? 'has-error' : ''}>
+                    Date of joining
+                    <input
+                      type="date"
+                      name="date_of_joining"
+                      value={editForm.date_of_joining}
+                      onChange={handleEditChange}
+                    />
+                    {fieldErrors.date_of_joining && (
+                      <span className="field-error">{fieldErrors.date_of_joining}</span>
                     )}
                   </label>
 

@@ -94,9 +94,12 @@ function SignUp() {
 
       const { data } = await api.post('/api/auth/signup', body);
 
-      localStorage.setItem('token', data.token);
-      setSuccess(data.message || 'Congrats, your account has been created!');
-      setTimeout(() => navigate('/dashboard'), 1500);
+      localStorage.removeItem('token');
+      setSuccess(
+        data.message ||
+          'Your account has been created and is pending admin approval. You can sign in once an administrator activates it.'
+      );
+      setTimeout(() => navigate('/'), 2500);
     } catch (err) {
       const status = err.response?.status;
       const apiMsg = err.response?.data?.message;

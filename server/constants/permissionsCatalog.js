@@ -11,7 +11,7 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'employees:edit',
     label: 'Edit employees',
-    description: 'Update employee ID, status, department, designation, branch, shift, salary',
+    description: 'Update employee ID, status, department, designation, branch, shift, salary, date of joining',
   },
   {
     key: 'employees:deactivate',
@@ -27,6 +27,11 @@ const PERMISSIONS_CATALOG = [
     key: 'notifications:signup_recipient',
     label: 'New signup notifications',
     description: 'Receive an email when a new employee signs up',
+  },
+  {
+    key: 'teams:create',
+    label: 'Create teams / departments',
+    description: 'Add new teams or departments used in the employee Department dropdown',
   },
 ];
 
