@@ -55,7 +55,11 @@ function getFile(req, field) {
 }
 
 function frontendBaseUrl() {
-  return String(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+  let base = String(process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/$/, '');
+  if (base && !/^https?:\/\//i.test(base)) {
+    base = `https://${base}`;
+  }
+  return base;
 }
 
 async function uploadToBucket(bucket, objectPath, file) {

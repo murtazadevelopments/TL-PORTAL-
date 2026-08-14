@@ -59,11 +59,6 @@ function healthPayload() {
   };
 }
 
-// Root health — avoids browser "Cannot GET /" when checking the API host
-app.get('/', (req, res) => {
-  res.json({ ...healthPayload(), health: '/api/health' });
-});
-
 app.get('/api/health', (req, res) => {
   res.json(healthPayload());
 });
@@ -86,24 +81,34 @@ try {
   });
 }
 
-// Serve Vite build from server/public (created by root `npm run build`)
+// Vite build output is client/dist → copied to server/public by root `npm run build`
 const publicDir = path.join(__dirname, 'public');
-if (fs.existsSync(publicDir)) {
+const spaIndex = path.join(publicDir, 'index.html');
+const spaEnabled = fs.existsSync(spaIndex);
+
+if (spaEnabled) {
   app.use(express.static(publicDir, { index: false }));
 
-  // Express 5-safe SPA fallback (avoid RegExp routes — they can crash boot)
-  app.use((req, res, next) => {
-    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  // Express 5: bare "*" is invalid — use a named splat. Registered LAST so /api/* stays intact.
+  app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    if (req.path === '/') return next(); // keep JSON health on GET /
-    return res.sendFile(path.join(publicDir, 'index.html'));
+    return res.sendFile(spaIndex);
   });
+} else {
+  // API-only mode (local without sync, or Hostinger build skipped the client step)
+  app.get('/', (req, res) => {
+    res.json({ ...healthPayload(), health: '/api/health', spa: false });
+  });
+  console.warn(
+    'SPA disabled: missing server/public/index.html. Run root `npm run build` so client/dist is synced to server/public.'
+  );
 }
 
 const PORT = Number(process.env.PORT) || 5001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on 0.0.0.0:${PORT}`);
   console.log('CORS origins:', allowedOrigins.join(', '));
+  console.log(spaEnabled ? `SPA enabled from ${publicDir}` : 'SPA not enabled');
   if (apiBootError) {
     console.error('API routes unavailable until env is fixed:', apiBootError.message);
   }

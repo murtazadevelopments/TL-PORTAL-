@@ -1,0 +1,15 @@
+# Hostinger / Apache / LiteSpeed — SPA fallback for React Router
+# Must sit next to index.html in the site document root (public_html).
+
+ErrorDocument 404 /index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  RewriteRule ^index\.html$ - [L]
+
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
