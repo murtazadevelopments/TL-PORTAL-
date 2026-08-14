@@ -150,14 +150,43 @@ async function notifyUserSignup(user) {
   });
 }
 
-async function notifyUsernameReminder(user) {
-  if (!user?.email) return;
-  await sendEmailSafe({
-    to: user.email,
+async function notifyUsernameReminder(userOrUsers) {
+  const list = (Array.isArray(userOrUsers) ? userOrUsers : [userOrUsers]).filter(
+    (u) => u && String(u.username || '').trim() !== ''
+  );
+  if (!list.length) {
+    console.warn('[forgot-username] skip email — no non-empty username on matched accounts');
+    return null;
+  }
+
+  const email = list[0].email;
+  if (!email) {
+    console.warn('[forgot-username] skip email — matched account has no email');
+    return null;
+  }
+
+  const usernames = [...new Set(list.map((u) => String(u.username).trim()))];
+  const greetingName = escapeHtml(list[0].name || '');
+
+  const usernameBlock =
+    usernames.length === 1
+      ? `<p>Your username is: <strong>${escapeHtml(usernames[0])}</strong></p>`
+      : `<p>We found more than one account for this email. Your usernames are:</p>
+         <ul>${usernames.map((u) => `<li><strong>${escapeHtml(u)}</strong></li>`).join('')}</ul>`;
+
+  const textBlock =
+    usernames.length === 1
+      ? `Your username is: ${usernames[0]}`
+      : `Your usernames are:\n${usernames.map((u) => `- ${u}`).join('\n')}`;
+
+  return sendEmailSafe({
+    emailType: 'forgot_username',
+    to: email,
     subject: 'Your Portal TL username',
+    text: `Hi ${list[0].name || ''},\n\n${textBlock}\n\nIf you did not request this, you can ignore this email.`,
     html: `
-      <p>Hi ${escapeHtml(user.name || '')},</p>
-      <p>Your username is: <strong>${escapeHtml(user.username)}</strong></p>
+      <p>Hi ${greetingName},</p>
+      ${usernameBlock}
       <p>If you did not request this, you can ignore this email.</p>
     `,
   });

@@ -61,12 +61,28 @@ function getFile(req, field) {
   return req.files?.[field]?.[0] || null;
 }
 
+const PUBLIC_FRONTEND_URL = 'https://texturedlab.org';
+
+/**
+ * Base URL for links in emails (password reset, etc.).
+ * Never emit localhost in emails unless ALLOW_LOCAL_RESET_LINKS=1 —
+ * recipients open mail on other devices where localhost is useless.
+ */
 function frontendBaseUrl() {
-  let base = String(process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/$/, '');
+  let base = String(process.env.FRONTEND_URL || PUBLIC_FRONTEND_URL)
+    .trim()
+    .replace(/\/$/, '');
   if (base && !/^https?:\/\//i.test(base)) {
     base = `https://${base}`;
   }
-  return base;
+  const allowLocal = process.env.ALLOW_LOCAL_RESET_LINKS === '1';
+  if (!allowLocal && /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base)) {
+    console.warn(
+      `[email-links] FRONTEND_URL=${base} is local; using ${PUBLIC_FRONTEND_URL} for email links`
+    );
+    base = PUBLIC_FRONTEND_URL;
+  }
+  return base || PUBLIC_FRONTEND_URL;
 }
 
 async function uploadToBucket(bucket, objectPath, file) {
@@ -376,12 +392,23 @@ async function forgotUsername(req, res) {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, username, email FROM users WHERE email = $1 LIMIT 1`,
+      `
+        SELECT id, name, username, email, is_active
+        FROM users
+        WHERE lower(email) = $1
+          AND NULLIF(TRIM(username), '') IS NOT NULL
+        ORDER BY (is_active IS TRUE) DESC, id DESC
+      `,
       [email]
     );
 
-    if (rows[0]) {
-      await notifyUsernameReminder(rows[0]);
+    if (rows.length) {
+      console.log(
+        `[forgot-username] email=${email} matches=${rows.length} usernames=${rows.map((r) => r.username).join(',')}`
+      );
+      await notifyUsernameReminder(rows);
+    } else {
+      console.warn(`[forgot-username] no account with a username for email=${email}`);
     }
 
     return res.json(generic);
