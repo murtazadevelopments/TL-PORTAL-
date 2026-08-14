@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import { canAccessAdmin, isCeo } from '../utils/permissions';
+import InstallAppButton from './InstallAppButton';
 import './Navbar.css';
 
 function Navbar({ onLogout, showLogout = false, role = null }) {
@@ -17,6 +18,8 @@ function Navbar({ onLogout, showLogout = false, role = null }) {
       </Link>
 
       <div className="navbar-actions">
+        {showLogout && <InstallAppButton compact />}
+
         {showLogout && canAccessAdmin(role) && (
           <>
             <Link

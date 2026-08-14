@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
+import InstallAppButton from '../components/InstallAppButton';
 import PasswordInput from '../components/PasswordInput';
 import logo from '../assets/logo.png';
 
@@ -48,6 +49,7 @@ function SignIn() {
     <div className="page">
       <Navbar />
       <main className="card">
+        <InstallAppButton />
         <div className="brand-hero">
           <img src={logo} alt="Textured Lab" />
           <p className="brand-name">Textured Lab</p>
