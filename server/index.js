@@ -58,6 +58,8 @@ function healthPayload() {
     hasJwtSecret: Boolean(process.env.JWT_SECRET),
     hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
     hasSupabaseKey: Boolean(process.env.SUPABASE_SECRET_KEY),
+    hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+    hasResendFrom: Boolean(process.env.RESEND_FROM),
   };
 }
 

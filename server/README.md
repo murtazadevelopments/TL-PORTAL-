@@ -17,9 +17,9 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `SUPABASE_URL` | **Yes** | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
 | `ALLOWED_ORIGINS` | No | Comma-separated frontend origins (defaults include portal + Hostinger URL + localhost) |
-| `RESEND_API_KEY` | Yes (for email features) | Resend API key |
-| `RESEND_FROM` | No | From address (default `Portal TL <onboarding@resend.dev>`) |
-| `FRONTEND_URL` | Yes (for password reset links) | e.g. `http://localhost:5173` or production frontend URL |
+| `RESEND_API_KEY` | **Yes** (for email) | Resend API key — required on Hostinger or all emails fail |
+| `RESEND_FROM` | **Yes** (for email) | Must use verified domain, e.g. `Portal TL <noreply@texturedlab.org>` |
+| `FRONTEND_URL` | Yes (for password reset links) | Production frontend origin, e.g. `https://texturedlab.org` |
 | `ADMIN_NOTIFY_EMAILS` | No | Extra admin emails for notifications (comma-separated) |
 
 ## Local setup
