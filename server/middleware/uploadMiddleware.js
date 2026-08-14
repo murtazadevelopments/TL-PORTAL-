@@ -80,4 +80,27 @@ function profilePictureUpload(req, res, next) {
   });
 }
 
-module.exports = { signupUpload, profilePictureUpload, extFromFile };
+/**
+ * Authenticated document upload (any of: cnic_front, cnic_back, cv).
+ */
+function documentUpload(req, res, next) {
+  upload.fields([
+    { name: 'cnic_front', maxCount: 1 },
+    { name: 'cnic_back', maxCount: 1 },
+    { name: 'cv', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+
+    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+  });
+}
+
+module.exports = { signupUpload, profilePictureUpload, documentUpload, extFromFile };
+

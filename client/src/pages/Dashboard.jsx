@@ -9,6 +9,7 @@ const EMPLOYEE_EDIT_FIELDS = [
   'contact_number',
   'address',
   'date_of_joining',
+  'date_of_birth',
   'reference_person_name',
   'emergency_contact_name',
   'emergency_contact_number',
@@ -23,6 +24,7 @@ const EMPLOYEE_EDIT_FIELDS = [
 
 const FIELD_LABELS = {
   date_of_joining: 'Date of joining',
+  date_of_birth: 'Date of birth',
   reference_person_name: 'Reference person',
   emergency_contact_name: 'Emergency contact name',
   emergency_contact_number: 'Emergency contact number',
@@ -57,6 +59,7 @@ function Dashboard() {
     contact_number: '',
     address: '',
     date_of_joining: '',
+    date_of_birth: '',
     reference_person_name: '',
     emergency_contact_name: '',
     emergency_contact_number: '',
@@ -84,6 +87,12 @@ function Dashboard() {
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [showIncompleteBanner, setShowIncompleteBanner] = useState(false);
+  const [docUploading, setDocUploading] = useState('');
+  const [docError, setDocError] = useState('');
+  const [docSuccess, setDocSuccess] = useState('');
+  const cnicFrontInputRef = useRef(null);
+  const cnicBackInputRef = useRef(null);
+  const cvInputRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -100,6 +109,9 @@ function Dashboard() {
           address: data.address || '',
           date_of_joining: data.date_of_joining
             ? String(data.date_of_joining).slice(0, 10)
+            : '',
+          date_of_birth: data.date_of_birth
+            ? String(data.date_of_birth).slice(0, 10)
             : '',
           reference_person_name: data.reference_person_name || '',
           emergency_contact_name: data.emergency_contact_name || '',
@@ -252,6 +264,32 @@ function Dashboard() {
     }
   }
 
+  async function handleDocumentUpload(field, file) {
+    if (!file) return;
+    setDocError('');
+    setDocSuccess('');
+    setDocUploading(field);
+    try {
+      const body = new FormData();
+      body.append(field, file);
+      const { data } = await api.put('/api/users/me/documents', body);
+      const next = data.user || data;
+      setProfile(next);
+      setAvatarBroken(false);
+      setDocSuccess(
+        field === 'cv'
+          ? 'CV updated.'
+          : field === 'cnic_front'
+            ? 'CNIC front updated.'
+            : 'CNIC back updated.'
+      );
+    } catch (err) {
+      setDocError(err.response?.data?.message || 'Failed to upload document.');
+    } finally {
+      setDocUploading('');
+    }
+  }
+
   const showAvatar = profile?.profile_picture_url && !avatarBroken;
 
   return (
@@ -371,39 +409,116 @@ function Dashboard() {
 
             <section className="docs">
               <h2>Documents</h2>
+              <p className="muted">View or replace your CNIC images and CV.</p>
+              {docError && <p className="error">{docError}</p>}
+              {docSuccess && <p className="success">{docSuccess}</p>}
               <div className="doc-grid">
-                <a
-                  className="doc-card"
-                  href={profile.cnic_front_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <div className="doc-card doc-card-static">
                   {profile.cnic_front_url ? (
-                    <img src={profile.cnic_front_url} alt="CNIC front" />
+                    <a href={profile.cnic_front_url} target="_blank" rel="noreferrer">
+                      <img src={profile.cnic_front_url} alt="CNIC front" />
+                    </a>
                   ) : (
                     <span>No CNIC front</span>
                   )}
                   <span>CNIC front</span>
-                </a>
+                  <input
+                    ref={cnicFrontInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      handleDocumentUpload('cnic_front', file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() => cnicFrontInputRef.current?.click()}
+                  >
+                    {docUploading === 'cnic_front'
+                      ? 'Uploading…'
+                      : profile.cnic_front_url
+                        ? 'Change'
+                        : 'Upload'}
+                  </button>
+                </div>
 
-                <a
-                  className="doc-card"
-                  href={profile.cnic_back_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <div className="doc-card doc-card-static">
                   {profile.cnic_back_url ? (
-                    <img src={profile.cnic_back_url} alt="CNIC back" />
+                    <a href={profile.cnic_back_url} target="_blank" rel="noreferrer">
+                      <img src={profile.cnic_back_url} alt="CNIC back" />
+                    </a>
                   ) : (
                     <span>No CNIC back</span>
                   )}
                   <span>CNIC back</span>
-                </a>
+                  <input
+                    ref={cnicBackInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      handleDocumentUpload('cnic_back', file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() => cnicBackInputRef.current?.click()}
+                  >
+                    {docUploading === 'cnic_back'
+                      ? 'Uploading…'
+                      : profile.cnic_back_url
+                        ? 'Change'
+                        : 'Upload'}
+                  </button>
+                </div>
 
-                <a className="doc-card" href={profile.cv_url} target="_blank" rel="noreferrer">
-                  <span className="pdf-badge">PDF</span>
-                  <span>View CV</span>
-                </a>
+                <div className="doc-card doc-card-static">
+                  {profile.cv_url ? (
+                    <a
+                      className="pdf-badge"
+                      href={profile.cv_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      PDF
+                    </a>
+                  ) : (
+                    <span className="pdf-badge">No CV</span>
+                  )}
+                  <span>{profile.cv_url ? 'View CV' : 'CV'}</span>
+                  <input
+                    ref={cvInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      handleDocumentUpload('cv', file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() => cvInputRef.current?.click()}
+                  >
+                    {docUploading === 'cv'
+                      ? 'Uploading…'
+                      : profile.cv_url
+                        ? 'Change'
+                        : 'Upload'}
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -488,6 +603,16 @@ function Dashboard() {
                   type="date"
                   name="date_of_joining"
                   value={form.date_of_joining}
+                  onChange={handleChange}
+                />
+              </label>
+
+              <label>
+                Date of birth
+                <input
+                  type="date"
+                  name="date_of_birth"
+                  value={form.date_of_birth}
                   onChange={handleChange}
                 />
               </label>

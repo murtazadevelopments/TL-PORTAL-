@@ -7,6 +7,8 @@ const cors = require('cors');
 const fs = require('fs');
 
 const app = express();
+// Hostinger / proxies: so req.ip and x-forwarded-for are correct for login emails
+app.set('trust proxy', 1);
 
 // JWT is sent as Authorization: Bearer; credentials enabled for cookie-ready CORS.
 const defaultOrigins = [
@@ -111,5 +113,12 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(spaEnabled ? `SPA enabled from ${publicDir}` : 'SPA not enabled');
   if (apiBootError) {
     console.error('API routes unavailable until env is fixed:', apiBootError.message);
+  }
+
+  try {
+    const { startScheduledJobs } = require('./jobs');
+    startScheduledJobs();
+  } catch (err) {
+    console.error('Failed to start scheduled jobs:', err.message || err);
   }
 });

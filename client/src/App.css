@@ -361,6 +361,24 @@
   transform: translateY(-2px);
 }
 
+.doc-card-static {
+  cursor: default;
+}
+
+.doc-card-static:hover {
+  transform: none;
+}
+
+.doc-card-static .btn {
+  margin-top: auto;
+  width: 100%;
+}
+
+.doc-card-static a {
+  text-decoration: none;
+  color: inherit;
+}
+
 .doc-card img {
   width: 100%;
   height: 96px;

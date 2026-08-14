@@ -1,5 +1,9 @@
 const pool = require('../config/db');
 const { sendEmailSafe } = require('./email');
+const {
+  resolveNewSignupRecipientEmail,
+  logEmail,
+} = require('./notificationSettings');
 
 async function getAdminEmails() {
   const fromEnv = String(process.env.ADMIN_NOTIFY_EMAILS || '')
@@ -23,37 +27,113 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-async function notifyAdminsNewSignup(user) {
-  const admins = await getAdminEmails();
-  if (!admins.length) {
-    console.warn('No admin emails found for signup notification');
-    return;
+function firstName(fullName) {
+  const part = String(fullName || '')
+    .trim()
+    .split(/\s+/)[0];
+  return part || 'there';
+}
+
+function formatTimestamp(value = new Date()) {
+  try {
+    return new Date(value).toLocaleString('en-PK', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: process.env.APP_TIMEZONE || 'Asia/Karachi',
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * Feature A — notify designated recipient(s) of a new signup.
+ * Primary: notification_settings.new_signup_recipient → users.email
+ * Also: any admin with permission notifications:signup_recipient
+ */
+async function notifyDesignatedNewSignup(user) {
+  console.log(`[signup-notify] start for new user id=${user?.id} username=${user?.username}`);
+  const emails = new Set();
+
+  // 1) Primary: notification_settings
+  try {
+    const designated = await resolveNewSignupRecipientEmail();
+    if (designated?.email) {
+      emails.add(designated.email);
+      console.log(
+        `[signup-notify] settings recipient=${designated.email} (source=${designated.source}, userId=${designated.userId || 'n/a'})`
+      );
+    } else {
+      console.warn(
+        '[signup-notify] notification_settings.new_signup_recipient missing or unresolved'
+      );
+    }
+  } catch (err) {
+    console.error('[signup-notify] settings lookup failed:', err.message || err);
   }
 
-  const name = escapeHtml(user.name);
-  const username = escapeHtml(user.username);
-  const email = escapeHtml(user.email);
-  const education = escapeHtml(user.education || '—');
-  const lastJob = escapeHtml(user.last_job_status || '—');
-  const contact = escapeHtml(user.contact_number || '—');
+  // 2) Admins granted the signup-notification permission
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT DISTINCT u.email
+        FROM users u
+        INNER JOIN admin_permissions ap ON ap.user_id = u.id
+        WHERE u.is_active = true
+          AND u.email IS NOT NULL
+          AND ap.permission_key = 'notifications:signup_recipient'
+      `
+    );
+    for (const row of rows) {
+      const email = String(row.email || '')
+        .trim()
+        .toLowerCase();
+      if (email) emails.add(email);
+    }
+    console.log(`[signup-notify] permission holders added; total recipients=${emails.size}`);
+  } catch (err) {
+    console.warn('[signup-notify] permission lookup failed:', err.message);
+  }
 
-  await sendEmailSafe({
-    to: admins,
-    subject: `New employee signup: ${user.name}`,
+  if (!emails.size) {
+    console.warn(
+      '[signup-notify] SKIP — no recipients (set notification_settings or grant notifications:signup_recipient)'
+    );
+    await logEmail({
+      emailType: 'new_signup_recipient',
+      recipient: null,
+      meta: { ok: false, skipped: true, reason: 'no_recipients', userId: user?.id },
+    });
+    return null;
+  }
+
+  const when = formatTimestamp(user.created_at || new Date());
+  const to = [...emails];
+  const result = await sendEmailSafe({
+    emailType: 'new_signup_recipient',
+    to,
+    subject: `New employee signup: ${user.name || user.username}`,
     html: `
-      <p>A new employee account was created.</p>
+      <p>A new employee account was created on Portal TL.</p>
       <ul>
-        <li><strong>Name:</strong> ${name}</li>
-        <li><strong>Username:</strong> ${username}</li>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Contact:</strong> ${contact}</li>
-        <li><strong>Education:</strong> ${education}</li>
-        <li><strong>Last job status:</strong> ${lastJob}</li>
+        <li><strong>Name:</strong> ${escapeHtml(user.name)}</li>
+        <li><strong>Employee ID:</strong> ${escapeHtml(user.employee_id || 'Not assigned yet')}</li>
+        <li><strong>Username:</strong> ${escapeHtml(user.username)}</li>
+        <li><strong>Email:</strong> ${escapeHtml(user.email)}</li>
+        <li><strong>Department:</strong> ${escapeHtml(user.department || '—')}</li>
+        <li><strong>Designation:</strong> ${escapeHtml(user.designation || '—')}</li>
+        <li><strong>Signed up:</strong> ${escapeHtml(when)}</li>
       </ul>
       <p>Assign an Employee ID in the admin panel when ready.</p>
-      <p><em>Banking details were submitted but are not included in this email.</em></p>
     `,
   });
+
+  return result;
+}
+
+/** @deprecated Prefer notifyDesignatedNewSignup — kept for any callers expecting admin blast */
+async function notifyAdminsNewSignup(user) {
+  return notifyDesignatedNewSignup(user);
 }
 
 async function notifyUserSignup(user) {
@@ -161,13 +241,77 @@ async function notifyAdminsEmployeeSelfUpdate(employee, changedFields) {
   });
 }
 
+/**
+ * Feature B — routine login notification to the user.
+ */
+async function notifyUserLogin(user, { ip, userAgent, locationLabel } = {}) {
+  if (!user?.email) return null;
+
+  const when = formatTimestamp(new Date());
+  const device = escapeHtml(userAgent || 'Unknown device');
+  const where = escapeHtml(locationLabel || ip || 'Unknown location');
+
+  const result = await sendEmailSafe({
+    to: user.email,
+    subject: 'New login to your Portal TL account',
+    html: `
+      <p>Hi ${escapeHtml(firstName(user.name))},</p>
+      <p>You just logged in to your Portal TL account.</p>
+      <ul>
+        <li><strong>When:</strong> ${escapeHtml(when)}</li>
+        <li><strong>Approximate location:</strong> ${where}</li>
+        <li><strong>Device:</strong> ${device}</li>
+      </ul>
+      <p>If this was you, no action is needed.</p>
+    `,
+  });
+
+  await logEmail({
+    emailType: 'login_notify',
+    recipient: user.email,
+    meta: { userId: user.id, ip: ip || null, ok: Boolean(result) },
+  });
+
+  return result;
+}
+
+/**
+ * Feature C — birthday email.
+ */
+async function notifyBirthday(user) {
+  if (!user?.email) return null;
+
+  const result = await sendEmailSafe({
+    to: user.email,
+    subject: `Happy Birthday, ${firstName(user.name)}! 🎉`,
+    html: `
+      <p>Happy Birthday, <strong>${escapeHtml(firstName(user.name))}</strong>!</p>
+      <p>Everyone at Textured Lab wishes you a wonderful day filled with joy.</p>
+      <p>— The Textured Lab team</p>
+    `,
+  });
+
+  await logEmail({
+    emailType: 'birthday',
+    recipient: user.email,
+    meta: { userId: user.id, ok: Boolean(result) },
+  });
+
+  return result;
+}
+
 module.exports = {
   getAdminEmails,
   notifyAdminsNewSignup,
+  notifyDesignatedNewSignup,
   notifyUserSignup,
   notifyUsernameReminder,
   notifyPasswordReset,
   notifyEmployeeAdminUpdated,
   notifyAdminsEmployeeSelfUpdate,
+  notifyUserLogin,
+  notifyBirthday,
   summarizeChanges,
+  firstName,
+  formatTimestamp,
 };

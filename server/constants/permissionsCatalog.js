@@ -23,6 +23,11 @@ const PERMISSIONS_CATALOG = [
     label: 'View documents',
     description: 'Open CNIC images and CV downloads on employee profiles',
   },
+  {
+    key: 'notifications:signup_recipient',
+    label: 'New signup notifications',
+    description: 'Receive an email when a new employee signs up',
+  },
 ];
 
 const PERMISSION_KEYS = new Set(PERMISSIONS_CATALOG.map((p) => p.key));

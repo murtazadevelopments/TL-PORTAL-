@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import AssignRoleModal from '../components/AssignRoleModal';
@@ -430,16 +430,21 @@ function AdminDashboard() {
             </p>
           </div>
           {isCeo(role) && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setAssignInitial(null);
-                setAssignOpen(true);
-              }}
-            >
-              Assign Admin Role
-            </button>
+            <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+              <Link to="/admin/login-logs" className="btn btn-ghost">
+                Check Logs
+              </Link>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setAssignInitial(null);
+                  setAssignOpen(true);
+                }}
+              >
+                Assign Admin Role
+              </button>
+            </div>
           )}
         </div>
 

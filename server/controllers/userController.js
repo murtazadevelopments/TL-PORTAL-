@@ -12,7 +12,7 @@ const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
-  education, last_job_status,
+  education, last_job_status, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
@@ -31,6 +31,7 @@ const EMPLOYEE_UPDATE_WHITELIST = [
   'iban',
   'account_number',
   'date_of_joining',
+  'date_of_birth',
   'education',
   'last_job_status',
   'cnic_number',
@@ -128,6 +129,12 @@ async function updateMe(req, res) {
             ? null
             : updates.date_of_joining
           : current.date_of_joining,
+      date_of_birth:
+        updates.date_of_birth !== undefined
+          ? updates.date_of_birth === null || updates.date_of_birth === ''
+            ? null
+            : updates.date_of_birth
+          : current.date_of_birth,
     };
 
     if (!next.name) {
@@ -152,8 +159,9 @@ async function updateMe(req, res) {
           last_job_status = $12,
           cnic_number = $13,
           date_of_joining = $14,
+          date_of_birth = $15,
           updated_at = NOW()
-        WHERE id = $15
+        WHERE id = $16
         RETURNING ${USER_PUBLIC_COLUMNS}
       `,
       [
@@ -171,6 +179,7 @@ async function updateMe(req, res) {
         next.last_job_status,
         next.cnic_number,
         next.date_of_joining,
+        next.date_of_birth,
         req.user.id,
       ]
     );
@@ -253,4 +262,111 @@ async function updateProfilePicture(req, res) {
   }
 }
 
-module.exports = { getMe, updateMe, updateProfilePicture };
+/**
+ * PUT /api/users/me/documents
+ * multipart fields (any subset): cnic_front, cnic_back, cv
+ */
+async function updateDocuments(req, res) {
+  try {
+    const files = req.files || {};
+    const cnicFront = files.cnic_front?.[0] || null;
+    const cnicBack = files.cnic_back?.[0] || null;
+    const cv = files.cv?.[0] || null;
+
+    if (!cnicFront && !cnicBack && !cv) {
+      return res.status(400).json({
+        message: 'Upload at least one file: cnic_front, cnic_back, or cv.',
+      });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, employee_id, is_active,
+               cnic_front_url, cnic_back_url, cv_url
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [req.user.id]
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (existing.is_active === false) {
+      return res.status(403).json({
+        message: 'This account has been deactivated. Contact an administrator.',
+      });
+    }
+
+    const prefix =
+      existing.employee_id ||
+      (existing.username ? `user-${existing.username}` : `user-${existing.id}`);
+
+    async function uploadOne(bucket, objectPath, file) {
+      const { error } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+        cacheControl: '3600',
+      });
+      if (error) {
+        const err = new Error(error.message || `Failed to upload ${objectPath}`);
+        err.status = 400;
+        throw err;
+      }
+      return objectPath;
+    }
+
+    const nextFront = cnicFront
+      ? await uploadOne(
+          BUCKETS.cnic,
+          `${prefix}/cnic_front${extFromFile(cnicFront, '.jpg')}`,
+          cnicFront
+        )
+      : existing.cnic_front_url;
+    const nextBack = cnicBack
+      ? await uploadOne(
+          BUCKETS.cnic,
+          `${prefix}/cnic_back${extFromFile(cnicBack, '.jpg')}`,
+          cnicBack
+        )
+      : existing.cnic_back_url;
+    const nextCv = cv
+      ? await uploadOne(BUCKETS.cv, `${prefix}/cv${extFromFile(cv, '.pdf')}`, cv)
+      : existing.cv_url;
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET
+          cnic_front_url = $1,
+          cnic_back_url = $2,
+          cv_url = $3,
+          updated_at = NOW()
+        WHERE id = $4
+        RETURNING ${USER_PUBLIC_COLUMNS}
+      `,
+      [nextFront, nextBack, nextCv, req.user.id]
+    );
+
+    const user = await attachReadableUrls(rows[0]);
+    const changed = [];
+    if (cnicFront) changed.push('CNIC front (updated)');
+    if (cnicBack) changed.push('CNIC back (updated)');
+    if (cv) changed.push('CV (updated)');
+    if (changed.length) {
+      await notifyAdminsEmployeeSelfUpdate(user, changed);
+    }
+
+    return res.json({
+      message: 'Documents updated.',
+      user,
+    });
+  } catch (err) {
+    console.error('updateDocuments error:', err);
+    return res.status(err.status || 500).json({
+      message: err.message || 'Server error updating documents.',
+    });
+  }
+}
+
+module.exports = { getMe, updateMe, updateProfilePicture, updateDocuments };

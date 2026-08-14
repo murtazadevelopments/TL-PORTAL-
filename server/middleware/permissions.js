@@ -112,8 +112,50 @@ function requirePermission(...requiredKeys) {
   };
 }
 
+/**
+ * CEO always allowed. Admins must have at least one of the listed keys.
+ * Used when a route is shared by CEO tools and a scoped admin feature.
+ */
+function requireCeoOrAnyPermission(...keys) {
+  const accepted = keys.map((k) => String(k).trim()).filter(Boolean);
+
+  return async function requireCeoOrAnyPermissionMiddleware(req, res, next) {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
+      }
+
+      if (req.user.role === 'ceo') {
+        req.user.permissions = ['*'];
+        return next();
+      }
+
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
+      }
+
+      const permissions = await loadAdminPermissions(req.user.id);
+      req.user.permissions = permissions;
+
+      if (accepted.some((key) => permissions.includes(key))) {
+        return next();
+      }
+
+      return res.status(403).json({
+        error: 'Forbidden: insufficient permissions',
+        message: `Missing permission: ${accepted.join(' or ')}`,
+        missing: accepted,
+      });
+    } catch (err) {
+      console.error('requireCeoOrAnyPermission error:', err);
+      return res.status(500).json({ message: 'Server error verifying permissions.' });
+    }
+  };
+}
+
 module.exports = {
   requireRole,
   requirePermission,
+  requireCeoOrAnyPermission,
   loadAdminPermissions,
 };

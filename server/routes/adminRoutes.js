@@ -14,6 +14,11 @@ const {
   listEmployeesForRoleAssign,
   listRoleHolders,
 } = require('../controllers/rolesController');
+const {
+  getNotificationSettings,
+  updateNotificationSettings,
+} = require('../controllers/notificationSettingsController');
+const { listLoginLogs } = require('../controllers/loginLogsController');
 
 const router = express.Router();
 
@@ -31,6 +36,23 @@ router.get(
 router.get('/employees-list', requireRole('ceo'), listEmployeesForRoleAssign);
 router.get('/permissions-catalog', requireRole('ceo'), getPermissionsCatalog);
 router.get('/role-holders', requireRole('ceo'), listRoleHolders);
+
+// CEO login activity
+router.get('/login-logs', requireRole('ceo'), listLoginLogs);
+
+// Optional API for notification_settings (UI removed — recipients come from permission)
+router.get(
+  '/notification-settings',
+  requireRole('admin'),
+  requirePermission('notifications:signup_recipient'),
+  getNotificationSettings
+);
+router.put(
+  '/notification-settings',
+  requireRole('admin'),
+  requirePermission('notifications:signup_recipient'),
+  updateNotificationSettings
+);
 
 // Employee directory — scoped by admin_permissions
 router.get(

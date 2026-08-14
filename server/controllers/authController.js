@@ -6,11 +6,18 @@ const { supabase, BUCKETS } = require('../config/supabaseClient');
 const { extFromFile } = require('../middleware/uploadMiddleware');
 const { attachReadableUrls } = require('../utils/storageUrls');
 const {
-  notifyAdminsNewSignup,
+  notifyDesignatedNewSignup,
   notifyUserSignup,
   notifyUsernameReminder,
   notifyPasswordReset,
+  notifyUserLogin,
 } = require('../services/notifications');
+const {
+  clientIp,
+  clientUserAgent,
+  approxLocationFromIp,
+} = require('../utils/requestMeta');
+const { recordLoginLog } = require('./loginLogsController');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -246,8 +253,15 @@ async function signup(req, res) {
     const user = await attachReadableUrls(rows[0]);
     const token = signToken(user);
 
-    // Emails are best-effort; signup still succeeds if Resend fails
-    await Promise.all([notifyUserSignup(user), notifyAdminsNewSignup(user)]);
+    // Best-effort emails — never fail signup if Resend/settings misconfigured
+    try {
+      await Promise.all([
+        notifyUserSignup(user),
+        notifyDesignatedNewSignup(user),
+      ]);
+    } catch (emailErr) {
+      console.error('[signup] notification emails failed:', emailErr.message || emailErr);
+    }
 
     return res.status(201).json({
       token,
@@ -313,6 +327,27 @@ async function login(req, res) {
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));
+
+    // Best-effort login log + email — never block the response
+    const ip = clientIp(req);
+    const userAgent = clientUserAgent(req);
+    (async () => {
+      try {
+        const locationLabel = await approxLocationFromIp(ip);
+        await recordLoginLog({
+          userId: user.id,
+          employeeId: user.employee_id,
+          employeeName: user.name,
+          username: user.username,
+          ipAddress: ip,
+          location: locationLabel,
+          userAgent,
+        });
+        await notifyUserLogin(safeUser, { ip, userAgent, locationLabel });
+      } catch (err) {
+        console.warn('login log/notify failed:', err.message || err);
+      }
+    })();
 
     return res.json({
       token: signToken(user),
