@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
-import { canAccessAdmin } from '../utils/permissions';
+import AssignRoleModal from '../components/AssignRoleModal';
+import { canAccessAdmin, hasPermission, isCeo } from '../utils/permissions';
 import './AdminDashboard.css';
 
 const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
@@ -57,6 +58,7 @@ function missingAdminFields(row) {
 function AdminDashboard() {
   const navigate = useNavigate();
   const [role, setRole] = useState(null);
+  const [permissions, setPermissions] = useState([]);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [employees, setEmployees] = useState([]);
@@ -76,6 +78,30 @@ function AdminDashboard() {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignInitial, setAssignInitial] = useState(null);
+  const [assignBanner, setAssignBanner] = useState('');
+  const [roleHolders, setRoleHolders] = useState([]);
+  const [holdersLoading, setHoldersLoading] = useState(false);
+  const [holdersError, setHoldersError] = useState('');
+
+  const loadRoleHolders = useCallback(async () => {
+    setHoldersLoading(true);
+    setHoldersError('');
+    try {
+      const { data } = await api.get('/api/admin/role-holders');
+      setRoleHolders(Array.isArray(data?.holders) ? data.holders : []);
+    } catch (err) {
+      setHoldersError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          'Failed to load current admins.'
+      );
+    } finally {
+      setHoldersLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -88,18 +114,40 @@ function AdminDashboard() {
           return;
         }
         setRole(data.role);
+        setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
         // Load list in the same flow so CEO/admin never sit on an empty table
         setLoading(true);
         setListError('');
+        const canView = isCeo(data.role) || hasPermission(data.permissions, 'employees:view');
+        if (!canView) {
+          setEmployees([]);
+          setListError(
+            'You do not have permission to view employees. Ask the CEO to grant employees:view (and other scopes) on your admin role.'
+          );
+          setLoading(false);
+        } else {
         try {
           const { data: employeesData } = await api.get('/api/admin/employees');
           if (!active) return;
           setEmployees(Array.isArray(employeesData) ? employeesData : []);
+          if (isCeo(data.role)) {
+            try {
+              const { data: holdersData } = await api.get('/api/admin/role-holders');
+              if (!active) return;
+              setRoleHolders(Array.isArray(holdersData?.holders) ? holdersData.holders : []);
+            } catch (holdersErr) {
+              if (!active) return;
+              setHoldersError(
+                holdersErr.response?.data?.message || 'Failed to load current admins.'
+              );
+            }
+          }
         } catch (err) {
           if (!active) return;
           if (err.response?.status === 403) {
             setListError(
-              'Admin API denied this role. Redeploy the backend with requireRole (CEO bypass), then sign in again.'
+              err.response?.data?.message ||
+                'You do not have permission to view the employee list.'
             );
             return;
           }
@@ -111,6 +159,7 @@ function AdminDashboard() {
           setListError(err.response?.data?.message || 'Failed to load employees.');
         } finally {
           if (active) setLoading(false);
+        }
         }
       } catch (err) {
         if (!active) return;
@@ -136,7 +185,8 @@ function AdminDashboard() {
     } catch (err) {
       if (err.response?.status === 403) {
         setListError(
-          'Admin API denied this role. Redeploy the backend with requireRole (CEO bypass), then sign in again.'
+          err.response?.data?.message ||
+            'You do not have permission to view employees.'
         );
         return;
       }
@@ -150,6 +200,13 @@ function AdminDashboard() {
       setLoading(false);
     }
   }
+
+  const canEditEmployees =
+    isCeo(role) || hasPermission(permissions, 'employees:edit');
+  const canDeactivateEmployees =
+    isCeo(role) || hasPermission(permissions, 'employees:deactivate');
+  const canViewDocuments =
+    isCeo(role) || hasPermission(permissions, 'documents:view');
 
   const stats = useMemo(() => {
     const total = employees.length;
@@ -285,6 +342,10 @@ function AdminDashboard() {
   async function handleSave(e) {
     e.preventDefault();
     if (!selectedId) return;
+    if (!canEditEmployees) {
+      setSaveError('You do not have permission to edit employees.');
+      return;
+    }
 
     const errors = validateAdminForm();
     setFieldErrors(errors);
@@ -361,8 +422,122 @@ function AdminDashboard() {
       <Navbar showLogout onLogout={handleLogout} role={role} />
 
       <div className="admin-page">
-        <h1>Admin Panel</h1>
-        <p className="muted">Manage employee records, IDs, and assignments</p>
+        <div className="admin-toolbar" style={{ marginTop: 0 }}>
+          <div>
+            <h1>Admin Panel</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              Manage employee records, IDs, and assignments
+            </p>
+          </div>
+          {isCeo(role) && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setAssignInitial(null);
+                setAssignOpen(true);
+              }}
+            >
+              Assign Admin Role
+            </button>
+          )}
+        </div>
+
+        {assignBanner && (
+          <p className="success assign-banner" role="status">
+            {assignBanner}
+          </p>
+        )}
+
+        {isCeo(role) && (
+          <section className="ceo-role-section" aria-label="Current admins">
+            <div className="ceo-role-header">
+              <div>
+                <h2>Current Admins</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  People with admin or CEO access and their permission scopes
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={holdersLoading}
+                onClick={loadRoleHolders}
+              >
+                {holdersLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+
+            {holdersError && <p className="error">{holdersError}</p>}
+
+            {!holdersError && holdersLoading && roleHolders.length === 0 && (
+              <div className="admin-loading">
+                <div className="spinner" />
+                Loading role holders…
+              </div>
+            )}
+
+            {!holdersError && !holdersLoading && roleHolders.length === 0 && (
+              <div className="admin-empty">No admin or CEO accounts found.</div>
+            )}
+
+            {roleHolders.length > 0 && (
+              <div className="table-shell">
+                <table className="admin-table role-holders-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Employee ID</th>
+                      <th>Role</th>
+                      <th>Permissions</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roleHolders.map((row) => (
+                      <tr key={row.id}>
+                        <td className="cell-name">{fullName(row)}</td>
+                        <td>{row.employee_id || '—'}</td>
+                        <td>
+                          <span className={`status-pill ${row.role === 'ceo' ? 'active' : 'unset'}`}>
+                            {row.role}
+                          </span>
+                        </td>
+                        <td>
+                          {row.role === 'ceo' ? (
+                            <span className="muted">Full access (CEO bypass)</span>
+                          ) : Array.isArray(row.permissions) && row.permissions.length > 0 ? (
+                            <div className="perm-chip-row">
+                              {row.permissions.map((key) => (
+                                <span key={key} className="perm-chip">
+                                  {key}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="muted">None</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              setAssignInitial(row);
+                              setAssignOpen(true);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="stat-grid">
           <article className="stat-card">
@@ -565,6 +740,25 @@ function AdminDashboard() {
         </div>
       </div>
 
+      <AssignRoleModal
+        open={assignOpen}
+        initialUser={assignInitial}
+        onClose={() => {
+          setAssignOpen(false);
+          setAssignInitial(null);
+        }}
+        onSuccess={({ message, user }) => {
+          setAssignBanner(message);
+          setEmployees((prev) =>
+            prev.map((row) =>
+              user?.id && row.id === user.id ? { ...row, role: user.role } : row
+            )
+          );
+          loadRoleHolders();
+          window.setTimeout(() => setAssignBanner(''), 5000);
+        }}
+      />
+
       {selectedId && (
         <div className="modal-backdrop" onClick={closeDetail}>
           <aside
@@ -674,6 +868,12 @@ function AdminDashboard() {
                 </div>
 
                 <h3 className="section-title">Documents</h3>
+                {!canViewDocuments || detail.documents_redacted ? (
+                  <p className="muted">
+                    Document access is restricted for your admin role (needs documents:view).
+                  </p>
+                ) : (
+                  <>
                 <div className="doc-row">
                   <a
                     className="doc-preview"
@@ -709,6 +909,8 @@ function AdminDashboard() {
                 ) : (
                   <p className="muted">No CV uploaded.</p>
                 )}
+                  </>
+                )}
 
                 <h3 className="section-title">Bank details</h3>
                 <div className="detail-grid">
@@ -731,7 +933,13 @@ function AdminDashboard() {
                 </div>
 
                 <h3 className="section-title">Admin fields</h3>
+                {!canEditEmployees && (
+                  <p className="muted" style={{ marginBottom: '0.75rem' }}>
+                    You can view this profile but cannot edit admin fields (needs employees:edit).
+                  </p>
+                )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
+                  <fieldset disabled={!canEditEmployees} style={{ border: 0, margin: 0, padding: 0 }}>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID
                     <input
@@ -828,6 +1036,7 @@ function AdminDashboard() {
                       <span className="field-error">{fieldErrors.salary}</span>
                     )}
                   </label>
+                  </fieldset>
 
                   {saveError && <p className="error">{saveError}</p>}
                   {saveSuccess && <p className="success">{saveSuccess}</p>}
@@ -836,6 +1045,7 @@ function AdminDashboard() {
                     <button type="button" className="btn btn-ghost" onClick={closeDetail}>
                       Close
                     </button>
+                    {canDeactivateEmployees && (
                     <button
                       type="button"
                       className="btn btn-ghost"
@@ -854,7 +1064,9 @@ function AdminDashboard() {
                           closeDetail();
                         } catch (err) {
                           setSaveError(
-                            err.response?.data?.message || 'Failed to deactivate employee.'
+                            err.response?.data?.message ||
+                              err.response?.data?.error ||
+                              'Failed to deactivate employee.'
                           );
                         } finally {
                           setDeactivating(false);
@@ -863,9 +1075,12 @@ function AdminDashboard() {
                     >
                       {deactivating ? 'Deactivating…' : 'Deactivate'}
                     </button>
+                    )}
+                    {canEditEmployees && (
                     <button type="submit" className="btn btn-primary" disabled={saving}>
                       {saving ? 'Saving…' : 'Save Changes'}
                     </button>
+                    )}
                   </div>
                 </form>
               </>

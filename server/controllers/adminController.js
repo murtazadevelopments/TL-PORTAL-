@@ -6,6 +6,7 @@ const {
   summarizeChanges,
 } = require('../services/notifications');
 const { writeAuditLog } = require('../utils/auditLog');
+const { loadAdminPermissions } = require('../middleware/permissions');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -109,6 +110,24 @@ async function getEmployeeById(req, res) {
     }
 
     const employee = await attachReadableUrls(rows[0]);
+
+    // Redact CNIC/CV unless CEO or admin has documents:view
+    const role = String(req.user?.role || '').toLowerCase();
+    let canViewDocs = role === 'ceo';
+    if (!canViewDocs && role === 'admin') {
+      const perms =
+        Array.isArray(req.user.permissions) && req.user.permissions.length
+          ? req.user.permissions
+          : await loadAdminPermissions(req.user.id);
+      canViewDocs = perms.includes('documents:view') || perms.includes('*');
+    }
+    if (!canViewDocs) {
+      employee.cnic_front_url = null;
+      employee.cnic_back_url = null;
+      employee.cv_url = null;
+      employee.documents_redacted = true;
+    }
+
     return res.json(employee);
   } catch (err) {
     console.error('getEmployeeById error:', err);

@@ -6,6 +6,7 @@ const {
   notifyAdminsEmployeeSelfUpdate,
   summarizeChanges,
 } = require('../services/notifications');
+const { loadAdminPermissions } = require('../middleware/permissions');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -53,6 +54,18 @@ async function getMe(req, res) {
     }
 
     const user = await attachReadableUrls(rows[0]);
+    const role = String(user.role || '')
+      .trim()
+      .toLowerCase();
+
+    if (role === 'ceo') {
+      user.permissions = ['*'];
+    } else if (role === 'admin') {
+      user.permissions = await loadAdminPermissions(user.id);
+    } else {
+      user.permissions = [];
+    }
+
     return res.json(user);
   } catch (err) {
     console.error('getMe error:', err);

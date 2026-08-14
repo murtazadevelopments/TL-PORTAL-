@@ -1,0 +1,147 @@
+.assign-role-modal {
+  width: min(560px, calc(100vw - 2rem));
+}
+
+.assign-role-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0 0 0.5rem;
+}
+
+.assign-step {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.assign-step legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.assign-step select,
+.assign-step textarea,
+.assign-step .assign-search {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.assign-step select {
+  border-radius: 10px;
+}
+
+.assign-step textarea {
+  border-radius: 10px;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.assign-step .assign-search:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
+.assign-selected {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.role-radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+
+.role-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--text-h);
+}
+
+.permission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.permission-item {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  cursor: pointer;
+  padding: 0.45rem 0.35rem;
+  border-radius: 8px;
+}
+
+.permission-item:hover {
+  background: rgba(126, 203, 255, 0.06);
+}
+
+.permission-item strong {
+  display: block;
+  color: var(--text-h);
+}
+
+.permission-item .muted {
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 0.15rem;
+}
+
+.ceo-role-section {
+  margin: 1.5rem 0 1.25rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(8, 12, 22, 0.45);
+}
+
+.ceo-role-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.ceo-role-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+
+.role-holders-table td .perm-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.perm-chip {
+  display: inline-flex;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(126, 203, 255, 0.14);
+  color: var(--cyan-soft);
+  border: 1px solid rgba(126, 203, 255, 0.25);
+}
+
+.assign-banner {
+  margin: 0 0 0.85rem;
+}

@@ -36,6 +36,13 @@
   box-shadow: 0 0 14px var(--glow-green);
 }
 
+.nav-link-active {
+  color: var(--text-h);
+  border-color: var(--border-strong);
+  background: rgba(61, 255, 122, 0.14);
+  box-shadow: 0 0 16px var(--glow-green);
+}
+
 .navbar-brand {
   display: inline-flex;
   align-items: center;

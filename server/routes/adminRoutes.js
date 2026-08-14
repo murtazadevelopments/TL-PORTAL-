@@ -1,6 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
-const { requireRole } = require('../middleware/permissions');
+const { requireRole, requirePermission } = require('../middleware/permissions');
 const {
   listEmployees,
   getEmployeeById,
@@ -9,23 +9,56 @@ const {
   purgeEmployee,
   listDeactivated,
 } = require('../controllers/adminController');
+const {
+  getPermissionsCatalog,
+  listEmployeesForRoleAssign,
+  listRoleHolders,
+} = require('../controllers/rolesController');
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
-// Soft-deleted records review — admin (+ CEO bypass)
-router.get('/deactivated', requireRole('admin'), listDeactivated);
+// Soft-deleted records review
+router.get(
+  '/deactivated',
+  requireRole('admin'),
+  requirePermission('employees:deactivate'),
+  listDeactivated
+);
 
-// Employee directory / assignment — admin (+ CEO bypass); active only
-router.get('/employees', requireRole('admin'), listEmployees);
-router.get('/employees/:id', requireRole('admin'), getEmployeeById);
-router.put('/employees/:id', requireRole('admin'), updateEmployee);
+// CEO role-assignment helpers (register before /employees/:id)
+router.get('/employees-list', requireRole('ceo'), listEmployeesForRoleAssign);
+router.get('/permissions-catalog', requireRole('ceo'), getPermissionsCatalog);
+router.get('/role-holders', requireRole('ceo'), listRoleHolders);
 
-// Soft-delete — admin (+ CEO bypass)
-router.delete('/employees/:id', requireRole('admin'), deactivateEmployee);
+// Employee directory — scoped by admin_permissions
+router.get(
+  '/employees',
+  requireRole('admin'),
+  requirePermission('employees:view'),
+  listEmployees
+);
+router.get(
+  '/employees/:id',
+  requireRole('admin'),
+  requirePermission('employees:view'),
+  getEmployeeById
+);
+router.put(
+  '/employees/:id',
+  requireRole('admin'),
+  requirePermission('employees:edit'),
+  updateEmployee
+);
 
-// Hard-delete — CEO only; more specific path
+router.delete(
+  '/employees/:id',
+  requireRole('admin'),
+  requirePermission('employees:deactivate'),
+  deactivateEmployee
+);
+
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
 
 module.exports = router;

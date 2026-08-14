@@ -30,14 +30,8 @@ function SignIn() {
         password: form.password,
       });
       localStorage.setItem('token', data.token);
-      const role = String(data.user?.role || '')
-        .trim()
-        .toLowerCase();
-      if (role === 'ceo' || role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
+      // Everyone lands on personal dashboard; Admin Panel is opened from the navbar.
+      navigate('/dashboard');
     } catch (err) {
       const status = err.response?.status;
       const apiMsg = err.response?.data?.message;

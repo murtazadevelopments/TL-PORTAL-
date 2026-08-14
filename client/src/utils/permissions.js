@@ -1,4 +1,4 @@
-/** Frontend UI helpers only — backend requireRole is authoritative. */
+/** Frontend UI helpers only — backend requireRole / requirePermission is authoritative. */
 
 function normalizeRole(role) {
   return String(role || '')
@@ -18,4 +18,12 @@ export function isAdmin(role) {
 export function canAccessAdmin(role) {
   const r = normalizeRole(role);
   return r === 'ceo' || r === 'admin';
+}
+
+/** CEO has '*'; admins use keys from /api/users/me.permissions */
+export function hasPermission(permissions, key) {
+  if (!key) return false;
+  if (!Array.isArray(permissions)) return false;
+  if (permissions.includes('*')) return true;
+  return permissions.includes(key);
 }
