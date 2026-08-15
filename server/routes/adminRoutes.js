@@ -21,7 +21,7 @@ const {
   updateNotificationSettings,
 } = require('../controllers/notificationSettingsController');
 const { listLoginLogs } = require('../controllers/loginLogsController');
-const { listTeams, createTeam } = require('../controllers/teamsController');
+const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsController');
 
 const router = express.Router();
 
@@ -56,6 +56,12 @@ router.post(
   requireRole('admin'),
   requirePermission('teams:create'),
   createTeam
+);
+router.delete(
+  '/teams/:id',
+  requireRole('admin'),
+  requirePermission('teams:create'),
+  deleteTeam
 );
 
 // CEO role-assignment helpers (register before /employees/:id)

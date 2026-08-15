@@ -53,4 +53,38 @@ async function createTeam(req, res) {
   }
 }
 
-module.exports = { listTeams, createTeam };
+/**
+ * DELETE /api/admin/teams/:id
+ * Requires teams:create (same manage-teams scope). Employee department strings are left as-is.
+ */
+async function deleteTeam(req, res) {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid team id.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        DELETE FROM teams
+        WHERE id = $1
+        RETURNING id, name
+      `,
+      [id]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Team not found.' });
+    }
+
+    return res.json({
+      message: `Team “${rows[0].name}” deleted.`,
+      team: rows[0],
+    });
+  } catch (err) {
+    console.error('deleteTeam error:', err);
+    return res.status(500).json({ message: 'Server error deleting team.' });
+  }
+}
+
+module.exports = { listTeams, createTeam, deleteTeam };

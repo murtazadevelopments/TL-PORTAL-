@@ -29,7 +29,10 @@ export default function InactivityGuard({ children }) {
   const warnShown = useRef(false);
 
   const isAuthedRoute =
-    location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
+    location.pathname.startsWith('/dashboard') ||
+    location.pathname.startsWith('/admin') ||
+    location.pathname.startsWith('/account') ||
+    location.pathname.startsWith('/settings');
 
   const logout = useCallback(() => {
     localStorage.removeItem('token');

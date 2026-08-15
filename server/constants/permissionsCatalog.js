@@ -30,8 +30,8 @@ const PERMISSIONS_CATALOG = [
   },
   {
     key: 'teams:create',
-    label: 'Create teams / departments',
-    description: 'Add new teams or departments used in the employee Department dropdown',
+    label: 'Manage teams / departments',
+    description: 'Add or delete teams/departments used in the employee Department dropdown',
   },
   {
     key: 'accounts:unlock',
