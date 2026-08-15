@@ -1,15 +1,27 @@
 const pool = require('../config/db');
 
+function normalizeRole(role) {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+}
+
+function isCeoRole(role) {
+  return normalizeRole(role) === 'ceo';
+}
+
 /**
  * Central RBAC middleware.
  *
  * Usage: router.get('/path', authMiddleware, requireRole('admin'), handler)
  *
  * - Loads live role from DB (source of truth after role changes)
- * - CEO always passes (bypass every check, including future routes)
+ * - CEO always passes (full access by default — bypass every check)
  * - Otherwise role must be in allowedRoles
  */
 function requireRole(...allowedRoles) {
+  const allowed = allowedRoles.map(normalizeRole).filter(Boolean);
+
   return async function requireRoleMiddleware(req, res, next) {
     try {
       if (!req.user?.id) {
@@ -26,19 +38,21 @@ function requireRole(...allowedRoles) {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const role = row.role;
+      const role = normalizeRole(row.role);
       if (!role) {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      // Keep JWT payload in sync with DB for downstream handlers
+      // Keep JWT payload in sync with DB for downstream handlers (normalized)
       req.user.role = role;
 
-      if (role === 'ceo') {
+      // CEO has all access by default
+      if (isCeoRole(role)) {
+        req.user.permissions = ['*'];
         return next();
       }
 
-      if (allowedRoles.includes(role)) {
+      if (allowed.includes(role)) {
         return next();
       }
 
@@ -65,7 +79,7 @@ async function loadAdminPermissions(userId) {
 
 /**
  * Granular admin scopes (after requireRole('admin')).
- * CEO always bypasses. Admins must hold EVERY listed key.
+ * CEO always bypasses with full access. Admins must hold EVERY listed key.
  *
  * Usage: requireRole('admin'), requirePermission('employees:view')
  */
@@ -78,8 +92,24 @@ function requirePermission(...requiredKeys) {
         return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const role = req.user.role;
-      if (role === 'ceo') {
+      // Prefer live DB role so JWT stale role never blocks a CEO
+      let role = normalizeRole(req.user.role);
+      if (!isCeoRole(role) && req.user.id) {
+        try {
+          const { rows } = await pool.query(
+            'SELECT role FROM users WHERE id = $1 LIMIT 1',
+            [req.user.id]
+          );
+          if (rows[0]?.role) {
+            role = normalizeRole(rows[0].role);
+            req.user.role = role;
+          }
+        } catch {
+          /* keep existing role */
+        }
+      }
+
+      if (isCeoRole(role)) {
         req.user.permissions = ['*'];
         return next();
       }
@@ -114,7 +144,6 @@ function requirePermission(...requiredKeys) {
 
 /**
  * CEO always allowed. Admins must have at least one of the listed keys.
- * Used when a route is shared by CEO tools and a scoped admin feature.
  */
 function requireCeoOrAnyPermission(...keys) {
   const accepted = keys.map((k) => String(k).trim()).filter(Boolean);
@@ -125,12 +154,28 @@ function requireCeoOrAnyPermission(...keys) {
         return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      if (req.user.role === 'ceo') {
+      let role = normalizeRole(req.user.role);
+      if (!isCeoRole(role) && req.user.id) {
+        try {
+          const { rows } = await pool.query(
+            'SELECT role FROM users WHERE id = $1 LIMIT 1',
+            [req.user.id]
+          );
+          if (rows[0]?.role) {
+            role = normalizeRole(rows[0].role);
+            req.user.role = role;
+          }
+        } catch {
+          /* keep */
+        }
+      }
+
+      if (isCeoRole(role)) {
         req.user.permissions = ['*'];
         return next();
       }
 
-      if (req.user.role !== 'admin') {
+      if (role !== 'admin') {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
@@ -158,4 +203,6 @@ module.exports = {
   requirePermission,
   requireCeoOrAnyPermission,
   loadAdminPermissions,
+  normalizeRole,
+  isCeoRole,
 };

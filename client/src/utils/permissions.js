@@ -20,10 +20,20 @@ export function canAccessAdmin(role) {
   return r === 'ceo' || r === 'admin';
 }
 
-/** CEO has '*'; admins use keys from /api/users/me.permissions */
-export function hasPermission(permissions, key) {
+/**
+ * Permission check for UI.
+ * CEO always has full access (no catalog keys required).
+ * Admins use keys from /api/users/me.permissions ('*' = all).
+ */
+export function hasPermission(permissions, key, role) {
+  if (isCeo(role)) return true;
   if (!key) return false;
   if (!Array.isArray(permissions)) return false;
   if (permissions.includes('*')) return true;
   return permissions.includes(key);
+}
+
+/** Convenience: CEO bypass + permission key in one call. */
+export function can(role, permissions, key) {
+  return hasPermission(permissions, key, role);
 }

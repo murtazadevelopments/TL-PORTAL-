@@ -134,7 +134,7 @@ function AdminDashboard() {
         // Load list in the same flow so CEO/admin never sit on an empty table
         setLoading(true);
         setListError('');
-        const canView = isCeo(data.role) || hasPermission(data.permissions, 'employees:view');
+        const canView = hasPermission(data.permissions, 'employees:view', data.role);
         if (!canView) {
           setEmployees([]);
           setListError(
@@ -217,16 +217,15 @@ function AdminDashboard() {
     }
   }
 
-  const canEditEmployees =
-    isCeo(role) || hasPermission(permissions, 'employees:edit');
-  const canDeactivateEmployees =
-    isCeo(role) || hasPermission(permissions, 'employees:deactivate');
-  const canViewDocuments =
-    isCeo(role) || hasPermission(permissions, 'documents:view');
-  const canCreateTeams =
-    isCeo(role) || hasPermission(permissions, 'teams:create');
-  const canUnlockAccounts =
-    isCeo(role) || hasPermission(permissions, 'accounts:unlock');
+  const canEditEmployees = hasPermission(permissions, 'employees:edit', role);
+  const canDeactivateEmployees = hasPermission(
+    permissions,
+    'employees:deactivate',
+    role
+  );
+  const canViewDocuments = hasPermission(permissions, 'documents:view', role);
+  const canCreateTeams = hasPermission(permissions, 'teams:create', role);
+  const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
 
   async function loadTeams() {
     try {
@@ -253,14 +252,14 @@ function AdminDashboard() {
 
   useEffect(() => {
     if (!role) return;
-    if (isCeo(role) || hasPermission(permissions, 'employees:view') || canAccessAdmin(role)) {
+    if (canAccessAdmin(role) || hasPermission(permissions, 'employees:view', role)) {
       loadTeams();
     }
   }, [role, permissions]);
 
   useEffect(() => {
     if (!role) return;
-    if (isCeo(role) || hasPermission(permissions, 'accounts:unlock')) {
+    if (hasPermission(permissions, 'accounts:unlock', role)) {
       loadLockedAccounts();
     }
   }, [role, permissions]);
@@ -697,8 +696,8 @@ function AdminDashboard() {
                           </span>
                         </td>
                         <td>
-                          {row.role === 'ceo' ? (
-                            <span className="muted">Full access (CEO bypass)</span>
+                          {String(row.role || '').toLowerCase() === 'ceo' ? (
+                            <span className="muted">Full access (all permissions)</span>
                           ) : Array.isArray(row.permissions) && row.permissions.length > 0 ? (
                             <div className="perm-chip-row">
                               {row.permissions.map((key) => (

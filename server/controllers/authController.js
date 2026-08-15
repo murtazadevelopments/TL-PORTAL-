@@ -332,7 +332,8 @@ async function login(req, res) {
     const role = String(user.role || '')
       .trim()
       .toLowerCase();
-    // Signup-approval gate applies to employees only (admins/CEO manage the queue)
+    // Signup-approval / employment-status gate: employees only.
+    // CEO and admin always retain portal access when is_active (CEO has all access by default).
     if (role === 'employee' && accountStatus !== 'active') {
       return res.status(403).json({
         message: 'Your account is pending admin approval.',
