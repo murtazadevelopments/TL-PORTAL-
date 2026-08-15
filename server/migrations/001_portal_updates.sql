@@ -1,4 +1,4 @@
--- Portal TL schema updates (run in Supabase SQL Editor)
+-- Textured Lab Portal schema updates (run in Supabase SQL Editor)
 -- Safe to re-run pieces carefully; review before production.
 
 BEGIN;

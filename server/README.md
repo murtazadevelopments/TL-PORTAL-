@@ -1,4 +1,4 @@
-# Portal TL — Server
+# Textured Lab Portal — Server
 
 Node/Express API for the Textured Lab employee portal. Uses PostgreSQL (`pg`) for data and Supabase Storage for document uploads.
 
@@ -18,7 +18,7 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
 | `ALLOWED_ORIGINS` | No | Comma-separated frontend origins (defaults include portal + Hostinger URL + localhost) |
 | `RESEND_API_KEY` | **Yes** (for email) | Resend API key — required on Hostinger or all emails fail |
-| `RESEND_FROM` | **Yes** (for email) | Must use verified domain, e.g. `Portal TL <noreply@texturedlab.org>` |
+| `RESEND_FROM` | **Yes** (for email) | Must use verified domain, e.g. `Textured Lab Portal <noreply@texturedlab.org>` |
 | `FRONTEND_URL` | Yes (for password reset links) | Production frontend origin, e.g. `https://texturedlab.org` |
 | `ADMIN_NOTIFY_EMAILS` | No | Extra admin emails for notifications (comma-separated) |
 

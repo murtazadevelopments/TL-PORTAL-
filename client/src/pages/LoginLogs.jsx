@@ -146,7 +146,7 @@ function LoginLogs() {
           <div>
             <h1>Login Logs</h1>
             <p className="muted" style={{ margin: 0 }}>
-              Recent sign-ins across Portal TL
+              Recent sign-ins across Textured Lab Portal
             </p>
           </div>
           <Link to="/admin" className="btn btn-ghost">

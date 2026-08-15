@@ -51,8 +51,8 @@ function SignIn() {
       <main className="card">
         <InstallAppButton />
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab" />
-          <p className="brand-name">Textured Lab</p>
+          <img src={logo} alt="Textured Lab Portal" />
+          <p className="brand-name">Textured Lab Portal</p>
         </div>
 
         <h1>Sign in</h1>

@@ -13,8 +13,8 @@ function Navbar({ onLogout, showLogout = false, role = null }) {
   return (
     <header className="navbar">
       <Link to={showLogout ? '/dashboard' : '/'} className="navbar-brand">
-        <img src={logo} alt="Textured Lab" className="navbar-logo" />
-        <span>Textured Lab</span>
+        <img src={logo} alt="Textured Lab Portal" className="navbar-logo" />
+        <span>Textured Lab Portal</span>
       </Link>
 
       <div className="navbar-actions">

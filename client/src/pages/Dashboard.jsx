@@ -300,7 +300,7 @@ function Dashboard() {
 
       <main className="card wide">
         <h1>Dashboard</h1>
-        <p className="muted">Your Textured Lab employee profile</p>
+        <p className="muted">Your Textured Lab Portal employee profile</p>
 
         {loading && <p className="muted">Loading profile…</p>}
 

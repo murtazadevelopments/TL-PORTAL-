@@ -50,8 +50,8 @@ function ResetPassword() {
       <Navbar />
       <main className="card">
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab" />
-          <p className="brand-name">Textured Lab</p>
+          <img src={logo} alt="Textured Lab Portal" />
+          <p className="brand-name">Textured Lab Portal</p>
         </div>
         <h1>Reset password</h1>
         <p className="muted">Choose a new password for your account.</p>

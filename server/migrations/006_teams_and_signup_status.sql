@@ -1,5 +1,5 @@
 -- Teams/departments catalog + ensure signup status defaults to inactive
--- Run in Supabase SQL Editor (or any Postgres client connected to Portal TL).
+-- Run in Supabase SQL Editor (or any Postgres client connected to Textured Lab Portal).
 
 BEGIN;
 

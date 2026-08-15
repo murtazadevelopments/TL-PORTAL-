@@ -19,7 +19,7 @@ function getClient() {
 function getFrom() {
   return (
     process.env.RESEND_FROM ||
-    'Portal TL <onboarding@resend.dev>'
+    'Textured Lab Portal <onboarding@resend.dev>'
   );
 }
 

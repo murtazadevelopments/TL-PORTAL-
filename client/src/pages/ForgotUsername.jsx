@@ -32,8 +32,8 @@ function ForgotUsername() {
       <Navbar />
       <main className="card">
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab" />
-          <p className="brand-name">Textured Lab</p>
+          <img src={logo} alt="Textured Lab Portal" />
+          <p className="brand-name">Textured Lab Portal</p>
         </div>
         <h1>Forgot username</h1>
         <p className="muted">Enter your account email and we&apos;ll send your username.</p>

@@ -117,8 +117,8 @@ function SignUp() {
       <Navbar />
       <main className="card wide">
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab" />
-          <p className="brand-name">Textured Lab</p>
+          <img src={logo} alt="Textured Lab Portal" />
+          <p className="brand-name">Textured Lab Portal</p>
         </div>
 
         <h1>Join the lab</h1>

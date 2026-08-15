@@ -114,7 +114,7 @@ async function notifyDesignatedNewSignup(user) {
     to,
     subject: `New employee signup: ${user.name || user.username}`,
     html: `
-      <p>A new employee account was created on Portal TL.</p>
+      <p>A new employee account was created on Textured Lab Portal.</p>
       <ul>
         <li><strong>Name:</strong> ${escapeHtml(user.name)}</li>
         <li><strong>Employee ID:</strong> ${escapeHtml(user.employee_id || 'Not assigned yet')}</li>
@@ -158,13 +158,13 @@ async function notifyAccountApproved(user) {
   const result = await sendEmailSafe({
     emailType: 'account_approved',
     to: user.email,
-    subject: 'Your Portal TL account has been approved',
-    text: `Hi ${user.name || ''},\n\nYour Portal TL account has been approved. You can now sign in:\n${loginUrl}\n\nUsername: ${user.username || ''}\n`,
+    subject: 'Your Textured Lab Portal account has been approved',
+    text: `Hi ${user.name || ''},\n\nYour Textured Lab Portal account has been approved. You can now sign in:\n${loginUrl}\n\nUsername: ${user.username || ''}\n`,
     html: `
       <p>Hi ${escapeHtml(user.name || '')},</p>
-      <p>Your Portal TL account has been <strong>approved</strong>. You can now sign in.</p>
+      <p>Your Textured Lab Portal account has been <strong>approved</strong>. You can now sign in.</p>
       <p>Username: <strong>${escapeHtml(user.username || '')}</strong></p>
-      <p><a href="${escapeHtml(loginUrl)}">Sign in to Portal TL</a></p>
+      <p><a href="${escapeHtml(loginUrl)}">Sign in to Textured Lab Portal</a></p>
     `,
   });
 
@@ -209,7 +209,7 @@ async function notifyUsernameReminder(userOrUsers) {
   return sendEmailSafe({
     emailType: 'forgot_username',
     to: email,
-    subject: 'Your Portal TL username',
+    subject: 'Your Textured Lab Portal username',
     text: `Hi ${list[0].name || ''},\n\n${textBlock}\n\nIf you did not request this, you can ignore this email.`,
     html: `
       <p>Hi ${greetingName},</p>
@@ -223,7 +223,7 @@ async function notifyPasswordReset(user, resetUrl) {
   if (!user?.email) return;
   await sendEmailSafe({
     to: user.email,
-    subject: 'Reset your Portal TL password',
+    subject: 'Reset your Textured Lab Portal password',
     html: `
       <p>Hi ${escapeHtml(user.name || '')},</p>
       <p>We received a password reset request. Click the link below (expires in 1 hour):</p>
@@ -309,10 +309,10 @@ async function notifyUserLogin(user, { ip, userAgent, locationLabel } = {}) {
 
   const result = await sendEmailSafe({
     to: user.email,
-    subject: 'New login to your Portal TL account',
+    subject: 'New login to your Textured Lab Portal account',
     html: `
       <p>Hi ${escapeHtml(firstName(user.name))},</p>
-      <p>You just logged in to your Portal TL account.</p>
+      <p>You just logged in to your Textured Lab Portal account.</p>
       <ul>
         <li><strong>When:</strong> ${escapeHtml(when)}</li>
         <li><strong>Approximate location:</strong> ${where}</li>
