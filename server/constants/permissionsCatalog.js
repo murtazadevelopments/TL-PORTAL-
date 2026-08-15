@@ -11,7 +11,7 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'employees:edit',
     label: 'Edit employees',
-    description: 'Update employee ID, status, department, designation, branch, shift, salary, date of joining',
+    description: 'Update username, employee ID, status, department, designation, branch, shift, salary, date of joining',
   },
   {
     key: 'employees:deactivate',

@@ -1,7 +1,7 @@
 {
   "name": "Textured Lab Portal",
-  "short_name": "Textured Lab Portal",
-  "description": "Textured Lab employee portal",
+  "short_name": "TL Portal",
+  "description": "Textured Lab Portal — employee portal",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

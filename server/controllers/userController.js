@@ -39,6 +39,7 @@ const EMPLOYEE_UPDATE_WHITELIST = [
 
 /** Silently ignored if an employee sends them (admin-only). */
 const EMPLOYEE_IGNORED_FIELDS = new Set([
+  'username',
   'date_of_joining',
   'date_joined',
   'employee_id',

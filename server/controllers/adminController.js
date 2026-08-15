@@ -27,6 +27,7 @@ const DETAIL_COLUMNS = `
 `;
 
 const ALLOWED_UPDATE_FIELDS = [
+  'username',
   'employee_id',
   'status',
   'department',
@@ -38,6 +39,7 @@ const ALLOWED_UPDATE_FIELDS = [
 ];
 
 const REQUIRED_ADMIN_FIELDS = [
+  'username',
   'employee_id',
   'status',
   'department',
@@ -46,6 +48,8 @@ const REQUIRED_ADMIN_FIELDS = [
   'shift',
   'salary',
 ];
+
+const USERNAME_REGEX = /^[a-z0-9._]+$/;
 
 function isEmptyValue(value) {
   return value === undefined || value === null || String(value).trim() === '';
@@ -146,14 +150,14 @@ async function updateEmployee(req, res) {
     if (keys.length === 0) {
       return res.status(400).json({
         message:
-          'Required fields: employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining.',
+          'Required fields: username, employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining.',
       });
     }
 
     const rejected = keys.filter((key) => !ALLOWED_UPDATE_FIELDS.includes(key));
     if (rejected.length > 0) {
       return res.status(400).json({
-        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, salary, and date_of_joining can be updated.`,
+        message: `Field(s) not allowed: ${rejected.join(', ')}. Only username, employee_id, status, department, designation, branch, shift, salary, and date_of_joining can be updated.`,
       });
     }
 
@@ -176,7 +180,18 @@ async function updateEmployee(req, res) {
 
     const before = existingRows[0];
 
+    const nextUsername = String(body.username || '')
+      .trim()
+      .toLowerCase();
+    if (nextUsername.length < 3 || nextUsername.length > 30 || !USERNAME_REGEX.test(nextUsername)) {
+      return res.status(400).json({
+        message:
+          'Username must be 3–30 characters and use lowercase letters, numbers, dots, and underscores only.',
+      });
+    }
+
     const next = {
+      username: nextUsername,
       employee_id: String(body.employee_id).trim(),
       status: String(body.status).trim().toLowerCase(),
       department: String(body.department).trim(),
@@ -204,19 +219,21 @@ async function updateEmployee(req, res) {
       `
         UPDATE users
         SET
-          employee_id = $1,
-          status = $2,
-          department = $3,
-          designation = $4,
-          branch = $5,
-          shift = $6,
-          salary = $7,
-          date_of_joining = $8,
+          username = $1,
+          employee_id = $2,
+          status = $3,
+          department = $4,
+          designation = $5,
+          branch = $6,
+          shift = $7,
+          salary = $8,
+          date_of_joining = $9,
           updated_at = NOW()
-        WHERE id = $9 AND is_active = true
+        WHERE id = $10 AND is_active = true
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
+        next.username,
         next.employee_id,
         next.status,
         next.department,
@@ -263,7 +280,14 @@ async function updateEmployee(req, res) {
     return res.json(employee);
   } catch (err) {
     if (err.code === '23505') {
-      return res.status(409).json({ message: 'Employee ID is already in use.' });
+      const detail = String(err.detail || err.message || '').toLowerCase();
+      if (detail.includes('username')) {
+        return res.status(409).json({ message: 'This username is already taken.' });
+      }
+      if (detail.includes('employee_id')) {
+        return res.status(409).json({ message: 'Employee ID is already in use.' });
+      }
+      return res.status(409).json({ message: 'That value is already in use.' });
     }
     console.error('updateEmployee error:', err);
     return res.status(500).json({ message: 'Server error updating employee.' });
