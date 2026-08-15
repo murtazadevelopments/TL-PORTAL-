@@ -12,7 +12,8 @@ const { loadAdminPermissions } = require('../middleware/permissions');
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
-  education, last_job_status, profile_picture_url, created_at, is_active
+  education, last_job_status, profile_picture_url, created_at, is_active,
+  failed_login_attempts, locked_at
 `;
 
 const DETAIL_COLUMNS = `
@@ -23,7 +24,8 @@ const DETAIL_COLUMNS = `
   date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
-  reference_person AS reference_person_name
+  reference_person AS reference_person_name,
+  failed_login_attempts, locked_at
 `;
 
 const ALLOWED_UPDATE_FIELDS = [

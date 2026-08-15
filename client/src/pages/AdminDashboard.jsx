@@ -48,6 +48,16 @@ function statusClass(status) {
   return 'unset';
 }
 
+function isAccountLocked(row) {
+  return Boolean(row?.locked_at);
+}
+
+function employmentStatusLabel(status) {
+  if (status === 'active') return 'active';
+  if (status === 'inactive') return 'pending';
+  return status || 'unset';
+}
+
 function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
@@ -269,7 +279,8 @@ function AdminDashboard() {
     const active = employees.filter((e) => e.status === 'active').length;
     const inactive = employees.filter((e) => e.status !== 'active').length;
     const pendingId = employees.filter((e) => isBlank(e.employee_id)).length;
-    return { total, active, inactive, pendingId };
+    const locked = employees.filter((e) => isAccountLocked(e)).length;
+    return { total, active, inactive, pendingId, locked };
   }, [employees]);
 
   const departmentOptions = useMemo(() => {
@@ -286,7 +297,8 @@ function AdminDashboard() {
   const tabCounts = useMemo(() => {
     const active = employees.filter((e) => e.status === 'active').length;
     const pending = employees.filter((e) => e.status !== 'active').length;
-    return { active, pending };
+    const locked = employees.filter((e) => isAccountLocked(e)).length;
+    return { active, pending, locked };
   }, [employees]);
 
   const filtered = useMemo(() => {
@@ -296,6 +308,7 @@ function AdminDashboard() {
       if (statusTab === 'active' && e.status !== 'active') return false;
       if (statusTab === 'pending' && e.status === 'active') return false;
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
+      if (statusTab === 'locked' && !isAccountLocked(e)) return false;
 
       if (filters.status !== 'all' && e.status !== filters.status) return false;
       if (
@@ -591,6 +604,8 @@ function AdminDashboard() {
                     <tr>
                       <th>Name</th>
                       <th>Username</th>
+                      <th>Employment</th>
+                      <th>Login status</th>
                       <th>Attempts</th>
                       <th>Locked at</th>
                       <th />
@@ -601,6 +616,14 @@ function AdminDashboard() {
                       <tr key={row.id}>
                         <td className="cell-name">{fullName(row)}</td>
                         <td>{row.username || '—'}</td>
+                        <td>
+                          <span className={`status-pill ${statusClass(row.status)}`}>
+                            {employmentStatusLabel(row.status)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="status-pill locked">blocked</span>
+                        </td>
                         <td>{row.failed_login_attempts ?? '—'}</td>
                         <td>
                           {row.locked_at
@@ -748,6 +771,10 @@ function AdminDashboard() {
             <span className="stat-label">Pending Employee ID</span>
             <span className="stat-value">{stats.pendingId}</span>
           </article>
+          <article className="stat-card">
+            <span className="stat-label">Blocked Accounts</span>
+            <span className="stat-value">{stats.locked}</span>
+          </article>
         </section>
 
         <div className="status-tabs">
@@ -771,6 +798,13 @@ function AdminDashboard() {
             onClick={() => setStatusTab('pending')}
           >
             Pending Approval <span className="tab-badge">{tabCounts.pending}</span>
+          </button>
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'locked' ? 'active' : ''}`}
+            onClick={() => setStatusTab('locked')}
+          >
+            Blocked <span className="tab-badge">{tabCounts.locked}</span>
           </button>
         </div>
 
@@ -919,13 +953,23 @@ function AdminDashboard() {
                       <td>{row.branch || '—'}</td>
                       <td>{row.shift || '—'}</td>
                       <td>
-                        <span className={`status-pill ${statusClass(row.status)}`}>
-                          {row.status === 'active'
-                            ? 'active'
-                            : row.status === 'inactive'
-                              ? 'pending'
-                              : row.status || 'unset'}
-                        </span>
+                        <div className="status-stack">
+                          <span className={`status-pill ${statusClass(row.status)}`}>
+                            {employmentStatusLabel(row.status)}
+                          </span>
+                          {isAccountLocked(row) && (
+                            <span
+                              className="status-pill locked"
+                              title={
+                                row.locked_at
+                                  ? `Blocked since ${new Date(row.locked_at).toLocaleString()}`
+                                  : 'Account blocked'
+                              }
+                            >
+                              blocked
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1011,6 +1055,30 @@ function AdminDashboard() {
                     <div className="muted" style={{ margin: 0 }}>
                       @{detail.username}
                     </div>
+                    <div className="status-stack" style={{ marginTop: '0.45rem' }}>
+                      <span className={`status-pill ${statusClass(detail.status)}`}>
+                        {employmentStatusLabel(detail.status)}
+                      </span>
+                      {isAccountLocked(detail) ? (
+                        <span className="status-pill locked">
+                          blocked
+                          {detail.failed_login_attempts
+                            ? ` · ${detail.failed_login_attempts} attempts`
+                            : ''}
+                        </span>
+                      ) : (
+                        <span className="status-pill active">login ok</span>
+                      )}
+                    </div>
+                    {isAccountLocked(detail) && (
+                      <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.85rem' }}>
+                        Locked{' '}
+                        {detail.locked_at
+                          ? new Date(detail.locked_at).toLocaleString()
+                          : ''}
+                        {canUnlockAccounts ? ' — use Locked Accounts to unlock.' : '.'}
+                      </p>
+                    )}
                   </div>
                 </div>
 
