@@ -1,16 +1,62 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router';
+import { startAuthentication } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import InstallAppButton from '../components/InstallAppButton';
 import PasswordInput from '../components/PasswordInput';
 import logo from '../assets/logo.png';
 
+function supportsWebAuthn() {
+  return (
+    typeof window !== 'undefined' &&
+    window.PublicKeyCredential &&
+    typeof navigator.credentials?.get === 'function'
+  );
+}
+
 function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bioLoading, setBioLoading] = useState(false);
+  const [webauthnOk] = useState(() => supportsWebAuthn());
+  const [hasPasskey, setHasPasskey] = useState(false);
+
+  useEffect(() => {
+    const msg = location.state?.inactivityMessage;
+    if (msg) setInfo(String(msg));
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!webauthnOk) {
+      setHasPasskey(false);
+      return;
+    }
+    const username = form.username.trim().toLowerCase();
+    if (username.length < 3) {
+      setHasPasskey(false);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/api/auth/webauthn/has-credential', {
+          params: { username },
+        });
+        if (!cancelled) setHasPasskey(Boolean(data?.hasCredential));
+      } catch {
+        if (!cancelled) setHasPasskey(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [form.username, webauthnOk]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -23,6 +69,7 @@ function SignIn() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    setInfo('');
     setLoading(true);
 
     try {
@@ -31,7 +78,6 @@ function SignIn() {
         password: form.password,
       });
       localStorage.setItem('token', data.token);
-      // Everyone lands on personal dashboard; Admin Panel is opened from the navbar.
       navigate('/dashboard');
     } catch (err) {
       const status = err.response?.status;
@@ -42,6 +88,41 @@ function SignIn() {
       else setError('Unable to sign in.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleBiometricLogin() {
+    setError('');
+    setInfo('');
+    const username = form.username.trim().toLowerCase();
+    if (!username) {
+      setError('Enter your username first, then use Face/Fingerprint login.');
+      return;
+    }
+    setBioLoading(true);
+    try {
+      const { data: options } = await api.post('/api/auth/webauthn/login-options', {
+        username,
+      });
+      const assertion = await startAuthentication({ optionsJSON: options });
+      const { data } = await api.post('/api/auth/webauthn/login-verify', {
+        username,
+        response: assertion,
+      });
+      localStorage.setItem('token', data.token);
+      navigate('/dashboard');
+    } catch (err) {
+      if (err?.name === 'NotAllowedError') {
+        setError('Biometric login was cancelled or timed out.');
+      } else {
+        setError(
+          err.response?.data?.message ||
+            err.message ||
+            'Face/Fingerprint login failed.'
+        );
+      }
+    } finally {
+      setBioLoading(false);
     }
   }
 
@@ -83,11 +164,23 @@ function SignIn() {
             autoComplete="current-password"
           />
 
+          {info && <p className="success">{info}</p>}
           {error && <p className="error">{error}</p>}
 
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+          <button type="submit" className="btn btn-primary" disabled={loading || bioLoading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          {webauthnOk && hasPasskey && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={loading || bioLoading}
+              onClick={handleBiometricLogin}
+            >
+              {bioLoading ? 'Waiting for biometric…' : 'Login with Face/Fingerprint'}
+            </button>
+          )}
         </form>
 
         <p className="muted center auth-links">

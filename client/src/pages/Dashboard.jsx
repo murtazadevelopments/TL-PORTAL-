@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { startRegistration } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import AvatarEditor from '../components/AvatarEditor';
@@ -92,6 +93,18 @@ function Dashboard() {
   const cnicBackInputRef = useRef(null);
   const cvInputRef = useRef(null);
 
+  const [webauthnSupported] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      Boolean(window.PublicKeyCredential) &&
+      typeof navigator.credentials?.create === 'function'
+  );
+  const [passkeys, setPasskeys] = useState([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState('');
+  const [passkeySuccess, setPasskeySuccess] = useState('');
+  const [registeringPasskey, setRegisteringPasskey] = useState(false);
+
   useEffect(() => {
     let active = true;
 
@@ -124,6 +137,19 @@ function Dashboard() {
         const dismissed = sessionStorage.getItem('profileIncompleteDismissed') === '1';
         const missing = INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(data[key]));
         setShowIncompleteBanner(!dismissed && missing.length > 0);
+
+        if (
+          typeof window !== 'undefined' &&
+          window.PublicKeyCredential &&
+          typeof navigator.credentials?.create === 'function'
+        ) {
+          try {
+            const { data: keys } = await api.get('/api/auth/webauthn/credentials');
+            if (active) setPasskeys(Array.isArray(keys) ? keys : []);
+          } catch {
+            /* optional feature */
+          }
+        }
       } catch (err) {
         if (!active) return;
         if (err.response?.status === 401) {
@@ -231,6 +257,56 @@ function Dashboard() {
   function handleLogout() {
     localStorage.removeItem('token');
     navigate('/');
+  }
+
+  async function refreshPasskeys() {
+    setPasskeyLoading(true);
+    try {
+      const { data } = await api.get('/api/auth/webauthn/credentials');
+      setPasskeys(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setPasskeyError(err.response?.data?.message || 'Failed to load passkeys.');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }
+
+  async function handleEnablePasskey() {
+    setPasskeyError('');
+    setPasskeySuccess('');
+    setRegisteringPasskey(true);
+    try {
+      const { data: options } = await api.post('/api/auth/webauthn/register-options');
+      const attestation = await startRegistration({ optionsJSON: options });
+      const { data } = await api.post('/api/auth/webauthn/register-verify', {
+        response: attestation,
+        device_label: navigator.userAgent?.slice(0, 80) || 'This device',
+      });
+      setPasskeySuccess(data.message || 'Face/Fingerprint login enabled.');
+      await refreshPasskeys();
+    } catch (err) {
+      if (err?.name === 'NotAllowedError') {
+        setPasskeyError('Registration was cancelled or timed out.');
+      } else {
+        setPasskeyError(
+          err.response?.data?.message || err.message || 'Failed to enable biometric login.'
+        );
+      }
+    } finally {
+      setRegisteringPasskey(false);
+    }
+  }
+
+  async function handleRemovePasskey(id) {
+    setPasskeyError('');
+    setPasskeySuccess('');
+    try {
+      await api.delete(`/api/auth/webauthn/credentials/${id}`);
+      setPasskeySuccess('Passkey removed.');
+      setPasskeys((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setPasskeyError(err.response?.data?.message || 'Failed to remove passkey.');
+    }
   }
 
   function dismissIncompleteBanner() {
@@ -705,6 +781,65 @@ function Dashboard() {
 
             <section className="form" style={{ marginTop: '2rem' }}>
               <h2>Security</h2>
+              {webauthnSupported && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <h3 style={{ margin: '0 0 0.35rem', fontSize: '1rem' }}>
+                    Face / Fingerprint login
+                  </h3>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Optional. Uses this device’s built-in biometrics (Face ID, Touch ID, Windows
+                    Hello). You can still sign in with your password.
+                  </p>
+                  {passkeyError && <p className="error">{passkeyError}</p>}
+                  {passkeySuccess && <p className="success">{passkeySuccess}</p>}
+                  {passkeyLoading ? (
+                    <p className="muted">Loading…</p>
+                  ) : passkeys.length > 0 ? (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 0.75rem' }}>
+                      {passkeys.map((pk) => (
+                        <li
+                          key={pk.id}
+                          style={{
+                            display: 'flex',
+                            gap: '0.75rem',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            marginBottom: '0.5rem',
+                          }}
+                        >
+                          <span>
+                            {pk.device_label || 'Registered device'}
+                            {pk.created_at
+                              ? ` · ${new Date(pk.created_at).toLocaleDateString()}`
+                              : ''}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => handleRemovePasskey(pk.id)}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted">No biometric login enabled on this account yet.</p>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={registeringPasskey}
+                    onClick={handleEnablePasskey}
+                  >
+                    {registeringPasskey
+                      ? 'Waiting for biometric…'
+                      : passkeys.length
+                        ? 'Add another device'
+                        : 'Enable Face/Fingerprint Login'}
+                  </button>
+                </div>
+              )}
               {!showPasswordForm ? (
                 <button
                   type="button"
