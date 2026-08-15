@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import AvatarEditor from '../components/AvatarEditor';

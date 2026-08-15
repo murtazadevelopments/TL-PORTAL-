@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router';
 import logo from '../assets/logo.png';
 import { canAccessAdmin, isCeo } from '../utils/permissions';
 import InstallAppButton from './InstallAppButton';
