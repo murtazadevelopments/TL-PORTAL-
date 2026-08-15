@@ -361,9 +361,6 @@ function Dashboard() {
                 <p>
                   <span className="label">Username</span>
                   <strong>{profile.username}</strong>
-                  <span className="muted" style={{ display: 'block', fontSize: '0.85rem', marginTop: 4 }}>
-                    Only an administrator can change your username.
-                  </span>
                 </p>
                 <p>
                   <span className="label">Email</span>

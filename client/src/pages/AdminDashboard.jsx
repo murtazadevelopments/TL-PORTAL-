@@ -10,7 +10,6 @@ const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
 const SHIFT_OPTIONS = ['Evening', 'Night'];
 
 const ADMIN_FIELD_LABELS = {
-  username: 'Username',
   employee_id: 'Employee ID',
   status: 'Status',
   department: 'Department / Team',
@@ -22,7 +21,6 @@ const ADMIN_FIELD_LABELS = {
 };
 
 const EMPTY_EDIT = {
-  username: '',
   employee_id: '',
   status: 'inactive',
   department: '',
@@ -307,7 +305,6 @@ function AdminDashboard() {
       const { data } = await api.get(`/api/admin/employees/${id}`);
       setDetail(data);
       setEditForm({
-        username: data.username || '',
         employee_id: data.employee_id || '',
         status: data.status === 'inactive' ? 'inactive' : data.status === 'active' ? 'active' : 'inactive',
         department: data.department || '',
@@ -430,7 +427,6 @@ function AdminDashboard() {
     setSaveSuccess('');
 
     const payload = {
-      username: editForm.username.trim().toLowerCase(),
       employee_id: editForm.employee_id.trim(),
       status: editForm.status,
       department: editForm.department.trim(),
@@ -453,7 +449,6 @@ function AdminDashboard() {
           row.id === data.id
             ? {
                 ...row,
-                username: data.username,
                 employee_id: data.employee_id,
                 status: data.status,
                 department: data.department,
@@ -1023,28 +1018,6 @@ function AdminDashboard() {
                 )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
                   <fieldset disabled={!canEditEmployees} style={{ border: 0, margin: 0, padding: 0 }}>
-                  <label className={fieldErrors.username ? 'has-error' : ''}>
-                    Username
-                    <input
-                      type="text"
-                      name="username"
-                      value={editForm.username}
-                      onChange={(e) =>
-                        handleEditChange({
-                          target: {
-                            name: 'username',
-                            value: String(e.target.value || '').toLowerCase(),
-                          },
-                        })
-                      }
-                      placeholder="e.g. john.doe"
-                      autoComplete="off"
-                    />
-                    {fieldErrors.username && (
-                      <span className="field-error">{fieldErrors.username}</span>
-                    )}
-                  </label>
-
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID
                     <input
