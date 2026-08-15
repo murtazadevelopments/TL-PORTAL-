@@ -8,6 +8,8 @@ const {
   deactivateEmployee,
   purgeEmployee,
   listDeactivated,
+  listLockedAccounts,
+  unlockAccount,
 } = require('../controllers/adminController');
 const {
   getPermissionsCatalog,
@@ -31,6 +33,20 @@ router.get(
   requireRole('admin'),
   requirePermission('employees:deactivate'),
   listDeactivated
+);
+
+// Locked accounts (failed login lockout)
+router.get(
+  '/locked-accounts',
+  requireRole('admin'),
+  requirePermission('accounts:unlock'),
+  listLockedAccounts
+);
+router.put(
+  '/accounts/:userId/unlock',
+  requireRole('admin'),
+  requirePermission('accounts:unlock'),
+  unlockAccount
 );
 
 // Teams / departments catalog

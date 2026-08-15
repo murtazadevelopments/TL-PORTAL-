@@ -89,6 +89,11 @@ function AdminDashboard() {
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [teamError, setTeamError] = useState('');
 
+  const [lockedAccounts, setLockedAccounts] = useState([]);
+  const [lockedLoading, setLockedLoading] = useState(false);
+  const [lockedError, setLockedError] = useState('');
+  const [unlockingId, setUnlockingId] = useState(null);
+
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignInitial, setAssignInitial] = useState(null);
   const [assignBanner, setAssignBanner] = useState('');
@@ -220,6 +225,8 @@ function AdminDashboard() {
     isCeo(role) || hasPermission(permissions, 'documents:view');
   const canCreateTeams =
     isCeo(role) || hasPermission(permissions, 'teams:create');
+  const canUnlockAccounts =
+    isCeo(role) || hasPermission(permissions, 'accounts:unlock');
 
   async function loadTeams() {
     try {
@@ -230,10 +237,31 @@ function AdminDashboard() {
     }
   }
 
+  async function loadLockedAccounts() {
+    if (!canUnlockAccounts) return;
+    setLockedLoading(true);
+    setLockedError('');
+    try {
+      const { data } = await api.get('/api/admin/locked-accounts');
+      setLockedAccounts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setLockedError(err.response?.data?.message || 'Failed to load locked accounts.');
+    } finally {
+      setLockedLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!role) return;
     if (isCeo(role) || hasPermission(permissions, 'employees:view') || canAccessAdmin(role)) {
       loadTeams();
+    }
+  }, [role, permissions]);
+
+  useEffect(() => {
+    if (!role) return;
+    if (isCeo(role) || hasPermission(permissions, 'accounts:unlock')) {
+      loadLockedAccounts();
     }
   }, [role, permissions]);
 
@@ -523,6 +551,95 @@ function AdminDashboard() {
           <p className="success assign-banner" role="status">
             {assignBanner}
           </p>
+        )}
+
+        {canUnlockAccounts && (
+          <section className="ceo-role-section" aria-label="Locked accounts">
+            <div className="ceo-role-header">
+              <div>
+                <h2>Locked Accounts</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  Locked after 5 failed password attempts — unlock to restore sign-in
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={lockedLoading}
+                onClick={loadLockedAccounts}
+              >
+                {lockedLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+
+            {lockedError && <p className="error">{lockedError}</p>}
+
+            {!lockedError && lockedLoading && lockedAccounts.length === 0 && (
+              <div className="admin-loading">
+                <div className="spinner" />
+                Loading locked accounts…
+              </div>
+            )}
+
+            {!lockedError && !lockedLoading && lockedAccounts.length === 0 && (
+              <div className="admin-empty">No locked accounts.</div>
+            )}
+
+            {lockedAccounts.length > 0 && (
+              <div className="table-shell">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Username</th>
+                      <th>Attempts</th>
+                      <th>Locked at</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lockedAccounts.map((row) => (
+                      <tr key={row.id}>
+                        <td className="cell-name">{fullName(row)}</td>
+                        <td>{row.username || '—'}</td>
+                        <td>{row.failed_login_attempts ?? '—'}</td>
+                        <td>
+                          {row.locked_at
+                            ? new Date(row.locked_at).toLocaleString()
+                            : '—'}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={unlockingId === row.id}
+                            onClick={async () => {
+                              setUnlockingId(row.id);
+                              setLockedError('');
+                              try {
+                                await api.put(`/api/admin/accounts/${row.id}/unlock`);
+                                setLockedAccounts((prev) =>
+                                  prev.filter((r) => r.id !== row.id)
+                                );
+                              } catch (err) {
+                                setLockedError(
+                                  err.response?.data?.message || 'Failed to unlock account.'
+                                );
+                              } finally {
+                                setUnlockingId(null);
+                              }
+                            }}
+                          >
+                            {unlockingId === row.id ? 'Unlocking…' : 'Unlock'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         )}
 
         {isCeo(role) && (

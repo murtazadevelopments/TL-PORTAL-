@@ -4,6 +4,7 @@ import { startRegistration } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import AvatarEditor from '../components/AvatarEditor';
+import { useInactivityGuard } from '../components/InactivityGuard';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
@@ -50,6 +51,7 @@ function isBlank(value) {
 
 function Dashboard() {
   const navigate = useNavigate();
+  const { setBusy } = useInactivityGuard();
   const editSectionRef = useRef(null);
   const [profile, setProfile] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
@@ -320,6 +322,7 @@ function Dashboard() {
 
   async function handleAvatarSave(blob) {
     setAvatarSaving(true);
+    setBusy(true);
     setError('');
     setSuccess('');
     try {
@@ -339,6 +342,7 @@ function Dashboard() {
       setError(err.response?.data?.message || 'Failed to update profile photo.');
     } finally {
       setAvatarSaving(false);
+      setBusy(false);
     }
   }
 
@@ -347,6 +351,7 @@ function Dashboard() {
     setDocError('');
     setDocSuccess('');
     setDocUploading(field);
+    setBusy(true);
     try {
       const body = new FormData();
       body.append(field, file);
@@ -365,6 +370,7 @@ function Dashboard() {
       setDocError(err.response?.data?.message || 'Failed to upload document.');
     } finally {
       setDocUploading('');
+      setBusy(false);
     }
   }
 

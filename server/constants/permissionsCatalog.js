@@ -33,6 +33,11 @@ const PERMISSIONS_CATALOG = [
     label: 'Create teams / departments',
     description: 'Add new teams or departments used in the employee Department dropdown',
   },
+  {
+    key: 'accounts:unlock',
+    label: 'Unlock locked accounts',
+    description: 'View and unlock accounts locked after too many failed login attempts',
+  },
 ];
 
 const PERMISSION_KEYS = new Set(PERMISSIONS_CATALOG.map((p) => p.key));

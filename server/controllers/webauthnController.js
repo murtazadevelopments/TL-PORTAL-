@@ -405,6 +405,13 @@ async function loginVerify(req, res) {
         message: 'This account has been deactivated. Contact an administrator.',
       });
     }
+    if (user.locked_at) {
+      return res.status(403).json({
+        message:
+          'Account locked due to too many failed attempts. Contact your admin.',
+        accountLocked: true,
+      });
+    }
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
@@ -468,6 +475,17 @@ async function loginVerify(req, res) {
         newCounter,
         stored.id,
       ]);
+    }
+
+    if ((Number(user.failed_login_attempts) || 0) > 0 || user.locked_at) {
+      await pool.query(
+        `
+          UPDATE users
+          SET failed_login_attempts = 0, locked_at = NULL, updated_at = NOW()
+          WHERE id = $1
+        `,
+        [user.id]
+      );
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));

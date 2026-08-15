@@ -390,6 +390,74 @@ async function listDeactivated(req, res) {
   }
 }
 
+/**
+ * GET /api/admin/locked-accounts
+ * Accounts locked after failed password attempts.
+ */
+async function listLockedAccounts(req, res) {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT
+          id, employee_id, username, name, email, role, status,
+          failed_login_attempts, locked_at, is_active, created_at
+        FROM users
+        WHERE locked_at IS NOT NULL
+        ORDER BY locked_at DESC NULLS LAST, id DESC
+      `
+    );
+    return res.json(rows);
+  } catch (err) {
+    console.error('listLockedAccounts error:', err);
+    return res.status(500).json({ message: 'Server error fetching locked accounts.' });
+  }
+}
+
+/**
+ * PUT /api/admin/accounts/:userId/unlock
+ * Clears lockout counters (requires accounts:unlock).
+ */
+async function unlockAccount(req, res) {
+  try {
+    const { userId } = req.params;
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET failed_login_attempts = 0, locked_at = NULL, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, employee_id, username, name, email, role, status,
+                  failed_login_attempts, locked_at, is_active
+      `,
+      [userId]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'account_unlocked',
+        targetTable: 'users',
+        targetId: rows[0].id,
+        reason: `Unlocked account ${rows[0].username}`,
+      });
+    } catch (auditErr) {
+      console.warn('account_unlocked audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({
+      message: 'Account unlocked.',
+      user: rows[0],
+    });
+  } catch (err) {
+    console.error('unlockAccount error:', err);
+    return res.status(500).json({ message: 'Server error unlocking account.' });
+  }
+}
+
 module.exports = {
   listEmployees,
   getEmployeeById,
@@ -397,4 +465,6 @@ module.exports = {
   deactivateEmployee,
   purgeEmployee,
   listDeactivated,
+  listLockedAccounts,
+  unlockAccount,
 };

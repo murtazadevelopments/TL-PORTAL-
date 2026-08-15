@@ -18,7 +18,10 @@ const {
   approxLocationFromIp,
 } = require('../utils/requestMeta');
 const { recordLoginLog } = require('./loginLogsController');
+const { writeAuditLog } = require('../utils/auditLog');
 const { frontendBaseUrl } = require('../utils/frontendUrl');
+
+const MAX_FAILED_LOGINS = 5;
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -315,6 +318,14 @@ async function login(req, res) {
       });
     }
 
+    if (user.locked_at) {
+      return res.status(403).json({
+        message:
+          'Account locked due to too many failed attempts. Contact your admin.',
+        accountLocked: true,
+      });
+    }
+
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
@@ -331,7 +342,57 @@ async function login(req, res) {
 
     const passwordMatches = await bcrypt.compare(password, user.password);
     if (!passwordMatches) {
+      const prevFails = Number(user.failed_login_attempts) || 0;
+      const nextFails = prevFails + 1;
+      if (nextFails >= MAX_FAILED_LOGINS) {
+        await pool.query(
+          `
+            UPDATE users
+            SET failed_login_attempts = $1, locked_at = NOW(), updated_at = NOW()
+            WHERE id = $2
+          `,
+          [nextFails, user.id]
+        );
+        try {
+          await writeAuditLog({
+            actorId: user.id,
+            actorUsername: user.username,
+            action: 'account_locked',
+            targetTable: 'users',
+            targetId: user.id,
+            reason: `${nextFails} consecutive failed login attempts`,
+          });
+        } catch (auditErr) {
+          console.warn('account_locked audit failed:', auditErr.message || auditErr);
+        }
+        return res.status(403).json({
+          message:
+            'Account locked due to too many failed attempts. Contact your admin.',
+          accountLocked: true,
+        });
+      }
+
+      await pool.query(
+        `
+          UPDATE users
+          SET failed_login_attempts = $1, updated_at = NOW()
+          WHERE id = $2
+        `,
+        [nextFails, user.id]
+      );
       return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+
+    // Successful password login — clear lockout counters
+    if ((Number(user.failed_login_attempts) || 0) > 0 || user.locked_at) {
+      await pool.query(
+        `
+          UPDATE users
+          SET failed_login_attempts = 0, locked_at = NULL, updated_at = NOW()
+          WHERE id = $1
+        `,
+        [user.id]
+      );
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));
