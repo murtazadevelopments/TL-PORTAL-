@@ -13,6 +13,38 @@
     <meta name="apple-mobile-web-app-title" content="Textured Lab Portal" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Textured Lab Portal</title>
+    <!-- Bust stale Portal TL service workers before the app boots -->
+    <script>
+      (function () {
+        var BUILD = 'tl-portal-20260815c';
+        try {
+          if (localStorage.getItem('tl-build') === BUILD) return;
+          var done = function () {
+            try { localStorage.setItem('tl-build', BUILD); } catch (e) {}
+          };
+          var clear = Promise.resolve();
+          if ('serviceWorker' in navigator) {
+            clear = navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister(); }));
+            });
+          }
+          clear
+            .then(function () {
+              if (!window.caches) return;
+              return caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              });
+            })
+            .then(function () {
+              done();
+              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                location.reload();
+              }
+            })
+            .catch(done);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

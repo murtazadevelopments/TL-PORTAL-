@@ -190,6 +190,10 @@ function SignIn() {
         </p>
 
         <p className="muted center">
+          <a href="/pwa-reset.html">App looks outdated? Tap to refresh</a>
+        </p>
+
+        <p className="muted center">
           No account? <Link to="/signup">Create one</Link>
         </p>
       </main>

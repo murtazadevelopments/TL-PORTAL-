@@ -3,11 +3,23 @@
 
 ErrorDocument 404 /index.html
 
+# Stop week-long CDN caching of the service worker and app shell.
+# (Do not apply long-cache rules to *.js here — that would override tl-sw.js.)
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|tl-sw\.js|sw\.js|registerSW\.js|manifest\.json|pwa-reset\.html|workbox-.*\.js)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set CDN-Cache-Control "no-store"
+    Header set Surrogate-Control "no-store"
+  </FilesMatch>
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
 
   RewriteRule ^index\.html$ - [L]
+  RewriteRule ^pwa-reset\.html$ - [L]
 
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

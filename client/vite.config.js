@@ -8,6 +8,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Inline into index.html so CDN cannot serve a stale registerSW.js
+      injectRegister: 'inline',
       // New SW URL bypasses Hostinger CDN's week-long cache of /sw.js
       filename: 'tl-sw.js',
       // Use public/manifest.json (linked from index.html)
