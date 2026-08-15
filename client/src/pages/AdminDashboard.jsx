@@ -274,6 +274,36 @@ function AdminDashboard() {
     }
   }, [role, permissions]);
 
+  async function handleUnlockAccount(userId) {
+    if (!canUnlockAccounts || !userId) return;
+    setUnlockingId(userId);
+    setLockedError('');
+    setSaveError('');
+    try {
+      await api.put(`/api/admin/accounts/${userId}/unlock`);
+      setLockedAccounts((prev) => prev.filter((r) => String(r.id) !== String(userId)));
+      setEmployees((prev) =>
+        prev.map((row) =>
+          String(row.id) === String(userId)
+            ? { ...row, locked_at: null, failed_login_attempts: 0 }
+            : row
+        )
+      );
+      setDetail((prev) =>
+        prev && String(prev.id) === String(userId)
+          ? { ...prev, locked_at: null, failed_login_attempts: 0 }
+          : prev
+      );
+      setSaveSuccess('Account unblocked. They can sign in again.');
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to unblock account.';
+      setLockedError(msg);
+      setSaveError(msg);
+    } finally {
+      setUnlockingId(null);
+    }
+  }
+
   const stats = useMemo(() => {
     const total = employees.length;
     const active = employees.filter((e) => e.status === 'active').length;
@@ -635,24 +665,9 @@ function AdminDashboard() {
                             type="button"
                             className="btn btn-primary"
                             disabled={unlockingId === row.id}
-                            onClick={async () => {
-                              setUnlockingId(row.id);
-                              setLockedError('');
-                              try {
-                                await api.put(`/api/admin/accounts/${row.id}/unlock`);
-                                setLockedAccounts((prev) =>
-                                  prev.filter((r) => r.id !== row.id)
-                                );
-                              } catch (err) {
-                                setLockedError(
-                                  err.response?.data?.message || 'Failed to unlock account.'
-                                );
-                              } finally {
-                                setUnlockingId(null);
-                              }
-                            }}
+                            onClick={() => handleUnlockAccount(row.id)}
                           >
-                            {unlockingId === row.id ? 'Unlocking…' : 'Unlock'}
+                            {unlockingId === row.id ? 'Unblocking…' : 'Unblock'}
                           </button>
                         </td>
                       </tr>
@@ -970,6 +985,24 @@ function AdminDashboard() {
                             </span>
                           )}
                         </div>
+                        {canUnlockAccounts && isAccountLocked(row) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              marginTop: '0.35rem',
+                              padding: '0.25rem 0.55rem',
+                              fontSize: '0.8rem',
+                            }}
+                            disabled={unlockingId === row.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnlockAccount(row.id);
+                            }}
+                          >
+                            {unlockingId === row.id ? '…' : 'Unblock'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1071,13 +1104,32 @@ function AdminDashboard() {
                       )}
                     </div>
                     {isAccountLocked(detail) && (
-                      <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.85rem' }}>
-                        Locked{' '}
-                        {detail.locked_at
-                          ? new Date(detail.locked_at).toLocaleString()
-                          : ''}
-                        {canUnlockAccounts ? ' — use Locked Accounts to unlock.' : '.'}
-                      </p>
+                      <div
+                        style={{
+                          marginTop: '0.55rem',
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '0.5rem',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                          Locked{' '}
+                          {detail.locked_at
+                            ? new Date(detail.locked_at).toLocaleString()
+                            : ''}
+                        </p>
+                        {canUnlockAccounts && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={unlockingId === detail.id}
+                            onClick={() => handleUnlockAccount(detail.id)}
+                          >
+                            {unlockingId === detail.id ? 'Unblocking…' : 'Unblock'}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1395,6 +1447,16 @@ function AdminDashboard() {
                     <button type="button" className="btn btn-ghost" onClick={closeDetail}>
                       Close
                     </button>
+                    {canUnlockAccounts && isAccountLocked(detail) && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={unlockingId === detail.id || saving || deactivating}
+                        onClick={() => handleUnlockAccount(detail.id)}
+                      >
+                        {unlockingId === detail.id ? 'Unblocking…' : 'Unblock account'}
+                      </button>
+                    )}
                     {canDeactivateEmployees && (
                     <button
                       type="button"
