@@ -41,7 +41,9 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.join(clientRoot, '.env.ftp.local'));
 
-const host = process.env.FTP_HOST || process.env.FTP_SERVER;
+let host = process.env.FTP_HOST || process.env.FTP_SERVER || '';
+// Allow FTP_HOST=ftp://1.2.3.4 from Hostinger copy-paste
+host = host.replace(/^ftp:\/\//i, '').replace(/\/$/, '');
 const user = process.env.FTP_USER || process.env.FTP_USERNAME;
 const password = process.env.FTP_PASSWORD;
 const remoteDir = process.env.FTP_REMOTE_DIR || process.env.FTP_SERVER_DIR || '/public_html/';
