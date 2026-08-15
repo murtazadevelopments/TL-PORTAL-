@@ -8,6 +8,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // New SW URL bypasses Hostinger CDN's week-long cache of /sw.js
+      filename: 'tl-sw.js',
       // Use public/manifest.json (linked from index.html)
       manifest: false,
       includeAssets: [
@@ -20,18 +22,30 @@ export default defineConfig({
         'manifest.json',
       ],
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         // App-shell caching for offline shell support
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest,json}'],
         // Brand logo asset is huge (~3MB) — don't precache the full file
         globIgnores: ['**/logo-*.png', '**/favicon.png'],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/pwa-reset(?:\.html)?$/],
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'tl-portal-pages-v2',
+              networkTimeoutSeconds: 3,
+            },
+          },
           {
             urlPattern: ({ request }) => request.destination === 'image',
             handler: 'CacheFirst',
             options: {
-              cacheName: 'portal-tl-images',
+              cacheName: 'tl-portal-images-v2',
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60 * 24 * 30,

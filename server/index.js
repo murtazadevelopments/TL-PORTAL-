@@ -90,12 +90,79 @@ const publicDir = path.join(__dirname, 'public');
 const spaIndex = path.join(publicDir, 'index.html');
 const spaEnabled = fs.existsSync(spaIndex);
 
+/** Never let CDNs cache the service worker / app shell for a week (stuck mobile PWAs). */
+function setSpaCacheHeaders(res, filePath) {
+  const base = path.basename(filePath);
+  const isAppShell =
+    base === 'index.html' ||
+    base === 'sw.js' ||
+    base === 'tl-sw.js' ||
+    base === 'registerSW.js' ||
+    base === 'manifest.json' ||
+    base.endsWith('.webmanifest') ||
+    /^sw-.+\.js$/.test(base);
+
+  if (isAppShell || res.req?.get?.('Service-Worker') === 'script') {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    return;
+  }
+
+  if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+}
+
 if (spaEnabled) {
-  app.use(express.static(publicDir, { index: false }));
+  // One-visit PWA reset page (also reachable if SW is stuck on an old shell).
+  app.get('/pwa-reset', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Clear-Site-Data', '"cache", "storage"');
+    res.type('html').send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Refreshing Textured Lab Portal…</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#05060b;color:#e8eaef;display:grid;place-items:center;min-height:100vh;margin:0}
+  p{opacity:.8;max-width:28rem;text-align:center;line-height:1.5}
+</style>
+</head><body>
+<p>Clearing old app cache… You will be redirected automatically.</p>
+<script>
+(async function () {
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (e) {}
+  location.replace('/?pwa=fresh');
+})();
+</script>
+</body></html>`);
+  });
+
+  app.use(
+    express.static(publicDir, {
+      index: false,
+      setHeaders: setSpaCacheHeaders,
+    })
+  );
 
   // Express 5: bare "*" is invalid — use a named splat. Registered LAST so /api/* stays intact.
   app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
+    if (req.path === '/pwa-reset') return next();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
     return res.sendFile(spaIndex);
   });
 } else {
