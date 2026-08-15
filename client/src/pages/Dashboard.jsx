@@ -6,6 +6,7 @@ import AvatarEditor from '../components/AvatarEditor';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
+  'email',
   'contact_number',
   'address',
   'date_of_birth',
@@ -53,6 +54,7 @@ function Dashboard() {
   const [avatarBroken, setAvatarBroken] = useState(false);
   const [form, setForm] = useState({
     name: '',
+    email: '',
     contact_number: '',
     address: '',
     date_of_birth: '',
@@ -101,6 +103,7 @@ function Dashboard() {
         setAvatarBroken(false);
         setForm({
           name: data.name || '',
+          email: data.email || '',
           contact_number: data.contact_number || '',
           address: data.address || '',
           date_of_birth: data.date_of_birth
@@ -200,6 +203,12 @@ function Dashboard() {
     try {
       const { data } = await api.put('/api/users/me', payload);
       setProfile(data);
+      setForm((prev) => ({
+        ...prev,
+        email: data.email || prev.email,
+        cnic_number: data.cnic_number || '',
+        name: data.name || prev.name,
+      }));
       setSuccess('Profile updated.');
 
       const missing = INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(data[key]));
@@ -535,6 +544,18 @@ function Dashboard() {
               </label>
 
               <label>
+                Email
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  required
+                  autoComplete="email"
+                />
+              </label>
+
+              <label>
                 Contact number
                 <input
                   type="tel"
@@ -545,12 +566,13 @@ function Dashboard() {
               </label>
 
               <label>
-                CNIC number (optional)
+                CNIC number
                 <input
                   type="text"
                   name="cnic_number"
                   value={form.cnic_number}
                   onChange={handleChange}
+                  placeholder="e.g. 42101-1234567-1"
                 />
               </label>
 

@@ -21,6 +21,7 @@ const USER_PUBLIC_COLUMNS = `
 
 const EMPLOYEE_UPDATE_WHITELIST = [
   'name',
+  'email',
   'contact_number',
   'address',
   'reference_person_name',
@@ -145,6 +146,7 @@ async function updateMe(req, res) {
 
     const next = {
       name: nextText('name') ?? current.name,
+      email: nextText('email') ?? current.email,
       contact_number: nextText('contact_number'),
       address: nextText('address'),
       reference_person_name: nextText('reference_person_name'),
@@ -169,30 +171,46 @@ async function updateMe(req, res) {
       return res.status(400).json({ message: 'name cannot be empty.' });
     }
 
+    if (!next.email) {
+      return res.status(400).json({ message: 'email cannot be empty.' });
+    }
+
+    const normalizedEmail = String(next.email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Enter a valid email address.' });
+    }
+    next.email = normalizedEmail;
+
+    if (next.cnic_number) {
+      next.cnic_number = String(next.cnic_number).trim();
+    }
+
     const { rows } = await pool.query(
       `
         UPDATE users
         SET
           name = $1,
-          contact_number = $2,
-          address = $3,
-          reference_person = $4,
-          emergency_contact_name = $5,
-          emergency_contact_number = $6,
-          bank_name = $7,
-          account_title = $8,
-          iban = $9,
-          account_number = $10,
-          education = $11,
-          last_job_status = $12,
-          cnic_number = $13,
-          date_of_birth = $14,
+          email = $2,
+          contact_number = $3,
+          address = $4,
+          reference_person = $5,
+          emergency_contact_name = $6,
+          emergency_contact_number = $7,
+          bank_name = $8,
+          account_title = $9,
+          iban = $10,
+          account_number = $11,
+          education = $12,
+          last_job_status = $13,
+          cnic_number = $14,
+          date_of_birth = $15,
           updated_at = NOW()
-        WHERE id = $15
+        WHERE id = $16
         RETURNING ${USER_PUBLIC_COLUMNS}
       `,
       [
         next.name,
+        next.email,
         next.contact_number,
         next.address,
         next.reference_person_name,
@@ -219,6 +237,16 @@ async function updateMe(req, res) {
 
     return res.json(user);
   } catch (err) {
+    if (err.code === '23505') {
+      const detail = String(err.detail || err.message || '').toLowerCase();
+      if (detail.includes('email')) {
+        return res.status(409).json({ message: 'An account with this email already exists.' });
+      }
+      if (detail.includes('cnic')) {
+        return res.status(409).json({ message: 'An account with this CNIC number already exists.' });
+      }
+      return res.status(409).json({ message: 'That value is already in use.' });
+    }
     console.error('updateMe error:', err);
     return res.status(500).json({ message: 'Server error updating profile.' });
   }
