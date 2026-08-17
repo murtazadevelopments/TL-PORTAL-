@@ -12,10 +12,10 @@ const sharp = require('sharp');
  */
 
 function getUploadRoot() {
-  const fromEnv = String(process.env.UPLOAD_ROOT || '').trim();
+  const fromEnv = String(process.env.UPLOAD_ROOT || process.env.UPLOADS_ROOT || '').trim();
   if (fromEnv) return path.resolve(fromEnv);
-  // Default: repo/private_uploads (sibling of server/)
-  return path.resolve(__dirname, '..', '..', 'private_uploads');
+  // Default: server/private_uploads (same folder used by migration + local uploads)
+  return path.resolve(__dirname, '..', 'private_uploads');
 }
 
 const DOC_TYPES = {

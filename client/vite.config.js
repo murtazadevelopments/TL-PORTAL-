@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/** Bump when SW routing/caching rules change — forces clients onto a new worker URL. */
+const SW_BUILD_ID = '20260817a';
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -10,8 +13,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       // Inline into index.html so CDN cannot serve a stale registerSW.js
       injectRegister: 'inline',
-      // New SW URL bypasses Hostinger CDN's week-long cache of /sw.js
-      filename: 'tl-sw.js',
+      // New filename each SW_BUILD_ID bypasses Hostinger CDN cache of old workers
+      filename: `tl-sw-${SW_BUILD_ID}.js`,
       // Use public/manifest.json (linked from index.html)
       manifest: false,
       includeAssets: [
@@ -24,33 +27,90 @@ export default defineConfig({
         'manifest.json',
       ],
       workbox: {
+        // Prefix all Workbox cache names (forces drop of old cached 404s)
+        cacheId: `tl-portal-${SW_BUILD_ID}`,
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
-        // App-shell caching for offline shell support
+        // App-shell caching for offline shell support (static only)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest,json}'],
         // Brand logo asset is huge (~3MB) — don't precache the full file
         globIgnores: ['**/logo-*.png', '**/favicon.png'],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/pwa-reset(?:\.html)?$/],
+        // Never SPA-fallback API or reset routes
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/pwa-reset(?:\.html)?$/],
         runtimeCaching: [
+          // CRITICAL: /api/* must never be cached (documents, auth, profile).
+          // Put first so it wins over the image CacheFirst rule — <img src="/api/documents/...">
+          // has destination "image" and was previously caching stale 404s.
+          // Matcher body must be fully self-contained (Workbox serializes the function only).
           {
-            urlPattern: ({ request }) => request.mode === 'navigate',
+            urlPattern: ({ url }) =>
+              url.pathname === '/api' || url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'GET',
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.pathname === '/api' || url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'POST',
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.pathname === '/api' || url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'PUT',
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.pathname === '/api' || url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'PATCH',
+          },
+          {
+            urlPattern: ({ url }) =>
+              url.pathname === '/api' || url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+            method: 'DELETE',
+          },
+          {
+            urlPattern: ({ request, url }) =>
+              request.mode === 'navigate' &&
+              !(url.pathname === '/api' || url.pathname.startsWith('/api/')),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'tl-portal-pages-v2',
+              cacheName: `tl-portal-pages-${SW_BUILD_ID}`,
               networkTimeoutSeconds: 3,
             },
           },
           {
-            urlPattern: ({ request }) => request.destination === 'image',
+            // Static images only — never /api/document streams
+            urlPattern: ({ request, url }) =>
+              request.destination === 'image' &&
+              !(url.pathname === '/api' || url.pathname.startsWith('/api/')),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'tl-portal-images-v2',
+              cacheName: `tl-portal-images-${SW_BUILD_ID}`,
               expiration: {
                 maxEntries: 60,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+            },
+          },
+          {
+            urlPattern: ({ request, url }) =>
+              (request.destination === 'style' ||
+                request.destination === 'script' ||
+                request.destination === 'font') &&
+              !(url.pathname === '/api' || url.pathname.startsWith('/api/')),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: `tl-portal-assets-${SW_BUILD_ID}`,
+              expiration: {
+                maxEntries: 80,
+                maxAgeSeconds: 60 * 60 * 24 * 14,
               },
             },
           },
