@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /** Bump when SW routing/caching rules change — forces clients onto a new worker URL. */
-const SW_BUILD_ID = '20260817a';
+const SW_BUILD_ID = '20260818a';
 
 // https://vite.dev/config/
 export default defineConfig({

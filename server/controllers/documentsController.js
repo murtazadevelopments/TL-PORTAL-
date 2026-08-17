@@ -131,7 +131,8 @@ async function streamDocument(req, res) {
               ? 'image/gif'
               : 'image/jpeg';
 
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.setHeader('Content-Type', type);
     res.setHeader(
       'Content-Disposition',

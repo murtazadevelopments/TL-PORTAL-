@@ -59,16 +59,43 @@ function extsForDocType(docType) {
   return meta.image ? IMAGE_EXTS : CV_EXTS;
 }
 
-function userFolder(user) {
-  const emp = user?.employee_id != null ? String(user.employee_id).trim() : '';
-  // Ignore placeholders / junk IDs that would collide or create awkward folders
-  if (emp && emp !== '-' && emp.toLowerCase() !== 'n/a' && emp !== '.') {
-    const safe = emp.replace(/[^a-zA-Z0-9._-]+/g, '_');
-    if (safe && safe !== '-' && safe !== '_') return safe;
+function folderForUserId(userId) {
+  if (userId == null || userId === '') {
+    throw new Error('Cannot resolve upload folder without user id.');
   }
-  if (user?.id != null) return `u${user.id}`;
+  return `id-${userId}`;
+}
+
+/**
+ * Canonical on-disk folder is always id-{userId} (matches migration).
+ * Legacy folders (employee_id, u{id}, user-username) are still searched on read.
+ */
+function userFolder(user) {
+  if (user?.id != null) return folderForUserId(user.id);
   if (user?.username) return `user-${String(user.username).trim().toLowerCase()}`;
   throw new Error('Cannot resolve upload folder without user id or username.');
+}
+
+function legacyUserFolders(user, userId) {
+  const folders = [];
+  const add = (f) => {
+    const cleaned = String(f || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '');
+    if (cleaned && !folders.includes(cleaned)) folders.push(cleaned);
+  };
+  const id = user?.id ?? userId;
+  if (id != null) {
+    add(folderForUserId(id));
+    add(`u${id}`);
+  }
+  const emp = user?.employee_id != null ? String(user.employee_id).trim() : '';
+  if (emp && emp !== '-' && emp.toLowerCase() !== 'n/a' && emp !== '.') {
+    const safe = emp.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    if (safe && safe !== '-' && safe !== '_') add(safe);
+  }
+  if (user?.username) add(`user-${String(user.username).trim().toLowerCase()}`);
+  return folders;
 }
 
 function safeJoin(root, relativePath) {
@@ -91,22 +118,41 @@ async function ensureDir(dirPath) {
 async function prepareFileBuffer(file, { asImage = false } = {}) {
   const mime = String(file.mimetype || '').toLowerCase();
   const isImage = asImage || mime.startsWith('image/');
+  const original = file.originalname || '';
 
   if (isImage && mime !== 'application/pdf') {
-    const buffer = await sharp(file.buffer)
-      .rotate()
-      .resize({
-        width: 1600,
-        height: 1600,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer();
-    return { buffer, ext: '.jpg', contentType: 'image/jpeg' };
+    try {
+      const buffer = await sharp(file.buffer)
+        .rotate()
+        .resize({
+          width: 1600,
+          height: 1600,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer();
+      return { buffer, ext: '.jpg', contentType: 'image/jpeg' };
+    } catch (err) {
+      // Hostinger/native sharp issues — still save the original bytes
+      console.warn('sharp compress failed; saving original image:', err.message);
+      const ext =
+        path.extname(original).toLowerCase() ||
+        (mime.includes('png')
+          ? '.png'
+          : mime.includes('webp')
+            ? '.webp'
+            : mime.includes('gif')
+              ? '.gif'
+              : '.jpg');
+      return {
+        buffer: file.buffer,
+        ext,
+        contentType: file.mimetype || 'image/jpeg',
+      };
+    }
   }
 
-  const original = file.originalname || '';
   const ext =
     path.extname(original).toLowerCase() ||
     (mime.includes('pdf') ? '.pdf' : '.bin');
@@ -126,15 +172,32 @@ async function saveUserFile(user, docType, file) {
   if (!meta) throw new Error(`Unknown doc type: ${docType}`);
   if (!file?.buffer) throw new Error('Missing file buffer.');
 
+  const root = getUploadRoot();
+  await ensureDir(root);
+
   const prepared = await prepareFileBuffer(file, { asImage: meta.image });
   const folder = userFolder(user);
   // Prefer migration-compatible stem (profile_picture, not profile)
   const stem = (meta.fileStems && meta.fileStems[0]) || docType;
   const relativePath = path.posix.join(folder, `${stem}${prepared.ext}`);
-  const absPath = safeJoin(getUploadRoot(), relativePath);
+  const absPath = safeJoin(root, relativePath);
 
   await ensureDir(path.dirname(absPath));
   await fsp.writeFile(absPath, prepared.buffer);
+
+  // Remove stale alternate extensions / legacy stem so resolve is unambiguous
+  for (const altStem of meta.fileStems || [stem]) {
+    for (const ext of extsForDocType(docType)) {
+      const altRel = path.posix.join(folder, `${altStem}${ext}`);
+      if (altRel === relativePath) continue;
+      try {
+        await fsp.unlink(safeJoin(root, altRel));
+      } catch {
+        /* ignore missing */
+      }
+    }
+  }
+
   return relativePath;
 }
 
@@ -242,16 +305,7 @@ function resolveDocumentFile({ userId, docType, storedPath, user } = {}) {
   }
 
   if (userId != null) addFolder(`id-${userId}`);
-  if (user) {
-    try {
-      addFolder(userFolder(user));
-    } catch {
-      /* ignore */
-    }
-    if (user.id != null) addFolder(`u${user.id}`);
-  } else if (userId != null) {
-    addFolder(`u${userId}`);
-  }
+  for (const f of legacyUserFolders(user, userId)) addFolder(f);
 
   // 2–3) Candidate stem+ext under each folder
   for (const folder of folders) {
@@ -297,16 +351,34 @@ function resolveDocumentFile({ userId, docType, storedPath, user } = {}) {
   return null;
 }
 
+async function ensureUploadsRoot() {
+  await ensureDir(getUploadRoot());
+  return getUploadRoot();
+}
+
+function getUploadsRoot() {
+  return getUploadRoot();
+}
+
+function saveRawRelative(relativePath, buffer) {
+  return writeRelativeFile(relativePath, buffer);
+}
+
 module.exports = {
   DOC_TYPES,
   getUploadRoot,
+  getUploadsRoot,
+  folderForUserId,
   userFolder,
+  legacyUserFolders,
   saveUserFile,
   writeRelativeFile,
+  saveRawRelative,
   absoluteFromRelative,
   deleteRelativeFile,
   fileExists,
   resolveDocumentFile,
   prepareFileBuffer,
   ensureDir,
+  ensureUploadsRoot,
 };

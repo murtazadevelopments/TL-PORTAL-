@@ -688,7 +688,7 @@ function EmployeesPage() {
                         {row.profile_picture_url ? (
                           <img
                             className="thumb"
-                            src={withAuthDocumentUrl(row.profile_picture_url)}
+                            src={withAuthDocumentUrl(row.profile_picture_url, row.updated_at || row.id)}
                             alt=""
                           />
                         ) : (
@@ -814,7 +814,7 @@ function EmployeesPage() {
                   {detail.profile_picture_url ? (
                     <img
                       className="thumb large"
-                      src={withAuthDocumentUrl(detail.profile_picture_url)}
+                      src={withAuthDocumentUrl(detail.profile_picture_url, detail.updated_at || detail.id)}
                       alt=""
                     />
                   ) : (
@@ -936,13 +936,13 @@ function EmployeesPage() {
                 <div className="doc-row">
                   <a
                     className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_front_url) || undefined}
+                    href={withAuthDocumentUrl(detail.cnic_front_url, detail.updated_at || detail.id) || undefined}
                     target="_blank"
                     rel="noreferrer"
                   >
                     {detail.cnic_front_url ? (
                       <img
-                        src={withAuthDocumentUrl(detail.cnic_front_url)}
+                        src={withAuthDocumentUrl(detail.cnic_front_url, detail.updated_at || detail.id)}
                         alt="CNIC front"
                       />
                     ) : (
@@ -952,13 +952,13 @@ function EmployeesPage() {
                   </a>
                   <a
                     className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_back_url) || undefined}
+                    href={withAuthDocumentUrl(detail.cnic_back_url, detail.updated_at || detail.id) || undefined}
                     target="_blank"
                     rel="noreferrer"
                   >
                     {detail.cnic_back_url ? (
                       <img
-                        src={withAuthDocumentUrl(detail.cnic_back_url)}
+                        src={withAuthDocumentUrl(detail.cnic_back_url, detail.updated_at || detail.id)}
                         alt="CNIC back"
                       />
                     ) : (
@@ -970,7 +970,7 @@ function EmployeesPage() {
                 {detail.cv_url ? (
                   <a
                     className="cv-link"
-                    href={withAuthDocumentUrl(detail.cv_url)}
+                    href={withAuthDocumentUrl(detail.cv_url, detail.updated_at || detail.id)}
                     target="_blank"
                     rel="noreferrer"
                   >

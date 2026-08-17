@@ -4,7 +4,7 @@ const {
   normalizePermissionKeys,
 } = require('../constants/permissionsCatalog');
 
-const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee']);
+const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee', 'team_leader']);
 
 /**
  * Resolve target user by numeric id or employee_id string.
@@ -89,7 +89,7 @@ async function assignRole(req, res) {
 
     if (!ALLOWED_ROLES.has(role)) {
       return res.status(400).json({
-        message: "role must be one of: 'ceo', 'admin', 'employee'.",
+        message: "role must be one of: 'ceo', 'admin', 'employee', 'team_leader'.",
       });
     }
 

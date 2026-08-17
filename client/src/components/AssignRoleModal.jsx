@@ -4,6 +4,7 @@ import './AssignRoleModal.css';
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
+  { value: 'team_leader', label: 'Team Leader' },
   { value: 'employee', label: 'Employee' },
   { value: 'ceo', label: 'CEO' },
 ];

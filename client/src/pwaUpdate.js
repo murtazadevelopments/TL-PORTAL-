@@ -54,6 +54,7 @@ export function startPwaUpdateWatcher() {
         (k) =>
           k.includes('tl-portal-images-v2') ||
           k.includes('tl-portal-pages-v2') ||
+          k.includes('tl-portal-20260817') ||
           k.includes('workbox-precache') ||
           // older unversioned / v1 caches
           /^tl-portal-(images|pages)(-v1)?$/.test(k)

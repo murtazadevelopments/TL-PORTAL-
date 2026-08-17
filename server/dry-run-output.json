@@ -1,0 +1,275 @@
+
+> server@1.0.0 migrate:storage:dry
+> node scripts/migrate-storage-to-local.js --dry-run
+
+◇ injected env (10) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+◇ injected env (0) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
+Uploads root: /Users/ajc/TL-PORTAL-/server/private_uploads
+DRY RUN — no writes
+OK user=2 cnic_front_url ← EMP-MSNQNI7G/cnic_front.png (1349048 bytes) → id-2/cnic_front.png
+OK user=2 cnic_back_url ← EMP-MSNQNI7G/cnic_back.png (639488 bytes) → id-2/cnic_back.png
+OK user=2 cv_url ← EMP-MSNQNI7G/cv.pdf (245401 bytes) → id-2/cv.pdf
+OK user=2 profile_picture_url ← EMP-MSNQNI7G/profile.jpeg (1500184 bytes) → id-2/profile_picture.jpeg
+
+=== Migration summary ===
+Users scanned: 15
+Files migrated: 4
+Skipped (empty/already local): 14
+Failed: 42
+Bytes written: 3734121 (~3.56 MB)
+Failures: [
+  {
+    "userId": "1",
+    "column": "cnic_front_url",
+    "path": "Emp_2/cnic_front.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "1",
+    "column": "cnic_back_url",
+    "path": "Emp_2/cnic_back.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "1",
+    "column": "cv_url",
+    "path": "Emp_2/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "1",
+    "column": "profile_picture_url",
+    "path": "Emp_2/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "3",
+    "column": "cnic_front_url",
+    "path": "Emp_ID_1/cnic_front.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "3",
+    "column": "cnic_back_url",
+    "path": "Emp_ID_1/cnic_back.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "3",
+    "column": "cv_url",
+    "path": "Emp_ID_1/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "3",
+    "column": "profile_picture_url",
+    "path": "Emp_ID_1/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "5",
+    "column": "cnic_front_url",
+    "path": "Emp_05/cnic_front.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "5",
+    "column": "cnic_back_url",
+    "path": "Emp_05/cnic_back.png",
+    "error": "Object not found"
+  },
+  {
+    "userId": "5",
+    "column": "cv_url",
+    "path": "Emp_05/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "5",
+    "column": "profile_picture_url",
+    "path": "Emp_05/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "6",
+    "column": "cnic_front_url",
+    "path": "EMP-10/cnic_front.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "6",
+    "column": "cnic_back_url",
+    "path": "EMP-10/cnic_back.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "6",
+    "column": "cv_url",
+    "path": "EMP-10/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "6",
+    "column": "profile_picture_url",
+    "path": "EMP-10/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "7",
+    "column": "cv_url",
+    "path": "TL-123/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "7",
+    "column": "profile_picture_url",
+    "path": "TL-123/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "8",
+    "column": "cnic_front_url",
+    "path": "u8/cnic_front.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "8",
+    "column": "cnic_back_url",
+    "path": "u8/cnic_back.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "8",
+    "column": "cv_url",
+    "path": "u8/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "8",
+    "column": "profile_picture_url",
+    "path": "u8/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "9",
+    "column": "cv_url",
+    "path": "u9/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "9",
+    "column": "profile_picture_url",
+    "path": "u9/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "10",
+    "column": "cnic_front_url",
+    "path": "TXL-09/cnic_front.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "10",
+    "column": "cnic_back_url",
+    "path": "TXL-09/cnic_back.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "10",
+    "column": "cv_url",
+    "path": "TXL-09/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "10",
+    "column": "profile_picture_url",
+    "path": "TXL-09/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "11",
+    "column": "cv_url",
+    "path": "u11/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "11",
+    "column": "profile_picture_url",
+    "path": "u11/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "12",
+    "column": "cv_url",
+    "path": "TXL-120/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "12",
+    "column": "profile_picture_url",
+    "path": "TXL-120/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "14",
+    "column": "cv_url",
+    "path": "u14/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "14",
+    "column": "profile_picture_url",
+    "path": "u14/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "15",
+    "column": "cv_url",
+    "path": "u15/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "15",
+    "column": "profile_picture_url",
+    "path": "u15/profile.jpeg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "16",
+    "column": "cnic_front_url",
+    "path": "u16/cnic_front.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "16",
+    "column": "cnic_back_url",
+    "path": "u16/cnic_back.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "16",
+    "column": "cv_url",
+    "path": "u16/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "16",
+    "column": "profile_picture_url",
+    "path": "u16/profile.jpg",
+    "error": "Object not found"
+  },
+  {
+    "userId": "19",
+    "column": "cv_url",
+    "path": "u19/cv.pdf",
+    "error": "Object not found"
+  },
+  {
+    "userId": "19",
+    "column": "profile_picture_url",
+    "path": "u19/profile.jpeg",
+    "error": "Object not found"
+  }
+]
+Dry run complete — re-run without --dry-run to apply.

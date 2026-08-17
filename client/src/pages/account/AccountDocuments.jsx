@@ -81,11 +81,11 @@ export default function AccountDocuments() {
             <div className="doc-card doc-card-static">
               {profile.cnic_front_url ? (
                 <a
-                  href={withAuthDocumentUrl(profile.cnic_front_url)}
+                  href={withAuthDocumentUrl(profile.cnic_front_url, profile.updated_at)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <img src={withAuthDocumentUrl(profile.cnic_front_url)} alt="CNIC front" />
+                  <img src={withAuthDocumentUrl(profile.cnic_front_url, profile.updated_at)} alt="CNIC front" />
                 </a>
               ) : (
                 <span>No CNIC front</span>
@@ -115,11 +115,11 @@ export default function AccountDocuments() {
             <div className="doc-card doc-card-static">
               {profile.cnic_back_url ? (
                 <a
-                  href={withAuthDocumentUrl(profile.cnic_back_url)}
+                  href={withAuthDocumentUrl(profile.cnic_back_url, profile.updated_at)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <img src={withAuthDocumentUrl(profile.cnic_back_url)} alt="CNIC back" />
+                  <img src={withAuthDocumentUrl(profile.cnic_back_url, profile.updated_at)} alt="CNIC back" />
                 </a>
               ) : (
                 <span>No CNIC back</span>
@@ -150,7 +150,7 @@ export default function AccountDocuments() {
               {profile.cv_url ? (
                 <a
                   className="pdf-badge"
-                  href={withAuthDocumentUrl(profile.cv_url)}
+                  href={withAuthDocumentUrl(profile.cv_url, profile.updated_at)}
                   target="_blank"
                   rel="noreferrer"
                 >

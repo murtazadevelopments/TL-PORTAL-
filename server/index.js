@@ -61,6 +61,25 @@ const apiOnlyMode =
   /^(0|false|no)$/i.test(String(process.env.SERVE_SPA || ''));
 
 function healthPayload() {
+  let uploadRootPath = null;
+  let uploadRootExists = false;
+  let uploadRootWritable = false;
+  try {
+    const { getUploadRoot } = require('./services/localStorage');
+    uploadRootPath = getUploadRoot();
+    uploadRootExists = fs.existsSync(uploadRootPath);
+    if (uploadRootExists) {
+      try {
+        fs.accessSync(uploadRootPath, fs.constants.W_OK);
+        uploadRootWritable = true;
+      } catch {
+        uploadRootWritable = false;
+      }
+    }
+  } catch {
+    /* storage module unavailable */
+  }
+
   return {
     status: 'Server is running',
     hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
@@ -73,6 +92,10 @@ function healthPayload() {
     uploadRootConfigured: Boolean(
       String(process.env.UPLOAD_ROOT || process.env.UPLOADS_ROOT || '').trim()
     ),
+    // Safe diagnostics (absolute path is needed to verify Hostinger env)
+    uploadRootPath,
+    uploadRootExists,
+    uploadRootWritable,
     spaEnabled,
     apiOnlyMode,
   };
@@ -184,6 +207,7 @@ try {
   app.use('/api/admin', require('./routes/adminRoutes'));
   app.use('/api/roles', require('./routes/rolesRoutes'));
   app.use('/api/documents', require('./routes/documentsRoutes'));
+  app.use('/api/tl-dashboard', require('./routes/tlDashboardRoutes'));
 } catch (err) {
   apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);

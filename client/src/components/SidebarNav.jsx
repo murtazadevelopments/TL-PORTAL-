@@ -1,26 +1,35 @@
 import { NavLink, useLocation } from 'react-router';
-import { canAccessAdmin, hasPermission, isCeo } from '../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo, isTeamLeader } from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
  */
-export function buildSidebarGroups(role, permissions) {
+export function buildSidebarGroups(role, permissions, { tlDashboardAccess = false } = {}) {
   const groups = [
     {
       id: 'dashboard',
       label: 'Dashboard',
       items: [{ to: '/dashboard', label: 'Overview', end: true }],
     },
-    {
-      id: 'account',
-      label: 'My Account',
-      items: [
-        { to: '/account', label: 'Profile', end: true },
-        { to: '/account/documents', label: 'My Documents' },
-        { to: '/account/security', label: 'Security' },
-      ],
-    },
   ];
+
+  if (isCeo(role) || isTeamLeader(role) || tlDashboardAccess) {
+    groups.push({
+      id: 'team-leader',
+      label: 'Team Leader',
+      items: [{ to: '/team-leader', label: 'TL Dashboard', end: true }],
+    });
+  }
+
+  groups.push({
+    id: 'account',
+    label: 'My Account',
+    items: [
+      { to: '/account', label: 'Profile', end: true },
+      { to: '/account/documents', label: 'My Documents' },
+      { to: '/account/security', label: 'Security' },
+    ],
+  });
 
   if (canAccessAdmin(role)) {
     const employeeItems = [];
@@ -82,9 +91,9 @@ function isItemActive(item, pathname, search) {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export default function SidebarNav({ role, permissions, onNavigate }) {
+export default function SidebarNav({ role, permissions, tlDashboardAccess, onNavigate }) {
   const location = useLocation();
-  const groups = buildSidebarGroups(role, permissions);
+  const groups = buildSidebarGroups(role, permissions, { tlDashboardAccess });
 
   return (
     <nav className="sidebar-nav" aria-label="Main">

@@ -3,10 +3,13 @@ import { Link, Outlet, useLocation } from 'react-router';
 import logo from '../assets/logo.png';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
+import { isCeo, isTeamLeader } from '../utils/permissions';
 import './AppShell.css';
 
 function ShellInner() {
   const { user, role, permissions, loading, logout } = useAuthUser();
+  const tlDashboardAccess =
+    Boolean(user?.tl_dashboard_access) || isCeo(role) || isTeamLeader(role);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
 
@@ -79,6 +82,7 @@ function ShellInner() {
         <SidebarNav
           role={role}
           permissions={permissions}
+          tlDashboardAccess={tlDashboardAccess}
           onNavigate={() => setDrawerOpen(false)}
         />
 
