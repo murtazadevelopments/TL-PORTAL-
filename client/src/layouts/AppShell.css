@@ -1,8 +1,10 @@
 .app-shell {
   --sidebar-width: 260px;
   min-height: 100svh;
+  max-width: 100%;
+  overflow-x: hidden;
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   grid-template-areas:
     'sidebar topbar'
@@ -21,14 +23,16 @@
   grid-area: topbar;
   display: none;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 1rem;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--border);
   background: rgba(8, 12, 22, 0.92);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 40;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .shell-menu-btn {
@@ -79,6 +83,7 @@
   font-family: var(--display);
   font-weight: 650;
   font-size: 1rem;
+  min-width: 0;
 }
 
 .shell-brand-mobile {
@@ -101,14 +106,16 @@
 
 .shell-topbar-spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .shell-user-chip {
-  font-size: 0.85rem;
-  max-width: 140px;
+  font-size: 0.8rem;
+  max-width: min(120px, 28vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 1;
 }
 
 .shell-backdrop {
@@ -199,6 +206,8 @@
 .app-main {
   grid-area: main;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   padding: 0 0 2.5rem;
 }
 
@@ -206,8 +215,10 @@
 .app-main > .page-panel,
 .app-main > .card.wide {
   width: min(1180px, calc(100% - 2rem));
+  max-width: 100%;
   margin-left: auto;
   margin-right: auto;
+  box-sizing: border-box;
 }
 
 .app-main > .card.wide {
@@ -216,13 +227,15 @@
 
 .page-panel {
   margin-top: 1.25rem;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .page-panel h1 {
   margin: 0 0 0.25rem;
   font-family: var(--display);
   font-weight: 550;
-  font-size: 1.75rem;
+  font-size: clamp(1.35rem, 4.5vw, 1.75rem);
   color: var(--text-h);
 }
 
@@ -240,7 +253,7 @@
 
 @media (max-width: 899px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       'topbar'
       'main';
@@ -279,6 +292,32 @@
 
   .app-shell.drawer-open .app-sidebar {
     transform: translateX(0);
+  }
+
+  .app-main > .admin-page,
+  .app-main > .page-panel,
+  .app-main > .card.wide {
+    width: calc(100% - 1.25rem);
+    margin-left: 0.625rem;
+    margin-right: 0.625rem;
+  }
+
+  .app-main > .card.wide {
+    padding: 1.1rem 1rem 1.35rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .shell-user-chip {
+    display: none;
+  }
+
+  .app-main > .admin-page,
+  .app-main > .page-panel,
+  .app-main > .card.wide {
+    width: calc(100% - 1rem);
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
   }
 }
 

@@ -1,6 +1,8 @@
 .admin-page {
   width: min(1180px, calc(100% - 2rem));
+  max-width: 100%;
   margin: 1.25rem auto 2.5rem;
+  box-sizing: border-box;
 }
 
 .admin-page h1 {
@@ -519,25 +521,104 @@
 }
 
 @media (max-width: 960px) {
+  .admin-page {
+    width: 100%;
+    max-width: 100%;
+    margin: 1rem 0 2rem;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
   .stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .table-shell {
+  .status-tabs {
+    flex-wrap: nowrap;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.25rem;
+    margin-right: -0.25rem;
+  }
+
+  .status-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .filters-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-search,
+  .filter-select {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .table-shell {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .admin-table {
-    min-width: 820px;
+    min-width: 640px;
+  }
+
+  .modal-backdrop {
+    z-index: 60;
+    align-items: stretch;
+  }
+
+  .modal-panel {
+    width: 100%;
+    max-width: 100%;
+    border-left: 0;
+    padding: 1rem 0.9rem 1.75rem;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+
+  .modal-actions .btn {
+    flex: 1 1 calc(50% - 0.4rem);
+    min-width: 0;
   }
 }
 
 @media (max-width: 560px) {
   .stat-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stat-card .stat-value {
+    font-size: 1.45rem;
   }
 
   .doc-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-table {
+    min-width: 520px;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 0.65rem 0.55rem;
+    font-size: 0.85rem;
+  }
+
+  .modal-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  .perm-chip-row {
+    max-width: 100%;
   }
 }

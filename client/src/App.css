@@ -6,6 +6,7 @@
 
 .card {
   width: min(460px, calc(100% - 2rem));
+  max-width: 100%;
   margin: 1.5rem auto 2.5rem;
   padding: 1.4rem 1.35rem 1.6rem;
   background: var(--surface);
@@ -16,10 +17,12 @@
     0 0 0 1px rgba(255, 255, 255, 0.03) inset,
     0 18px 48px rgba(0, 0, 0, 0.4),
     0 0 48px var(--glow-cyan);
+  box-sizing: border-box;
 }
 
 .card.wide {
   width: min(760px, calc(100% - 2rem));
+  max-width: 100%;
 }
 
 .brand-hero {
@@ -419,5 +422,36 @@
   .profile-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .card {
+    width: calc(100% - 1rem);
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+    padding: 1.1rem 0.95rem 1.35rem;
+  }
+
+  .card.wide {
+    width: calc(100% - 1rem);
+  }
+
+  .form input[type='text'],
+  .form input[type='email'],
+  .form input[type='password'],
+  .form input[type='tel'],
+  .form input[type='date'],
+  .form input[type='number'],
+  .form input[type='file'],
+  .form select {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .alert-banner {
+    flex-direction: column;
+  }
+
+  .alert-actions {
+    width: 100%;
   }
 }

@@ -1,7 +1,6 @@
 const pool = require('../config/db');
-const { supabase, BUCKETS } = require('../config/supabaseClient');
-const { extFromFile } = require('../middleware/uploadMiddleware');
 const { attachReadableUrls } = require('../utils/storageUrls');
+const { saveUserFile } = require('../services/localStorage');
 const {
   notifyAdminsEmployeeSelfUpdate,
   summarizeChanges,
@@ -282,20 +281,7 @@ async function updateProfilePicture(req, res) {
       });
     }
 
-    const prefix =
-      existing.employee_id ||
-      (existing.username ? `user-${existing.username}` : `user-${existing.id}`);
-    const objectPath = `${prefix}/profile${extFromFile(file, '.jpg')}`;
-
-    const { error } = await supabase.storage.from(BUCKETS.profile).upload(objectPath, file.buffer, {
-      contentType: file.mimetype || 'image/jpeg',
-      upsert: true,
-      cacheControl: '3600',
-    });
-
-    if (error) {
-      return res.status(400).json({ message: error.message || 'Failed to upload profile picture.' });
-    }
+    const objectPath = await saveUserFile(existing, 'profile', file);
 
     const { rows } = await pool.query(
       `
@@ -353,41 +339,13 @@ async function updateDocuments(req, res) {
       });
     }
 
-    const prefix =
-      existing.employee_id ||
-      (existing.username ? `user-${existing.username}` : `user-${existing.id}`);
-
-    async function uploadOne(bucket, objectPath, file) {
-      const { error } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true,
-        cacheControl: '3600',
-      });
-      if (error) {
-        const err = new Error(error.message || `Failed to upload ${objectPath}`);
-        err.status = 400;
-        throw err;
-      }
-      return objectPath;
-    }
-
     const nextFront = cnicFront
-      ? await uploadOne(
-          BUCKETS.cnic,
-          `${prefix}/cnic_front${extFromFile(cnicFront, '.jpg')}`,
-          cnicFront
-        )
+      ? await saveUserFile(existing, 'cnic_front', cnicFront)
       : existing.cnic_front_url;
     const nextBack = cnicBack
-      ? await uploadOne(
-          BUCKETS.cnic,
-          `${prefix}/cnic_back${extFromFile(cnicBack, '.jpg')}`,
-          cnicBack
-        )
+      ? await saveUserFile(existing, 'cnic_back', cnicBack)
       : existing.cnic_back_url;
-    const nextCv = cv
-      ? await uploadOne(BUCKETS.cv, `${prefix}/cv${extFromFile(cv, '.pdf')}`, cv)
-      : existing.cv_url;
+    const nextCv = cv ? await saveUserFile(existing, 'cv', cv) : existing.cv_url;
 
     const { rows } = await pool.query(
       `

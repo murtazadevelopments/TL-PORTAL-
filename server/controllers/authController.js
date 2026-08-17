@@ -2,9 +2,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
-const { supabase, BUCKETS } = require('../config/supabaseClient');
-const { extFromFile } = require('../middleware/uploadMiddleware');
 const { attachReadableUrls } = require('../utils/storageUrls');
+const { saveUserFile } = require('../services/localStorage');
 const {
   notifyDesignatedNewSignup,
   notifyUserSignup,
@@ -63,22 +62,6 @@ function omitPassword(row) {
 
 function getFile(req, field) {
   return req.files?.[field]?.[0] || null;
-}
-
-async function uploadToBucket(bucket, objectPath, file) {
-  const { error } = await supabase.storage.from(bucket).upload(objectPath, file.buffer, {
-    contentType: file.mimetype,
-    upsert: true,
-    cacheControl: '3600',
-  });
-
-  if (error) {
-    const err = new Error(error.message || `Failed to upload to ${bucket}`);
-    err.status = 400;
-    throw err;
-  }
-
-  return objectPath;
 }
 
 /**
@@ -165,45 +148,8 @@ async function signup(req, res) {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedCnic = cnic_number ? String(cnic_number).trim() : null;
     const hashedPassword = await bcrypt.hash(password, 10);
-    // Storage prefix before admin assigns employee_id
-    const storagePrefix = `user-${normalizedUsername}`;
 
-    const uploadJobs = [
-      uploadToBucket(BUCKETS.cv, `${storagePrefix}/cv${extFromFile(cv, '.pdf')}`, cv),
-      uploadToBucket(
-        BUCKETS.profile,
-        `${storagePrefix}/profile${extFromFile(profilePicture, '.jpg')}`,
-        profilePicture
-      ),
-    ];
-
-    if (cnicFront) {
-      uploadJobs.push(
-        uploadToBucket(
-          BUCKETS.cnic,
-          `${storagePrefix}/cnic_front${extFromFile(cnicFront, '.jpg')}`,
-          cnicFront
-        )
-      );
-    } else {
-      uploadJobs.push(Promise.resolve(null));
-    }
-
-    if (cnicBack) {
-      uploadJobs.push(
-        uploadToBucket(
-          BUCKETS.cnic,
-          `${storagePrefix}/cnic_back${extFromFile(cnicBack, '.jpg')}`,
-          cnicBack
-        )
-      );
-    } else {
-      uploadJobs.push(Promise.resolve(null));
-    }
-
-    const [cv_url, profile_picture_url, cnic_front_url, cnic_back_url] =
-      await Promise.all(uploadJobs);
-
+    // Insert first (null file paths) so we can store under u{id}/
     const insertQuery = `
       INSERT INTO users (
         employee_id, username, name, email, password,
@@ -216,9 +162,9 @@ async function signup(req, res) {
       VALUES (
         NULL, $1, $2, $3, $4,
         $5, $6, $7,
+        NULL, NULL, NULL, NULL,
         $8, $9, $10, $11,
         $12, $13, $14, $15,
-        $16, $17, $18, $19,
         'inactive', NOW()
       )
       RETURNING ${USER_PUBLIC_COLUMNS}
@@ -232,10 +178,6 @@ async function signup(req, res) {
       String(contact_number).trim(),
       String(address).trim(),
       normalizedCnic,
-      cnic_front_url,
-      cnic_back_url,
-      cv_url,
-      profile_picture_url,
       'employee',
       department ? String(department).trim() : null,
       String(education).trim(),
@@ -246,7 +188,36 @@ async function signup(req, res) {
       String(iban).trim(),
     ]);
 
-    const user = await attachReadableUrls(rows[0]);
+    let userRow = rows[0];
+
+    try {
+      const [cv_url, profile_picture_url, cnic_front_url, cnic_back_url] = await Promise.all([
+        saveUserFile(userRow, 'cv', cv),
+        saveUserFile(userRow, 'profile', profilePicture),
+        cnicFront ? saveUserFile(userRow, 'cnic_front', cnicFront) : Promise.resolve(null),
+        cnicBack ? saveUserFile(userRow, 'cnic_back', cnicBack) : Promise.resolve(null),
+      ]);
+
+      const { rows: updated } = await pool.query(
+        `
+          UPDATE users
+          SET cv_url = $1,
+              profile_picture_url = $2,
+              cnic_front_url = $3,
+              cnic_back_url = $4,
+              updated_at = NOW()
+          WHERE id = $5
+          RETURNING ${USER_PUBLIC_COLUMNS}
+        `,
+        [cv_url, profile_picture_url, cnic_front_url, cnic_back_url, userRow.id]
+      );
+      userRow = updated[0];
+    } catch (uploadErr) {
+      console.error('signup local upload failed:', uploadErr.message || uploadErr);
+      // Keep the account; admin can ask user to re-upload docs after approval
+    }
+
+    const user = await attachReadableUrls(userRow);
 
     // Best-effort emails — never fail signup if Resend/settings misconfigured
     try {

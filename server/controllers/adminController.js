@@ -1,6 +1,6 @@
 const pool = require('../config/db');
-const { supabase, BUCKETS } = require('../config/supabaseClient');
-const { attachReadableUrls, resolveStorageUrl } = require('../utils/storageUrls');
+const { attachReadableUrls, withProfileApiUrl } = require('../utils/storageUrls');
+const { deleteRelativeFile } = require('../services/localStorage');
 const {
   notifyEmployeeAdminUpdated,
   notifyAccountApproved,
@@ -60,20 +60,8 @@ function storagePathFromUrl(value) {
   return v;
 }
 
-async function removeStorageObject(bucket, objectPath) {
-  if (!objectPath) return;
-  const { error } = await supabase.storage.from(bucket).remove([objectPath]);
-  if (error) {
-    console.warn(`Storage delete failed (${bucket}/${objectPath}):`, error.message);
-  }
-}
-
 async function withListUrls(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    profile_picture_url: await resolveStorageUrl(row.profile_picture_url, BUCKETS.profile),
-  };
+  return withProfileApiUrl(row);
 }
 
 async function listEmployees(req, res) {
@@ -348,10 +336,10 @@ async function purgeEmployee(req, res) {
     });
 
     await Promise.all([
-      removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_front_url)),
-      removeStorageObject(BUCKETS.cnic, storagePathFromUrl(employee.cnic_back_url)),
-      removeStorageObject(BUCKETS.cv, storagePathFromUrl(employee.cv_url)),
-      removeStorageObject(BUCKETS.profile, storagePathFromUrl(employee.profile_picture_url)),
+      deleteRelativeFile(storagePathFromUrl(employee.cnic_front_url)),
+      deleteRelativeFile(storagePathFromUrl(employee.cnic_back_url)),
+      deleteRelativeFile(storagePathFromUrl(employee.cv_url)),
+      deleteRelativeFile(storagePathFromUrl(employee.profile_picture_url)),
     ]);
 
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);

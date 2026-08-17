@@ -60,6 +60,8 @@ function healthPayload() {
     hasSupabaseKey: Boolean(process.env.SUPABASE_SECRET_KEY),
     hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
     hasResendFrom: Boolean(process.env.RESEND_FROM),
+    hasUploadRoot: Boolean(process.env.UPLOAD_ROOT),
+    uploadRootConfigured: Boolean(String(process.env.UPLOAD_ROOT || '').trim()),
   };
 }
 
@@ -73,6 +75,7 @@ try {
   app.use('/api/users', require('./routes/userRoutes'));
   app.use('/api/admin', require('./routes/adminRoutes'));
   app.use('/api/roles', require('./routes/rolesRoutes'));
+  app.use('/api/documents', require('./routes/documentsRoutes'));
 } catch (err) {
   apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);

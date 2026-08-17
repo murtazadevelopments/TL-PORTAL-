@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
+import { withAuthDocumentUrl } from '../../utils/documentUrls';
 
 export default function AccountDocuments() {
   const navigate = useNavigate();
@@ -79,8 +80,12 @@ export default function AccountDocuments() {
           <div className="doc-grid">
             <div className="doc-card doc-card-static">
               {profile.cnic_front_url ? (
-                <a href={profile.cnic_front_url} target="_blank" rel="noreferrer">
-                  <img src={profile.cnic_front_url} alt="CNIC front" />
+                <a
+                  href={withAuthDocumentUrl(profile.cnic_front_url)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img src={withAuthDocumentUrl(profile.cnic_front_url)} alt="CNIC front" />
                 </a>
               ) : (
                 <span>No CNIC front</span>
@@ -109,8 +114,12 @@ export default function AccountDocuments() {
 
             <div className="doc-card doc-card-static">
               {profile.cnic_back_url ? (
-                <a href={profile.cnic_back_url} target="_blank" rel="noreferrer">
-                  <img src={profile.cnic_back_url} alt="CNIC back" />
+                <a
+                  href={withAuthDocumentUrl(profile.cnic_back_url)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img src={withAuthDocumentUrl(profile.cnic_back_url)} alt="CNIC back" />
                 </a>
               ) : (
                 <span>No CNIC back</span>
@@ -139,7 +148,12 @@ export default function AccountDocuments() {
 
             <div className="doc-card doc-card-static">
               {profile.cv_url ? (
-                <a className="pdf-badge" href={profile.cv_url} target="_blank" rel="noreferrer">
+                <a
+                  className="pdf-badge"
+                  href={withAuthDocumentUrl(profile.cv_url)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   PDF
                 </a>
               ) : (

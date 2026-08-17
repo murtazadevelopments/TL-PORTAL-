@@ -4,6 +4,7 @@ import api from '../../api/client';
 import AvatarEditor from '../../components/AvatarEditor';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
+import { withAuthDocumentUrl } from '../../utils/documentUrls';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
@@ -201,7 +202,8 @@ export default function AccountProfile() {
     }
   }
 
-  const showAvatar = profile?.profile_picture_url && !avatarBroken;
+  const avatarSrc = withAuthDocumentUrl(profile?.profile_picture_url);
+  const showAvatar = Boolean(avatarSrc) && !avatarBroken;
 
   return (
     <>
@@ -251,7 +253,7 @@ export default function AccountProfile() {
                 {showAvatar ? (
                   <img
                     className="avatar"
-                    src={profile.profile_picture_url}
+                    src={avatarSrc}
                     alt=""
                     onError={() => setAvatarBroken(true)}
                   />
@@ -437,7 +439,7 @@ export default function AccountProfile() {
 
       <AvatarEditor
         open={showAvatarEditor}
-        currentUrl={profile?.profile_picture_url || null}
+        currentUrl={avatarSrc || null}
         saving={avatarSaving}
         onClose={() => !avatarSaving && setShowAvatarEditor(false)}
         onSave={handleAvatarSave}

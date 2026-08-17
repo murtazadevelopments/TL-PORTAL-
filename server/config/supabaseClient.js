@@ -6,10 +6,11 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 /**
- * Supabase client for Storage uploads / signed URLs only.
+ * Supabase client for one-time Storage migration only.
+ * New uploads go to Hostinger disk via services/localStorage.js.
  * Database access stays on pg via config/db.js.
  *
- * Required env vars:
+ * Required env vars (migration script):
  *   SUPABASE_URL         — https://xxxx.supabase.co
  *   SUPABASE_SECRET_KEY  — server-side secret key (sb_secret_...)
  */

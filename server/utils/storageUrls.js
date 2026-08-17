@@ -1,69 +1,67 @@
-const { supabase, BUCKETS } = require('../config/supabaseClient');
-
 /**
- * Extract a storage object path from a full Supabase URL, or return the path as-is.
+ * Turn stored local paths (or legacy Supabase paths) into authenticated API URLs
+ * the browser can load with ?token= from the client.
  */
-function toObjectPath(value, bucket) {
-  if (!value) return null;
-  if (!/^https?:\/\//i.test(value)) return value;
 
-  const patterns = [
-    `/storage/v1/object/public/${bucket}/`,
-    `/storage/v1/object/sign/${bucket}/`,
-    `/storage/v1/object/authenticated/${bucket}/`,
-  ];
+const DOC_FIELD_MAP = [
+  ['profile_picture_url', 'profile'],
+  ['cnic_front_url', 'cnic_front'],
+  ['cnic_back_url', 'cnic_back'],
+  ['cv_url', 'cv'],
+];
 
-  for (const marker of patterns) {
-    const idx = value.indexOf(marker);
-    if (idx !== -1) {
-      return decodeURIComponent(value.slice(idx + marker.length).split('?')[0]);
-    }
-  }
-
-  return null;
+function documentApiPath(userId, docType) {
+  if (!userId || !docType) return null;
+  return `/api/documents/${userId}/${docType}`;
 }
 
 /**
- * Always return a usable browser URL.
- * Profile bucket may be "public" but still blocked by policies — signed URLs work either way.
+ * Attach browser-readable document URLs for a user row.
+ * Leaves nulls as null. Legacy https URLs are left intact until migration.
  */
-async function resolveStorageUrl(value, bucket, expiresIn = 60 * 60 * 24) {
-  if (!value) return null;
-
-  const objectPath = toObjectPath(value, bucket) || (!/^https?:\/\//i.test(value) ? value : null);
-
-  if (objectPath) {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .createSignedUrl(objectPath, expiresIn);
-
-    if (!error && data?.signedUrl) return data.signedUrl;
-    console.error(`signed URL error (${bucket}/${objectPath}):`, error?.message);
-  }
-
-  // Fallback: return original value (may work for true public URLs)
-  return value;
-}
-
 async function attachReadableUrls(user) {
   if (!user) return null;
-
   const result = { ...user };
+  const id = result.id;
 
-  result.profile_picture_url = await resolveStorageUrl(
-    result.profile_picture_url,
-    BUCKETS.profile
-  );
-  result.cnic_front_url = await resolveStorageUrl(result.cnic_front_url, BUCKETS.cnic);
-  result.cnic_back_url = await resolveStorageUrl(result.cnic_back_url, BUCKETS.cnic);
-  result.cv_url = await resolveStorageUrl(result.cv_url, BUCKETS.cv);
+  for (const [field, docType] of DOC_FIELD_MAP) {
+    const value = result[field];
+    if (!value) {
+      result[field] = null;
+      continue;
+    }
+    if (/^https?:\/\//i.test(String(value))) {
+      // Still a remote signed/public URL (pre-migration) — keep as-is
+      continue;
+    }
+    // Local relative path → authenticated API route
+    result[field] = documentApiPath(id, docType);
+  }
 
   return result;
 }
 
+/** List endpoints only need profile thumbs. */
+async function resolveStorageUrl(value, _bucket) {
+  // Kept for call-site compatibility; prefer attachReadableUrls with user id.
+  if (!value) return null;
+  if (/^https?:\/\//i.test(String(value))) return value;
+  return value;
+}
+
+function withProfileApiUrl(row) {
+  if (!row) return null;
+  const next = { ...row };
+  if (next.profile_picture_url && !/^https?:\/\//i.test(String(next.profile_picture_url))) {
+    next.profile_picture_url = documentApiPath(next.id, 'profile');
+  }
+  return next;
+}
+
 module.exports = {
-  toObjectPath,
-  resolveStorageUrl,
   attachReadableUrls,
-  BUCKETS,
+  resolveStorageUrl,
+  documentApiPath,
+  withProfileApiUrl,
+  DOC_FIELD_MAP,
 };

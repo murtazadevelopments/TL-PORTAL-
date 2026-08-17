@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import './AdminDashboard.css';
 
 const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
@@ -685,7 +686,11 @@ function EmployeesPage() {
                     <tr key={row.id} onClick={() => openDetail(row.id)}>
                       <td>
                         {row.profile_picture_url ? (
-                          <img className="thumb" src={row.profile_picture_url} alt="" />
+                          <img
+                            className="thumb"
+                            src={withAuthDocumentUrl(row.profile_picture_url)}
+                            alt=""
+                          />
                         ) : (
                           <div className="thumb">
                             {(row.name || '?').charAt(0).toUpperCase()}
@@ -807,7 +812,11 @@ function EmployeesPage() {
 
                 <div className="detail-hero">
                   {detail.profile_picture_url ? (
-                    <img className="thumb large" src={detail.profile_picture_url} alt="" />
+                    <img
+                      className="thumb large"
+                      src={withAuthDocumentUrl(detail.profile_picture_url)}
+                      alt=""
+                    />
                   ) : (
                     <div className="thumb large">
                       {(detail.name || '?').charAt(0).toUpperCase()}
@@ -927,12 +936,15 @@ function EmployeesPage() {
                 <div className="doc-row">
                   <a
                     className="doc-preview"
-                    href={detail.cnic_front_url || undefined}
+                    href={withAuthDocumentUrl(detail.cnic_front_url) || undefined}
                     target="_blank"
                     rel="noreferrer"
                   >
                     {detail.cnic_front_url ? (
-                      <img src={detail.cnic_front_url} alt="CNIC front" />
+                      <img
+                        src={withAuthDocumentUrl(detail.cnic_front_url)}
+                        alt="CNIC front"
+                      />
                     ) : (
                       <span>No CNIC front</span>
                     )}
@@ -940,12 +952,15 @@ function EmployeesPage() {
                   </a>
                   <a
                     className="doc-preview"
-                    href={detail.cnic_back_url || undefined}
+                    href={withAuthDocumentUrl(detail.cnic_back_url) || undefined}
                     target="_blank"
                     rel="noreferrer"
                   >
                     {detail.cnic_back_url ? (
-                      <img src={detail.cnic_back_url} alt="CNIC back" />
+                      <img
+                        src={withAuthDocumentUrl(detail.cnic_back_url)}
+                        alt="CNIC back"
+                      />
                     ) : (
                       <span>No CNIC back</span>
                     )}
@@ -953,7 +968,12 @@ function EmployeesPage() {
                   </a>
                 </div>
                 {detail.cv_url ? (
-                  <a className="cv-link" href={detail.cv_url} target="_blank" rel="noreferrer">
+                  <a
+                    className="cv-link"
+                    href={withAuthDocumentUrl(detail.cv_url)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Download CV (PDF)
                   </a>
                 ) : (

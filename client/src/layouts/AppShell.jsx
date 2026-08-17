@@ -15,6 +15,11 @@ function ShellInner() {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
+    document.body.classList.toggle('drawer-lock', drawerOpen);
+    return () => document.body.classList.remove('drawer-lock');
+  }, [drawerOpen]);
+
+  useEffect(() => {
     if (!drawerOpen) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') setDrawerOpen(false);

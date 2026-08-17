@@ -11,7 +11,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "build": "echo \"Use repo root npm run build on Hostinger\""
+    "build": "echo \"Use repo root npm run build on Hostinger\"",
+    "migrate:storage:inventory": "node scripts/migrate-storage-to-local.js --inventory",
+    "migrate:storage": "node scripts/migrate-storage-to-local.js",
+    "migrate:storage:dry": "node scripts/migrate-storage-to-local.js --dry-run"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.3.2",
@@ -24,7 +27,8 @@
     "multer": "^2.2.0",
     "node-cron": "^4.6.0",
     "pg": "^8.23.0",
-    "resend": "^6.19.0"
+    "resend": "^6.19.0",
+    "sharp": "^0.34.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
