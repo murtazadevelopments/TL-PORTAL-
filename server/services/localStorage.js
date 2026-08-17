@@ -18,12 +18,46 @@ function getUploadRoot() {
   return path.resolve(__dirname, '..', 'private_uploads');
 }
 
+/**
+ * API :docType → DB column + on-disk filename stems.
+ * Migration wrote profile_picture.*; new saves historically used profile.* —
+ * resolveDocumentFile accepts both. Prefer the first stem when writing.
+ */
 const DOC_TYPES = {
-  profile: { column: 'profile_picture_url', image: true, defaultExt: '.jpg' },
-  cnic_front: { column: 'cnic_front_url', image: true, defaultExt: '.jpg' },
-  cnic_back: { column: 'cnic_back_url', image: true, defaultExt: '.jpg' },
-  cv: { column: 'cv_url', image: false, defaultExt: '.pdf' },
+  profile: {
+    column: 'profile_picture_url',
+    image: true,
+    defaultExt: '.jpg',
+    fileStems: ['profile_picture', 'profile'],
+  },
+  cnic_front: {
+    column: 'cnic_front_url',
+    image: true,
+    defaultExt: '.jpg',
+    fileStems: ['cnic_front'],
+  },
+  cnic_back: {
+    column: 'cnic_back_url',
+    image: true,
+    defaultExt: '.jpg',
+    fileStems: ['cnic_back'],
+  },
+  cv: {
+    column: 'cv_url',
+    image: false,
+    defaultExt: '.pdf',
+    fileStems: ['cv'],
+  },
 };
+
+const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+const CV_EXTS = ['.pdf'];
+
+function extsForDocType(docType) {
+  const meta = DOC_TYPES[docType];
+  if (!meta) return IMAGE_EXTS;
+  return meta.image ? IMAGE_EXTS : CV_EXTS;
+}
 
 function userFolder(user) {
   const emp = user?.employee_id != null ? String(user.employee_id).trim() : '';
@@ -94,7 +128,9 @@ async function saveUserFile(user, docType, file) {
 
   const prepared = await prepareFileBuffer(file, { asImage: meta.image });
   const folder = userFolder(user);
-  const relativePath = path.posix.join(folder, `${docType}${prepared.ext}`);
+  // Prefer migration-compatible stem (profile_picture, not profile)
+  const stem = (meta.fileStems && meta.fileStems[0]) || docType;
+  const relativePath = path.posix.join(folder, `${stem}${prepared.ext}`);
   const absPath = safeJoin(getUploadRoot(), relativePath);
 
   await ensureDir(path.dirname(absPath));
@@ -143,6 +179,124 @@ async function fileExists(relativePath) {
   }
 }
 
+function existsSyncSafe(absPath) {
+  try {
+    return Boolean(absPath) && fs.existsSync(absPath) && fs.statSync(absPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve an on-disk file for GET /api/documents/:userId/:docType.
+ *
+ * Order:
+ *  1. Exact relative path from DB (if present and readable)
+ *  2. Same directory as DB path, trying known stems + common extensions
+ *  3. id-{userId}/ and legacy folders (u{id}, employee_id, user-username)
+ *  4. Directory scan for stem.* (handles .jpg vs .jpeg vs .png)
+ *
+ * @returns {string|null} absolute path or null
+ */
+function resolveDocumentFile({ userId, docType, storedPath, user } = {}) {
+  const meta = DOC_TYPES[docType];
+  if (!meta) return null;
+
+  const stems = meta.fileStems || [docType];
+  const exts = extsForDocType(docType);
+  const root = getUploadRoot();
+  const tried = new Set();
+
+  const tryAbs = (abs) => {
+    if (!abs || tried.has(abs)) return null;
+    tried.add(abs);
+    return existsSyncSafe(abs) ? abs : null;
+  };
+
+  const tryRel = (rel) => {
+    if (!rel || /^https?:\/\//i.test(String(rel))) return null;
+    try {
+      return tryAbs(safeJoin(root, String(rel).replace(/^\/+/, '')));
+    } catch {
+      return null;
+    }
+  };
+
+  // 1) Exact DB path
+  if (storedPath) {
+    const hit = tryRel(storedPath);
+    if (hit) return hit;
+  }
+
+  const folders = [];
+  const addFolder = (f) => {
+    const cleaned = String(f || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '');
+    if (cleaned && !folders.includes(cleaned)) folders.push(cleaned);
+  };
+
+  if (storedPath && !/^https?:\/\//i.test(String(storedPath))) {
+    const dir = path.posix.dirname(String(storedPath).replace(/\\/g, '/'));
+    if (dir && dir !== '.') addFolder(dir);
+  }
+
+  if (userId != null) addFolder(`id-${userId}`);
+  if (user) {
+    try {
+      addFolder(userFolder(user));
+    } catch {
+      /* ignore */
+    }
+    if (user.id != null) addFolder(`u${user.id}`);
+  } else if (userId != null) {
+    addFolder(`u${userId}`);
+  }
+
+  // 2–3) Candidate stem+ext under each folder
+  for (const folder of folders) {
+    for (const stem of stems) {
+      for (const ext of exts) {
+        const hit = tryRel(path.posix.join(folder, `${stem}${ext}`));
+        if (hit) return hit;
+      }
+    }
+  }
+
+  // 4) Scan directories for stem.* (any extension already on disk)
+  for (const folder of folders) {
+    let absDir;
+    try {
+      absDir = safeJoin(root, folder);
+    } catch {
+      continue;
+    }
+    if (!fs.existsSync(absDir) || !fs.statSync(absDir).isDirectory()) continue;
+
+    let entries;
+    try {
+      entries = fs.readdirSync(absDir);
+    } catch {
+      continue;
+    }
+
+    for (const stem of stems) {
+      const match = entries.find((name) => {
+        const base = name.toLowerCase();
+        const stemL = stem.toLowerCase();
+        if (!base.startsWith(stemL + '.') && base !== stemL) return false;
+        return existsSyncSafe(path.join(absDir, name));
+      });
+      if (match) {
+        const hit = tryAbs(path.join(absDir, match));
+        if (hit) return hit;
+      }
+    }
+  }
+
+  return null;
+}
+
 module.exports = {
   DOC_TYPES,
   getUploadRoot,
@@ -152,6 +306,7 @@ module.exports = {
   absoluteFromRelative,
   deleteRelativeFile,
   fileExists,
+  resolveDocumentFile,
   prepareFileBuffer,
   ensureDir,
 };

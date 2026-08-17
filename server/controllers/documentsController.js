@@ -5,7 +5,7 @@ const pool = require('../config/db');
 const { loadAdminPermissions } = require('../middleware/permissions');
 const {
   DOC_TYPES,
-  absoluteFromRelative,
+  resolveDocumentFile,
 } = require('../services/localStorage');
 
 /**
@@ -59,6 +59,9 @@ async function canAccessDocuments(requester, targetUserId, docType) {
 /**
  * GET /api/documents/:userId/:docType
  * docType: profile | cnic_front | cnic_back | cv
+ *
+ * URL uses logical types (profile), not exact filenames. Files on disk may be
+ * profile_picture.jpeg, profile.jpg, cnic_front.png, etc.
  */
 async function streamDocument(req, res) {
   try {
@@ -77,7 +80,7 @@ async function streamDocument(req, res) {
 
     const { rows } = await pool.query(
       `
-        SELECT id, ${meta.column} AS file_path
+        SELECT id, username, employee_id, ${meta.column} AS file_path
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -86,24 +89,34 @@ async function streamDocument(req, res) {
     );
 
     const row = rows[0];
-    if (!row?.file_path) {
-      return res.status(404).json({ message: 'Document not found.' });
+    if (!row) {
+      return res.status(404).json({ message: 'User not found.' });
     }
 
     // Legacy remote URL — redirect (pre-migration safety)
-    if (/^https?:\/\//i.test(String(row.file_path))) {
+    if (row.file_path && /^https?:\/\//i.test(String(row.file_path))) {
       return res.redirect(row.file_path);
     }
 
     let abs;
     try {
-      abs = absoluteFromRelative(row.file_path);
-    } catch {
+      abs = resolveDocumentFile({
+        userId,
+        docType,
+        storedPath: row.file_path,
+        user: row,
+      });
+    } catch (err) {
+      console.error('resolveDocumentFile error:', err.message);
       return res.status(400).json({ message: 'Invalid stored file path.' });
     }
 
-    if (!abs || !fs.existsSync(abs)) {
-      return res.status(404).json({ message: 'File missing on server.' });
+    if (!abs) {
+      return res.status(404).json({
+        message: 'File missing on server.',
+        docType,
+        uploadHint: `Expected under private_uploads/id-${userId}/ (${meta.fileStems.join('|')}.*)`,
+      });
     }
 
     const ext = path.extname(abs).toLowerCase();
