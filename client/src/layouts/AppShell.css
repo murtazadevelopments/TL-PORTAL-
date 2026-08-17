@@ -171,6 +171,8 @@
 .sidebar-link {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   min-height: 44px;
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-sm);
@@ -179,6 +181,20 @@
   font-weight: 700;
   font-size: 0.95rem;
   border: 1px solid transparent;
+}
+
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(61, 255, 122, 0.2);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .sidebar-link:hover {

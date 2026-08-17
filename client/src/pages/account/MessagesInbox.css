@@ -1,0 +1,100 @@
+.messages-inbox .msg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.msg-row {
+  width: 100%;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: rgba(8, 12, 22, 0.55);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.msg-row:hover {
+  border-color: var(--border-strong);
+  background: rgba(8, 12, 22, 0.75);
+}
+
+.msg-row.is-unread {
+  border-color: rgba(61, 255, 122, 0.35);
+  background: rgba(61, 255, 122, 0.06);
+}
+
+.msg-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.45rem;
+  border-radius: 50%;
+  background: transparent;
+  flex: 0 0 auto;
+}
+
+.msg-row.is-unread .msg-dot {
+  background: var(--green);
+  box-shadow: 0 0 10px var(--glow-green);
+}
+
+.msg-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.msg-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.msg-sender {
+  color: var(--text-h);
+  font-weight: 650;
+}
+
+.msg-row.is-unread .msg-sender,
+.msg-row.is-unread .msg-subject {
+  font-weight: 800;
+}
+
+.msg-time {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.msg-subject {
+  color: var(--text-h);
+}
+
+.msg-snippet {
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-detail-modal {
+  width: min(560px, calc(100vw - 2rem));
+}
+
+.msg-body {
+  white-space: pre-wrap;
+  color: var(--text-h);
+  line-height: 1.55;
+  padding: 0.25rem 0 0.75rem;
+}

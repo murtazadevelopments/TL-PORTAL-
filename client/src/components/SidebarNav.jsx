@@ -4,7 +4,11 @@ import { canAccessAdmin, hasPermission, isCeo, isTeamLeader } from '../utils/per
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
  */
-export function buildSidebarGroups(role, permissions, { tlDashboardAccess = false } = {}) {
+export function buildSidebarGroups(
+  role,
+  permissions,
+  { tlDashboardAccess = false, unreadMessages = 0 } = {}
+) {
   const groups = [
     {
       id: 'dashboard',
@@ -27,6 +31,11 @@ export function buildSidebarGroups(role, permissions, { tlDashboardAccess = fals
     items: [
       { to: '/account', label: 'Profile', end: true },
       { to: '/account/documents', label: 'My Documents' },
+      {
+        to: '/account/messages',
+        label: 'Messages',
+        badge: unreadMessages > 0 ? unreadMessages : null,
+      },
       { to: '/account/security', label: 'Security' },
     ],
   });
@@ -58,6 +67,9 @@ export function buildSidebarGroups(role, permissions, { tlDashboardAccess = fals
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
+    if (hasPermission(permissions, 'messages:send', role)) {
+      adminItems.push({ to: '/admin/messages', label: 'Compose Message' });
+    }
     if (hasPermission(permissions, 'notifications:signup_recipient', role)) {
       adminItems.push({ to: '/admin/notifications', label: 'Notification Settings' });
     }
@@ -91,9 +103,18 @@ function isItemActive(item, pathname, search) {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export default function SidebarNav({ role, permissions, tlDashboardAccess, onNavigate }) {
+export default function SidebarNav({
+  role,
+  permissions,
+  tlDashboardAccess,
+  unreadMessages = 0,
+  onNavigate,
+}) {
   const location = useLocation();
-  const groups = buildSidebarGroups(role, permissions, { tlDashboardAccess });
+  const groups = buildSidebarGroups(role, permissions, {
+    tlDashboardAccess,
+    unreadMessages,
+  });
 
   return (
     <nav className="sidebar-nav" aria-label="Main">
@@ -111,7 +132,12 @@ export default function SidebarNav({ role, permissions, tlDashboardAccess, onNav
                     className={`sidebar-link${active ? ' sidebar-link-active' : ''}`}
                     onClick={onNavigate}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {item.badge != null && (
+                      <span className="sidebar-badge" aria-label={`${item.badge} unread`}>
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </NavLink>
                 </li>
               );

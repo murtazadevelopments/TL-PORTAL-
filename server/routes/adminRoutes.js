@@ -22,6 +22,10 @@ const {
 } = require('../controllers/notificationSettingsController');
 const { listLoginLogs } = require('../controllers/loginLogsController');
 const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsController');
+const {
+  listMessageRecipients,
+  sendAdminMessage,
+} = require('../controllers/messagesController');
 
 const router = express.Router();
 
@@ -114,5 +118,19 @@ router.delete(
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
+
+// Admin → employee messaging
+router.get(
+  '/messages/recipients',
+  requireRole('admin'),
+  requirePermission('messages:send'),
+  listMessageRecipients
+);
+router.post(
+  '/messages',
+  requireRole('admin'),
+  requirePermission('messages:send'),
+  sendAdminMessage
+);
 
 module.exports = router;

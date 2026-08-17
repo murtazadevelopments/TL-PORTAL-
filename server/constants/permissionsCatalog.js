@@ -38,6 +38,11 @@ const PERMISSIONS_CATALOG = [
     label: 'Unlock locked accounts',
     description: 'View and unlock accounts locked after too many failed login attempts',
   },
+  {
+    key: 'messages:send',
+    label: 'Send messages',
+    description: 'Compose portal and/or email messages to employees from the admin panel',
+  },
 ];
 
 const PERMISSION_KEYS = new Set(PERMISSIONS_CATALOG.map((p) => p.key));

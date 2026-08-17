@@ -20,6 +20,8 @@ import NotificationSettingsPage from './pages/admin/NotificationSettingsPage';
 import LoginLogs from './pages/LoginLogs';
 import SettingsPage from './pages/SettingsPage';
 import TeamLeaderDashboard from './pages/team-leader/TeamLeaderDashboard';
+import MessagesInbox from './pages/account/MessagesInbox';
+import ComposeMessagePage from './pages/admin/ComposeMessagePage';
 import './App.css';
 
 function App() {
@@ -44,9 +46,11 @@ function App() {
             <Route path="/team-leader" element={<TeamLeaderDashboard />} />
             <Route path="/account" element={<AccountProfile />} />
             <Route path="/account/documents" element={<AccountDocuments />} />
+            <Route path="/account/messages" element={<MessagesInbox />} />
             <Route path="/account/security" element={<AccountSecurity />} />
             <Route path="/admin" element={<Navigate to="/admin/employees" replace />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/messages" element={<ComposeMessagePage />} />
             <Route path="/admin/locked" element={<LockedAccountsPage />} />
             <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />

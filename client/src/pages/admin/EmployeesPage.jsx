@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
+import ComposeMessageModal from '../../components/ComposeMessageModal';
 import './AdminDashboard.css';
 
 const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
@@ -103,6 +104,9 @@ function EmployeesPage() {
   const [teamError, setTeamError] = useState('');
 
   const [unlockingId, setUnlockingId] = useState(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeRecipient, setComposeRecipient] = useState(null);
+  const [composeToast, setComposeToast] = useState('');
 
   useEffect(() => {
     const s = searchParams.get('status');
@@ -206,6 +210,7 @@ function EmployeesPage() {
   const canViewDocuments = hasPermission(permissions, 'documents:view', role);
   const canCreateTeams = hasPermission(permissions, 'teams:create', role);
   const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
+  const canSendMessages = hasPermission(permissions, 'messages:send', role);
 
   async function loadTeams() {
     try {
@@ -677,6 +682,7 @@ function EmployeesPage() {
                   <th>Branch</th>
                   <th>Shift</th>
                   <th>Status</th>
+                  {canSendMessages && <th>Message</th>}
                 </tr>
               </thead>
               <tbody>
@@ -760,6 +766,37 @@ function EmployeesPage() {
                           </button>
                         )}
                       </td>
+                      {canSendMessages && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost msg-row-btn"
+                            title={`Message ${fullName(row)}`}
+                            aria-label={`Message ${fullName(row)}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setComposeRecipient(row);
+                              setComposeOpen(true);
+                              setComposeToast('');
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M4 6h16v10H7l-3 3V6z"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -768,6 +805,21 @@ function EmployeesPage() {
           )}
         </div>
       </div>
+
+      {composeToast && <p className="success">{composeToast}</p>}
+
+      <ComposeMessageModal
+        open={composeOpen}
+        initialRecipient={composeRecipient}
+        onClose={() => {
+          setComposeOpen(false);
+          setComposeRecipient(null);
+        }}
+        onSuccess={(payload) => {
+          const warn = payload?.emailError ? ` — ${payload.emailError}` : '';
+          setComposeToast((payload?.message || 'Message sent.') + warn);
+        }}
+      />
 
       {selectedId && (
         <div className="modal-backdrop" onClick={closeDetail}>
@@ -1209,6 +1261,19 @@ function EmployeesPage() {
                     <button type="button" className="btn btn-ghost" onClick={closeDetail}>
                       Close
                     </button>
+                    {canSendMessages && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setComposeRecipient(detail);
+                          setComposeOpen(true);
+                          setComposeToast('');
+                        }}
+                      >
+                        Message
+                      </button>
+                    )}
                     {canUnlockAccounts && isAccountLocked(detail) && (
                       <button
                         type="button"

@@ -622,3 +622,11 @@
     max-width: 100%;
   }
 }
+
+.msg-row-btn {
+  padding: 0.35rem 0.45rem !important;
+  min-width: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
