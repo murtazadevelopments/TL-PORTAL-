@@ -82,7 +82,7 @@ export function buildSidebarGroups(
   groups.push({
     id: 'settings',
     label: 'Settings',
-    items: [{ to: '/settings', label: 'Install App' }],
+    items: [{ to: '/settings', label: 'Install & Notifications' }],
   });
 
   return groups;

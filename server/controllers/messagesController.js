@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { sendEmailSafe } = require('../services/email');
 const { writeAuditLog } = require('../utils/auditLog');
+const { sendPushToUserSafe } = require('../services/pushNotifications');
 
 const DELIVERY = new Set(['portal', 'email', 'both']);
 const AUDIENCE = new Set(['user', 'all', 'team', 'branch']);
@@ -193,7 +194,24 @@ async function deliverOneMessage({
     }
   }
 
+  // Mobile PWA push (best-effort) — only reaches users who opted in on an installed app
+  await notifyRecipientPush(recipient, subject, messageBody, message.id);
+
   return { message, emailSent, emailError };
+}
+
+async function notifyRecipientPush(recipient, subject, messageBody, messageId) {
+  if (!recipient?.id) return;
+  const preview = String(messageBody || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  await sendPushToUserSafe(recipient.id, {
+    title: subject || 'New portal message',
+    body: preview || 'You have a new message in Textured Lab Portal.',
+    url: `/account/messages`,
+    tag: `message-${messageId || recipient.id}`,
+  });
 }
 
 /**

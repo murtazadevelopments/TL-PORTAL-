@@ -209,6 +209,7 @@ try {
   app.use('/api/documents', require('./routes/documentsRoutes'));
   app.use('/api/tl-dashboard', require('./routes/tlDashboardRoutes'));
   app.use('/api/messages', require('./routes/messagesRoutes'));
+  app.use('/api/push', require('./routes/pushRoutes'));
 } catch (err) {
   apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);
