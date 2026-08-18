@@ -24,6 +24,11 @@ function getPublicKey(req, res) {
  * GET /api/push/status
  */
 async function getStatus(req, res) {
+  const configured = isPushConfigured();
+  let enabled = false;
+  let subscriptionCount = 0;
+  let schemaReady = true;
+
   try {
     const { rows } = await pool.query(
       `
@@ -34,19 +39,35 @@ async function getStatus(req, res) {
       `,
       [req.user.id]
     );
+    enabled = Boolean(rows[0]?.enabled);
+  } catch (err) {
+    schemaReady = false;
+    console.error('push getStatus prefs error:', err.message || err);
+  }
+
+  try {
     const { rows: subs } = await pool.query(
       `SELECT COUNT(*)::int AS count FROM push_subscriptions WHERE user_id = $1`,
       [req.user.id]
     );
-    return res.json({
-      configured: isPushConfigured(),
-      enabled: Boolean(rows[0]?.enabled),
-      subscriptionCount: subs[0]?.count || 0,
-    });
+    subscriptionCount = subs[0]?.count || 0;
   } catch (err) {
-    console.error('push getStatus error:', err);
-    return res.status(500).json({ message: 'Server error loading push status.' });
+    schemaReady = false;
+    console.error('push getStatus subs error:', err.message || err);
   }
+
+  return res.json({
+    configured: configured && schemaReady,
+    enabled,
+    subscriptionCount,
+    vapidReady: configured,
+    schemaReady,
+    message: !configured
+      ? 'Push is not configured on the server yet (missing VAPID keys or web-push package).'
+      : !schemaReady
+        ? 'Push database tables are missing. Run migration 011_push_notifications.sql.'
+        : undefined,
+  });
 }
 
 /**
