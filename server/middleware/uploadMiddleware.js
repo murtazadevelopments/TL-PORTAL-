@@ -102,5 +102,40 @@ function documentUpload(req, res, next) {
   });
 }
 
-module.exports = { signupUpload, profilePictureUpload, documentUpload, extFromFile };
+function employmentFormUpload(req, res, next) {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 8 * 1024 * 1024, files: 10 },
+    fileFilter(req, file, cb) {
+      if (!String(file.mimetype || '').toLowerCase().startsWith('image/')) {
+        return cb(new Error('Employment form pages must be images.'));
+      }
+      return cb(null, true);
+    },
+  });
+
+  upload.array('images', 10)(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Each image must be 8MB or smaller.' });
+      }
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({ message: 'Maximum 10 images allowed.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+
+    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+  });
+}
+
+module.exports = {
+  signupUpload,
+  profilePictureUpload,
+  documentUpload,
+  employmentFormUpload,
+  extFromFile,
+};
 

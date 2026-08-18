@@ -321,6 +321,25 @@
   animation: fade-in 0.18s ease;
 }
 
+/* Nested dialogs (e.g. employment form over employee detail) */
+.modal-backdrop.modal-backdrop-stack {
+  z-index: 80;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+
+.modal-panel.modal-panel-center {
+  width: min(560px, calc(100vw - 2rem));
+  height: auto;
+  max-height: min(90vh, 760px);
+  border-left: none;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  animation: fade-in 0.18s ease;
+}
+
 .modal-panel {
   width: min(520px, 100%);
   height: 100%;
@@ -574,11 +593,25 @@
     align-items: stretch;
   }
 
+  .modal-backdrop.modal-backdrop-stack {
+    z-index: 90;
+    align-items: center;
+    justify-content: center;
+  }
+
   .modal-panel {
     width: 100%;
     max-width: 100%;
     border-left: 0;
     padding: 1rem 0.9rem 1.75rem;
+  }
+
+  .modal-panel.modal-panel-center {
+    width: min(560px, calc(100vw - 2rem));
+    height: auto;
+    max-height: 90vh;
+    border: 1px solid var(--border);
+    border-radius: 14px;
   }
 
   .modal-actions {

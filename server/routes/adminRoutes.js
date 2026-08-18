@@ -26,6 +26,8 @@ const {
   listMessageRecipients,
   sendAdminMessage,
 } = require('../controllers/messagesController');
+const { uploadEmploymentForm } = require('../controllers/employmentFormController');
+const { employmentFormUpload } = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 
@@ -131,6 +133,15 @@ router.post(
   requireRole('admin'),
   requirePermission('messages:send'),
   sendAdminMessage
+);
+
+// Admin-only employment form (scanned pages → single PDF)
+router.post(
+  '/employees/:employeeId/employment-form',
+  requireRole('admin'),
+  requirePermission('documents:employment_form'),
+  employmentFormUpload,
+  uploadEmploymentForm
 );
 
 module.exports = router;

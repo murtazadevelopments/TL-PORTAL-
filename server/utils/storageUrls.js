@@ -8,6 +8,7 @@ const DOC_FIELD_MAP = [
   ['cnic_front_url', 'cnic_front'],
   ['cnic_back_url', 'cnic_back'],
   ['cv_url', 'cv'],
+  ['employment_form_url', 'employment_form'],
 ];
 
 function documentApiPath(userId, docType) {

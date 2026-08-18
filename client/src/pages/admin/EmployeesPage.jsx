@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
+import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import './AdminDashboard.css';
 
 const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
@@ -107,6 +108,7 @@ function EmployeesPage() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeRecipient, setComposeRecipient] = useState(null);
   const [composeToast, setComposeToast] = useState('');
+  const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
 
   useEffect(() => {
     const s = searchParams.get('status');
@@ -208,6 +210,11 @@ function EmployeesPage() {
     role
   );
   const canViewDocuments = hasPermission(permissions, 'documents:view', role);
+  const canUploadEmploymentForm = hasPermission(
+    permissions,
+    'documents:employment_form',
+    role
+  );
   const canCreateTeams = hasPermission(permissions, 'teams:create', role);
   const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
   const canSendMessages = hasPermission(permissions, 'messages:send', role);
@@ -986,38 +993,24 @@ function EmployeesPage() {
                 ) : (
                   <>
                 <div className="doc-row">
-                  <a
-                    className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_front_url, detail.updated_at || detail.id) || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {detail.cnic_front_url ? (
-                      <img
-                        src={withAuthDocumentUrl(detail.cnic_front_url, detail.updated_at || detail.id)}
-                        alt="CNIC front"
-                      />
-                    ) : (
-                      <span>No CNIC front</span>
-                    )}
+                  <div className="doc-preview">
+                    <span>
+                      {detail.cnic_front_on_file ? 'On file' : 'No CNIC front'}
+                    </span>
                     <span>CNIC front</span>
-                  </a>
-                  <a
-                    className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_back_url, detail.updated_at || detail.id) || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {detail.cnic_back_url ? (
-                      <img
-                        src={withAuthDocumentUrl(detail.cnic_back_url, detail.updated_at || detail.id)}
-                        alt="CNIC back"
-                      />
-                    ) : (
-                      <span>No CNIC back</span>
-                    )}
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Not downloadable
+                    </span>
+                  </div>
+                  <div className="doc-preview">
+                    <span>
+                      {detail.cnic_back_on_file ? 'On file' : 'No CNIC back'}
+                    </span>
                     <span>CNIC back</span>
-                  </a>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Not downloadable
+                    </span>
+                  </div>
                 </div>
                 {detail.cv_url ? (
                   <a
@@ -1030,6 +1023,60 @@ function EmployeesPage() {
                   </a>
                 ) : (
                   <p className="muted">No CV uploaded.</p>
+                )}
+                {detail.employment_form_url ? (
+                  <a
+                    className="cv-link"
+                    href={withAuthDocumentUrl(
+                      detail.employment_form_url,
+                      detail.updated_at || detail.id
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download Employment Form (PDF)
+                  </a>
+                ) : (
+                  <p className="muted">No employment form uploaded.</p>
+                )}
+                {canUploadEmploymentForm && (
+                <div
+                  style={{
+                    marginTop: '0.75rem',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={Boolean(detail.employment_form_url)}
+                    title={
+                      detail.employment_form_url
+                        ? 'A form is already on file. Use Change to replace it.'
+                        : undefined
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEmploymentFormOpen(true);
+                    }}
+                  >
+                    Upload Employment Form
+                  </button>
+                  {detail.employment_form_url && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEmploymentFormOpen(true);
+                      }}
+                    >
+                      Change Employment Form
+                    </button>
+                  )}
+                </div>
                 )}
                   </>
                 )}
@@ -1328,6 +1375,16 @@ function EmployeesPage() {
           </aside>
         </div>
       )}
+
+      <UploadEmploymentFormModal
+        open={employmentFormOpen}
+        employee={detail}
+        onClose={() => setEmploymentFormOpen(false)}
+        onSuccess={() => {
+          setComposeToast('Employment form PDF saved.');
+          if (detail?.id) openDetail(detail.id);
+        }}
+      />
     </>
   );
 }

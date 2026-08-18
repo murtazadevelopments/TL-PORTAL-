@@ -48,6 +48,12 @@ const DOC_TYPES = {
     defaultExt: '.pdf',
     fileStems: ['cv'],
   },
+  employment_form: {
+    column: 'employment_form_url',
+    image: false,
+    defaultExt: '.pdf',
+    fileStems: ['employment_form'],
+  },
 };
 
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];

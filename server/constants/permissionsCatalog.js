@@ -21,7 +21,13 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'documents:view',
     label: 'View documents',
-    description: 'Open CNIC images and CV downloads on employee profiles',
+    description: 'View/download CV and employment forms on employee profiles',
+  },
+  {
+    key: 'documents:employment_form',
+    label: 'Upload employment forms',
+    description:
+      'Scan and upload employment form PDFs onto employee profiles (assign only to the person who handles this)',
   },
   {
     key: 'notifications:signup_recipient',

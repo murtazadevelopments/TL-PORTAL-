@@ -18,7 +18,7 @@ const LIST_COLUMNS = `
 
 const DETAIL_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
-  address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
+  address, cnic_number, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
   education, last_job_status, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
@@ -117,7 +117,14 @@ async function getEmployeeById(req, res) {
       employee.cnic_front_url = null;
       employee.cnic_back_url = null;
       employee.cv_url = null;
+      employee.employment_form_url = null;
       employee.documents_redacted = true;
+    } else {
+      // CNIC streaming is blocked for all roles; expose presence only for admin UI.
+      employee.cnic_front_on_file = Boolean(employee.cnic_front_url);
+      employee.cnic_back_on_file = Boolean(employee.cnic_back_url);
+      employee.cnic_front_url = null;
+      employee.cnic_back_url = null;
     }
 
     return res.json(employee);
@@ -315,7 +322,7 @@ async function purgeEmployee(req, res) {
 
     const { rows } = await pool.query(
       `
-        SELECT id, role, username, name, cnic_front_url, cnic_back_url, cv_url, profile_picture_url
+        SELECT id, role, username, name, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url
         FROM users WHERE id = $1 LIMIT 1
       `,
       [id]
@@ -339,6 +346,7 @@ async function purgeEmployee(req, res) {
       deleteRelativeFile(storagePathFromUrl(employee.cnic_front_url)),
       deleteRelativeFile(storagePathFromUrl(employee.cnic_back_url)),
       deleteRelativeFile(storagePathFromUrl(employee.cv_url)),
+      deleteRelativeFile(storagePathFromUrl(employee.employment_form_url)),
       deleteRelativeFile(storagePathFromUrl(employee.profile_picture_url)),
     ]);
 

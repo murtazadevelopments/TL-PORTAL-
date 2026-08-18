@@ -2,11 +2,11 @@ const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
-const { loadAdminPermissions } = require('../middleware/permissions');
 const {
   DOC_TYPES,
   resolveDocumentFile,
 } = require('../services/localStorage');
+const { canDownloadDocument } = require('../utils/documentAccess');
 
 /**
  * Auth for document streaming: Bearer header OR ?token= query (for <img>/<a>).
@@ -32,36 +32,9 @@ function documentAuth(req, res, next) {
   }
 }
 
-async function canAccessDocuments(requester, targetUserId, docType) {
-  const role = String(requester.role || '').toLowerCase();
-  const isSelf = String(requester.id) === String(targetUserId);
-
-  // Profile photos: any authenticated admin/ceo can view list thumbs; employees only own
-  if (docType === 'profile') {
-    if (isSelf) return true;
-    if (role === 'ceo' || role === 'admin') return true;
-    return false;
-  }
-
-  // Sensitive docs: self, or CEO, or admin with documents:view
-  if (isSelf) return true;
-  if (role === 'ceo') return true;
-  if (role === 'admin') {
-    let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
-    if (!perms.length) {
-      perms = await loadAdminPermissions(requester.id);
-    }
-    return perms.includes('documents:view') || perms.includes('*');
-  }
-  return false;
-}
-
 /**
  * GET /api/documents/:userId/:docType
- * docType: profile | cnic_front | cnic_back | cv
- *
- * URL uses logical types (profile), not exact filenames. Files on disk may be
- * profile_picture.jpeg, profile.jpg, cnic_front.png, etc.
+ * docType: profile | cnic_front | cnic_back | cv | employment_form
  */
 async function streamDocument(req, res) {
   try {
@@ -73,9 +46,13 @@ async function streamDocument(req, res) {
       return res.status(400).json({ message: 'Invalid document request.' });
     }
 
-    const allowed = await canAccessDocuments(req.user, userId, docType);
+    const allowed = await canDownloadDocument(docType, req.user, {
+      targetUserId: userId,
+    });
     if (!allowed) {
-      return res.status(403).json({ message: 'You do not have permission to view this document.' });
+      return res.status(403).json({
+        message: 'You do not have permission to view this document.',
+      });
     }
 
     const { rows } = await pool.query(
