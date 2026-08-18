@@ -1,6 +1,7 @@
 const path = require('path');
 // Always load server/.env relative to this file (cwd may differ on Hostinger)
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+// override: true so newly added keys (e.g. VAPID_*) win over stale process/injected env
+require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 
 const express = require('express');
 const cors = require('cors');

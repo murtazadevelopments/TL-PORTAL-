@@ -1,7 +1,18 @@
-const webpush = require('web-push');
 const pool = require('../config/db');
 
+let webpush = null;
 let configured = false;
+
+function loadWebPush() {
+  if (webpush) return webpush;
+  try {
+    webpush = require('web-push');
+    return webpush;
+  } catch (err) {
+    console.error('[push] web-push package missing — run npm install in server/', err.message);
+    return null;
+  }
+}
 
 function configureVapid() {
   const publicKey = String(process.env.VAPID_PUBLIC_KEY || '').trim();
@@ -15,6 +26,12 @@ function configureVapid() {
     return false;
   }
 
+  const wp = loadWebPush();
+  if (!wp) {
+    configured = false;
+    return false;
+  }
+
   // Subject must be mailto: or https:
   let contact = subject;
   if (!/^mailto:/i.test(contact) && !/^https?:/i.test(contact)) {
@@ -22,7 +39,7 @@ function configureVapid() {
     contact = emailMatch ? `mailto:${emailMatch[0]}` : 'mailto:noreply@texturedlab.org';
   }
 
-  webpush.setVapidDetails(contact, publicKey, privateKey);
+  wp.setVapidDetails(contact, publicKey, privateKey);
   configured = true;
   return true;
 }
@@ -74,10 +91,13 @@ async function sendPushToUser(userId, payload) {
     tag: payload.tag || 'portal-update',
   });
 
+  const wp = loadWebPush();
+  if (!wp) return { sent: 0, skipped: true };
+
   let sent = 0;
   for (const sub of subs) {
     try {
-      await webpush.sendNotification(
+      await wp.sendNotification(
         {
           endpoint: sub.endpoint,
           keys: { p256dh: sub.p256dh, auth: sub.auth },
