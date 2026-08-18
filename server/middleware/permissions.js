@@ -65,16 +65,32 @@ function requireRole(...allowedRoles) {
 }
 
 async function loadAdminPermissions(userId) {
+  const access = await loadAdminPermissionAccess(userId);
+  return access.permissions;
+}
+
+/**
+ * @returns {Promise<{ permissions: string[], scopes: Record<string, object> }>}
+ */
+async function loadAdminPermissionAccess(userId) {
   const { rows } = await pool.query(
     `
-      SELECT permission_key
+      SELECT permission_key, scope
       FROM admin_permissions
       WHERE user_id = $1
       ORDER BY permission_key ASC
     `,
     [userId]
   );
-  return rows.map((r) => r.permission_key);
+
+  const { normalizeScope } = require('../utils/employeeScope');
+  const permissions = [];
+  const scopes = {};
+  for (const row of rows) {
+    permissions.push(row.permission_key);
+    scopes[row.permission_key] = normalizeScope(row.scope);
+  }
+  return { permissions, scopes };
 }
 
 /**
@@ -111,6 +127,7 @@ function requirePermission(...requiredKeys) {
 
       if (isCeoRole(role)) {
         req.user.permissions = ['*'];
+        req.user.permissionScopes = {};
         return next();
       }
 
@@ -118,14 +135,15 @@ function requirePermission(...requiredKeys) {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const permissions = await loadAdminPermissions(req.user.id);
-      req.user.permissions = permissions;
+      const access = await loadAdminPermissionAccess(req.user.id);
+      req.user.permissions = access.permissions;
+      req.user.permissionScopes = access.scopes;
 
       if (needed.length === 0) {
         return next();
       }
 
-      const missing = needed.filter((key) => !permissions.includes(key));
+      const missing = needed.filter((key) => !access.permissions.includes(key));
       if (missing.length > 0) {
         return res.status(403).json({
           error: 'Forbidden: insufficient permissions',
@@ -203,6 +221,7 @@ module.exports = {
   requirePermission,
   requireCeoOrAnyPermission,
   loadAdminPermissions,
+  loadAdminPermissionAccess,
   normalizeRole,
   isCeoRole,
 };

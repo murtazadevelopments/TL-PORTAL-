@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import './AdminDashboard.css';
 
-const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
 const SHIFT_OPTIONS = ['Evening', 'Night'];
 
 const ADMIN_FIELD_LABELS = {

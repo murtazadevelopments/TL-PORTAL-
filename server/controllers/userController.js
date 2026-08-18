@@ -5,7 +5,10 @@ const {
   notifyAdminsEmployeeSelfUpdate,
   summarizeChanges,
 } = require('../services/notifications');
-const { loadAdminPermissions } = require('../middleware/permissions');
+const {
+  loadAdminPermissions,
+  loadAdminPermissionAccess,
+} = require('../middleware/permissions');
 const {
   hasTeamLeaderDashboardAccess,
 } = require('../utils/tlAccess');
@@ -92,6 +95,7 @@ async function getMe(req, res) {
 
     if (role === 'ceo') {
       user.permissions = ['*'];
+      user.scopes = {};
       user.tl_dashboard_access = true;
       user.t_pin_configured = false;
       try {
@@ -104,7 +108,9 @@ async function getMe(req, res) {
         /* migration 009 not applied yet */
       }
     } else if (role === 'admin') {
-      user.permissions = await loadAdminPermissions(user.id);
+      const access = await loadAdminPermissionAccess(user.id);
+      user.permissions = access.permissions;
+      user.scopes = access.scopes;
       user.t_pin_configured = false;
       user.tl_dashboard_access = false;
       try {
@@ -126,10 +132,12 @@ async function getMe(req, res) {
       }
     } else if (role === 'team_leader') {
       user.permissions = [];
+      user.scopes = {};
       user.t_pin_configured = false;
       user.tl_dashboard_access = true;
     } else {
       user.permissions = [];
+      user.scopes = {};
       user.t_pin_configured = false;
       user.tl_dashboard_access = false;
       try {

@@ -3,6 +3,12 @@ const {
   PERMISSIONS_CATALOG,
   normalizePermissionKeys,
 } = require('../constants/permissionsCatalog');
+const {
+  normalizeScope,
+  describeScope,
+  isScopedPermissionKey,
+  BRANCH_OPTIONS,
+} = require('../utils/employeeScope');
 
 const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee', 'team_leader']);
 
@@ -39,16 +45,29 @@ async function findTargetUser({ userId, employeeId }) {
   return null;
 }
 
-async function replaceAdminPermissions(client, userId, permissionKeys, grantedBy) {
+/**
+ * @param {string[]} permissionKeys
+ * @param {Record<string, object>} [scopesByKey]
+ */
+function buildPermissionRows(permissionKeys, scopesByKey = {}) {
+  return permissionKeys.map((key) => ({
+    key,
+    scope: isScopedPermissionKey(key)
+      ? normalizeScope(scopesByKey[key])
+      : { type: 'all' },
+  }));
+}
+
+async function replaceAdminPermissions(client, userId, permissionRows, grantedBy) {
   await client.query(`DELETE FROM admin_permissions WHERE user_id = $1`, [userId]);
 
-  for (const key of permissionKeys) {
+  for (const row of permissionRows) {
     await client.query(
       `
-        INSERT INTO admin_permissions (user_id, permission_key, granted_by)
-        VALUES ($1, $2, $3)
+        INSERT INTO admin_permissions (user_id, permission_key, granted_by, scope)
+        VALUES ($1, $2, $3, $4::jsonb)
       `,
-      [userId, key, grantedBy]
+      [userId, row.key, grantedBy, JSON.stringify(row.scope || { type: 'all' })]
     );
   }
 }
@@ -72,9 +91,9 @@ async function getPermissionsForUser(userId) {
  *   user_id | userId | employee_id | employeeId,
  *   role: 'admin' | 'employee' | 'ceo',
  *   permissions?: string[],
+ *   permission_scopes?: { [permission_key]: { type, values? } },
  *   reason?: string
  * }
- * CEO only (via requireRole('ceo') on the route).
  */
 async function assignRole(req, res) {
   const client = await pool.connect();
@@ -86,6 +105,7 @@ async function assignRole(req, res) {
       .trim()
       .toLowerCase();
     const reasonRaw = body.reason != null ? String(body.reason).trim() : '';
+    const scopesByKey = body.permission_scopes || body.permissionScopes || {};
 
     if (!ALLOWED_ROLES.has(role)) {
       return res.status(400).json({
@@ -114,7 +134,6 @@ async function assignRole(req, res) {
       });
     }
 
-    // Protect other CEO accounts from demotion / permission edits by another CEO
     if (
       target.role === 'ceo' &&
       String(target.id) !== String(req.user.id) &&
@@ -126,6 +145,7 @@ async function assignRole(req, res) {
     }
 
     let permissionKeys = [];
+    let permissionRows = [];
     if (role === 'admin') {
       permissionKeys = normalizePermissionKeys(body.permissions);
       if (permissionKeys.length === 0) {
@@ -133,6 +153,18 @@ async function assignRole(req, res) {
           message: 'Select at least one permission scope when assigning the admin role.',
         });
       }
+
+      for (const key of permissionKeys) {
+        if (!isScopedPermissionKey(key)) continue;
+        const scope = normalizeScope(scopesByKey[key]);
+        if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
+          return res.status(400).json({
+            message: `Select at least one ${scope.type || 'value'} for ${key}, or choose All employees.`,
+          });
+        }
+      }
+
+      permissionRows = buildPermissionRows(permissionKeys, scopesByKey);
     }
 
     await client.query('BEGIN');
@@ -148,12 +180,16 @@ async function assignRole(req, res) {
     );
 
     const updated = rows[0];
-    await replaceAdminPermissions(client, updated.id, permissionKeys, req.user.id);
+    await replaceAdminPermissions(client, updated.id, permissionRows, req.user.id);
 
+    const scopeParts = permissionRows
+      .filter((r) => isScopedPermissionKey(r.key))
+      .map((r) => `${r.key} (${describeScope(r.scope)})`);
     const auditReason =
       reasonRaw ||
       `Assigned role '${role}'` +
-        (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '');
+        (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '') +
+        (scopeParts.length ? `; scopes: ${scopeParts.join('; ')}` : '');
 
     await client.query(
       `
@@ -167,11 +203,17 @@ async function assignRole(req, res) {
 
     await client.query('COMMIT');
 
+    const scopesOut = {};
+    for (const row of permissionRows) {
+      scopesOut[row.key] = row.scope;
+    }
+
     return res.json({
       message: `Role assigned successfully to ${updated.name || updated.username}.`,
       user: {
         ...updated,
         permissions: permissionKeys,
+        scopes: scopesOut,
       },
     });
   } catch (err) {
@@ -191,7 +233,10 @@ async function assignRole(req, res) {
  * GET /api/admin/permissions-catalog
  */
 function getPermissionsCatalog(req, res) {
-  return res.json({ permissions: PERMISSIONS_CATALOG });
+  return res.json({
+    permissions: PERMISSIONS_CATALOG,
+    branch_options: BRANCH_OPTIONS,
+  });
 }
 
 /**
@@ -215,7 +260,7 @@ async function listEmployeesForRoleAssign(req, res) {
 }
 
 /**
- * GET /api/admin/role-holders — current admin/ceo accounts + permission keys
+ * GET /api/admin/role-holders — current admin/ceo accounts + permission keys + scopes
  */
 async function listRoleHolders(req, res) {
   try {
@@ -232,12 +277,18 @@ async function listRoleHolders(req, res) {
           u.designation,
           COALESCE(
             (
-              SELECT array_agg(ap.permission_key ORDER BY ap.permission_key)
+              SELECT jsonb_agg(
+                jsonb_build_object(
+                  'key', ap.permission_key,
+                  'scope', COALESCE(ap.scope, '{"type":"all"}'::jsonb)
+                )
+                ORDER BY ap.permission_key
+              )
               FROM admin_permissions ap
               WHERE ap.user_id = u.id
             ),
-            '{}'::text[]
-          ) AS permissions
+            '[]'::jsonb
+          ) AS permission_rows
         FROM users u
         WHERE u.is_active = true
           AND u.role IN ('admin', 'ceo')
@@ -249,10 +300,26 @@ async function listRoleHolders(req, res) {
     );
 
     return res.json({
-      holders: rows.map((r) => ({
-        ...r,
-        permissions: Array.isArray(r.permissions) ? r.permissions : [],
-      })),
+      holders: rows.map((r) => {
+        const permissionRows = Array.isArray(r.permission_rows) ? r.permission_rows : [];
+        const permissions = permissionRows.map((p) => p.key);
+        const scopes = {};
+        for (const p of permissionRows) {
+          scopes[p.key] = normalizeScope(p.scope);
+        }
+        return {
+          id: r.id,
+          employee_id: r.employee_id,
+          name: r.name,
+          username: r.username,
+          email: r.email,
+          role: r.role,
+          department: r.department,
+          designation: r.designation,
+          permissions,
+          scopes,
+        };
+      }),
     });
   } catch (err) {
     console.error('listRoleHolders error:', err);

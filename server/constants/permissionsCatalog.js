@@ -6,12 +6,14 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'employees:view',
     label: 'View employees',
-    description: 'List and open employee profiles in the admin panel',
+    description:
+      'List and open employee profiles (scope: all employees, a branch, or a team)',
   },
   {
     key: 'employees:edit',
     label: 'Edit employees',
-    description: 'Update employee ID, status, department, designation, branch, shift, salary, date of joining',
+    description:
+      'Update employee ID, status, department, designation, branch, shift, salary, date of joining (scope: all, branch, or team)',
   },
   {
     key: 'employees:deactivate',

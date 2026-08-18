@@ -7,7 +7,15 @@ const {
   summarizeChanges,
 } = require('../services/notifications');
 const { writeAuditLog } = require('../utils/auditLog');
-const { loadAdminPermissions } = require('../middleware/permissions');
+const {
+  loadAdminPermissions,
+  loadAdminPermissionAccess,
+} = require('../middleware/permissions');
+const {
+  employeeMatchesScope,
+  scopeWhereClause,
+  normalizeScope,
+} = require('../utils/employeeScope');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -64,15 +72,40 @@ async function withListUrls(row) {
   return withProfileApiUrl(row);
 }
 
+async function resolvePermissionScopes(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'ceo') return {};
+  if (req.user?.permissionScopes && typeof req.user.permissionScopes === 'object') {
+    return req.user.permissionScopes;
+  }
+  if (role === 'admin' && req.user?.id) {
+    const access = await loadAdminPermissionAccess(req.user.id);
+    req.user.permissions = access.permissions;
+    req.user.permissionScopes = access.scopes;
+    return access.scopes;
+  }
+  return {};
+}
+
+function scopeForPermission(scopes, key) {
+  return normalizeScope(scopes?.[key]);
+}
+
 async function listEmployees(req, res) {
   try {
+    const scopes = await resolvePermissionScopes(req);
+    const viewScope = scopeForPermission(scopes, 'employees:view');
+    const filter = scopeWhereClause(viewScope, 1);
+
     const { rows } = await pool.query(
       `
         SELECT ${LIST_COLUMNS}
         FROM users
         WHERE is_active = true
+        ${filter.sql}
         ORDER BY created_at DESC NULLS LAST, id DESC
-      `
+      `,
+      filter.params
     );
 
     const employees = await Promise.all(rows.map(withListUrls));
@@ -99,6 +132,14 @@ async function getEmployeeById(req, res) {
 
     if (!rows[0]) {
       return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const viewScope = scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(rows[0], viewScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned view scope.',
+      });
     }
 
     const employee = await attachReadableUrls(rows[0]);
@@ -172,6 +213,14 @@ async function updateEmployee(req, res) {
     }
 
     const before = existingRows[0];
+
+    const scopes = await resolvePermissionScopes(req);
+    const editScope = scopeForPermission(scopes, 'employees:edit');
+    if (!employeeMatchesScope(before, editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned edit scope.',
+      });
+    }
 
     const next = {
       employee_id: String(body.employee_id).trim(),
@@ -277,6 +326,30 @@ async function deactivateEmployee(req, res) {
 
     if (String(id) === String(req.user.id)) {
       return res.status(400).json({ message: 'You cannot deactivate your own account.' });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, branch, department, is_active
+        FROM users
+        WHERE id = $1 AND is_active = true
+        LIMIT 1
+      `,
+      [id]
+    );
+    if (!existingRows[0]) {
+      return res.status(404).json({ message: 'Employee not found or already deactivated.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    // Prefer edit scope if present, otherwise view scope
+    const editScope = scopes['employees:edit']
+      ? scopeForPermission(scopes, 'employees:edit')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(existingRows[0], editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
     }
 
     const { rows } = await pool.query(
