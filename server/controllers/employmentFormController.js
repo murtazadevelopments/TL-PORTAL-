@@ -10,6 +10,7 @@ const { documentApiPath } = require('../utils/storageUrls');
 
 const DOC_TYPE = 'employment_form';
 const MAX_IMAGES = 10;
+const MAX_PDF_BYTES = 8 * 1024 * 1024;
 
 function relativeStoragePath(value) {
   if (!value) return null;
@@ -21,7 +22,9 @@ function relativeStoragePath(value) {
 
 /**
  * POST /api/admin/employees/:employeeId/employment-form
- * multipart field: images (1–10 image files)
+ * multipart:
+ *   - pdf: single PDF file (direct upload), OR
+ *   - images: 1–10 image files (combined into one PDF)
  */
 async function uploadEmploymentForm(req, res) {
   try {
@@ -30,15 +33,40 @@ async function uploadEmploymentForm(req, res) {
       return res.status(400).json({ message: 'Invalid employee id.' });
     }
 
-    const files = Array.isArray(req.files) ? req.files : [];
-    if (!files.length) {
+    const pdfFile = Array.isArray(req.files?.pdf) ? req.files.pdf[0] : null;
+    const imageFiles = Array.isArray(req.files?.images) ? req.files.images : [];
+
+    if (pdfFile && imageFiles.length) {
       return res.status(400).json({
-        message: 'Add at least one image (field name: images).',
+        message: 'Send either a PDF or images, not both.',
       });
     }
-    if (files.length > MAX_IMAGES) {
+
+    let pdfBuffer = null;
+    let pageCount = 1;
+    let sourceLabel = '';
+
+    if (pdfFile) {
+      if (!pdfFile.buffer?.length) {
+        return res.status(400).json({ message: 'PDF file is empty.' });
+      }
+      if (pdfFile.buffer.length > MAX_PDF_BYTES) {
+        return res.status(400).json({ message: 'PDF must be 8MB or smaller.' });
+      }
+      pdfBuffer = pdfFile.buffer;
+      sourceLabel = 'direct PDF upload';
+    } else if (imageFiles.length) {
+      if (imageFiles.length > MAX_IMAGES) {
+        return res.status(400).json({
+          message: `Maximum ${MAX_IMAGES} images allowed.`,
+        });
+      }
+      pdfBuffer = await imagesToEmploymentFormPdf(imageFiles);
+      pageCount = imageFiles.length;
+      sourceLabel = `${imageFiles.length} page(s) from images`;
+    } else {
       return res.status(400).json({
-        message: `Maximum ${MAX_IMAGES} images allowed.`,
+        message: 'Upload a PDF (field: pdf) or at least one image (field: images).',
       });
     }
 
@@ -57,8 +85,6 @@ async function uploadEmploymentForm(req, res) {
     }
 
     const previousRelative = relativeStoragePath(employee.employment_form_url);
-
-    const pdfBuffer = await imagesToEmploymentFormPdf(files);
 
     const relativePath = await saveUserFile(employee, DOC_TYPE, {
       buffer: pdfBuffer,
@@ -87,7 +113,7 @@ async function uploadEmploymentForm(req, res) {
         action: 'employment_form_uploaded',
         targetTable: 'users',
         targetId: employeeId,
-        reason: `Employment form PDF (${files.length} page(s)) saved to ${folderForUserId(employeeId)}/`,
+        reason: `Employment form (${sourceLabel}) saved to ${folderForUserId(employeeId)}/`,
       });
     } catch (auditErr) {
       console.warn('employment form audit log failed:', auditErr.message);
@@ -102,7 +128,8 @@ async function uploadEmploymentForm(req, res) {
         document_type: DOC_TYPE,
         url: documentApiPath(row.id, DOC_TYPE),
         uploaded_at: row.updated_at,
-        page_count: files.length,
+        page_count: pageCount,
+        source: pdfFile ? 'pdf' : 'images',
       },
     });
   } catch (err) {

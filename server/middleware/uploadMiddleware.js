@@ -107,22 +107,36 @@ function employmentFormUpload(req, res, next) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 8 * 1024 * 1024, files: 10 },
     fileFilter(req, file, cb) {
-      if (!String(file.mimetype || '').toLowerCase().startsWith('image/')) {
-        return cb(new Error('Employment form pages must be images.'));
+      const field = String(file.fieldname || '');
+      const mime = String(file.mimetype || '').toLowerCase();
+      if (field === 'pdf') {
+        if (mime !== 'application/pdf') {
+          return cb(new Error('Employment form file must be a PDF.'));
+        }
+        return cb(null, true);
       }
-      return cb(null, true);
+      if (field === 'images') {
+        if (!mime.startsWith('image/')) {
+          return cb(new Error('Employment form pages must be images.'));
+        }
+        return cb(null, true);
+      }
+      return cb(new Error(`Unexpected file field: ${field}`));
     },
   });
 
-  upload.array('images', 10)(req, res, (err) => {
+  upload.fields([
+    { name: 'pdf', maxCount: 1 },
+    { name: 'images', maxCount: 10 },
+  ])(req, res, (err) => {
     if (!err) return next();
 
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each image must be 8MB or smaller.' });
+        return res.status(400).json({ message: 'Each file must be 8MB or smaller.' });
       }
       if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
-        return res.status(400).json({ message: 'Maximum 10 images allowed.' });
+        return res.status(400).json({ message: 'Maximum 10 images (or 1 PDF) allowed.' });
       }
       return res.status(400).json({ message: err.message });
     }

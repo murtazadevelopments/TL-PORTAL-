@@ -1114,7 +1114,7 @@ function EmployeesPage() {
                   </p>
                 )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
-                  <fieldset disabled={!canEditEmployees} style={{ border: 0, margin: 0, padding: 0 }}>
+                  <fieldset disabled={!canEditEmployees}>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID
                     <input
@@ -1141,93 +1141,95 @@ function EmployeesPage() {
                     )}
                   </label>
 
-                  <label className={fieldErrors.department ? 'has-error' : ''}>
-                    Department / Team
-                    <select
-                      name="department"
-                      value={editForm.department}
-                      onChange={handleEditChange}
-                    >
-                      <option value="">Select team</option>
-                      {teams.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name}
-                        </option>
-                      ))}
-                      {editForm.department &&
-                        !teams.some((t) => t.name === editForm.department) && (
-                          <option value={editForm.department}>
-                            {editForm.department} (legacy)
+                  <div className="field-with-action">
+                    <label className={fieldErrors.department ? 'has-error' : ''}>
+                      Department / Team
+                      <select
+                        name="department"
+                        value={editForm.department}
+                        onChange={handleEditChange}
+                      >
+                        <option value="">Select team</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.name}
                           </option>
-                        )}
-                    </select>
-                    {fieldErrors.department && (
-                      <span className="field-error">{fieldErrors.department}</span>
-                    )}
-                  </label>
+                        ))}
+                        {editForm.department &&
+                          !teams.some((t) => t.name === editForm.department) && (
+                            <option value={editForm.department}>
+                              {editForm.department} (legacy)
+                            </option>
+                          )}
+                      </select>
+                      {fieldErrors.department && (
+                        <span className="field-error">{fieldErrors.department}</span>
+                      )}
+                    </label>
 
-                  {canCreateTeams && canEditEmployees && (
-                    <div style={{ marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
-                      {!showAddTeam ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
-                          onClick={() => {
-                            setShowAddTeam(true);
-                            setTeamError('');
-                          }}
-                        >
-                          + Add New Team
-                        </button>
-                      ) : (
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.5rem',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <input
-                            type="text"
-                            value={newTeamName}
-                            onChange={(e) => setNewTeamName(e.target.value)}
-                            placeholder="New team name"
-                            style={{ flex: '1 1 160px', minWidth: 0 }}
-                            disabled={creatingTeam}
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ padding: '0.35rem 0.75rem' }}
-                            disabled={creatingTeam}
-                            onClick={handleCreateTeam}
-                          >
-                            {creatingTeam ? 'Adding…' : 'Add'}
-                          </button>
+                    {canCreateTeams && canEditEmployees && (
+                      <div>
+                        {!showAddTeam ? (
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            style={{ padding: '0.35rem 0.65rem' }}
-                            disabled={creatingTeam}
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
                             onClick={() => {
-                              setShowAddTeam(false);
-                              setNewTeamName('');
+                              setShowAddTeam(true);
                               setTeamError('');
                             }}
                           >
-                            Cancel
+                            + Add New Team
                           </button>
-                        </div>
-                      )}
-                      {teamError && (
-                        <p className="error" style={{ margin: '0.35rem 0 0' }}>
-                          {teamError}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={newTeamName}
+                              onChange={(e) => setNewTeamName(e.target.value)}
+                              placeholder="New team name"
+                              style={{ flex: '1 1 160px', minWidth: 0 }}
+                              disabled={creatingTeam}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ padding: '0.35rem 0.75rem' }}
+                              disabled={creatingTeam}
+                              onClick={handleCreateTeam}
+                            >
+                              {creatingTeam ? 'Adding…' : 'Add'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ padding: '0.35rem 0.65rem' }}
+                              disabled={creatingTeam}
+                              onClick={() => {
+                                setShowAddTeam(false);
+                                setNewTeamName('');
+                                setTeamError('');
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                        {teamError && (
+                          <p className="error" style={{ margin: '0.35rem 0 0' }}>
+                            {teamError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   <label className={fieldErrors.designation ? 'has-error' : ''}>
                     Designation
