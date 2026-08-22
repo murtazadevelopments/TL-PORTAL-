@@ -2,11 +2,11 @@ const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
-const { loadAdminPermissions } = require('../middleware/permissions');
 const {
   DOC_TYPES,
-  absoluteFromRelative,
+  resolveDocumentFile,
 } = require('../services/localStorage');
+const { canDownloadDocument } = require('../utils/documentAccess');
 
 /**
  * Auth for document streaming: Bearer header OR ?token= query (for <img>/<a>).
@@ -32,33 +32,9 @@ function documentAuth(req, res, next) {
   }
 }
 
-async function canAccessDocuments(requester, targetUserId, docType) {
-  const role = String(requester.role || '').toLowerCase();
-  const isSelf = String(requester.id) === String(targetUserId);
-
-  // Profile photos: any authenticated admin/ceo can view list thumbs; employees only own
-  if (docType === 'profile') {
-    if (isSelf) return true;
-    if (role === 'ceo' || role === 'admin') return true;
-    return false;
-  }
-
-  // Sensitive docs: self, or CEO, or admin with documents:view
-  if (isSelf) return true;
-  if (role === 'ceo') return true;
-  if (role === 'admin') {
-    let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
-    if (!perms.length) {
-      perms = await loadAdminPermissions(requester.id);
-    }
-    return perms.includes('documents:view') || perms.includes('*');
-  }
-  return false;
-}
-
 /**
  * GET /api/documents/:userId/:docType
- * docType: profile | cnic_front | cnic_back | cv
+ * docType: profile | cnic_front | cnic_back | cv | employment_form
  */
 async function streamDocument(req, res) {
   try {
@@ -70,14 +46,18 @@ async function streamDocument(req, res) {
       return res.status(400).json({ message: 'Invalid document request.' });
     }
 
-    const allowed = await canAccessDocuments(req.user, userId, docType);
+    const allowed = await canDownloadDocument(docType, req.user, {
+      targetUserId: userId,
+    });
     if (!allowed) {
-      return res.status(403).json({ message: 'You do not have permission to view this document.' });
+      return res.status(403).json({
+        message: 'You do not have permission to view this document.',
+      });
     }
 
     const { rows } = await pool.query(
       `
-        SELECT id, ${meta.column} AS file_path
+        SELECT id, username, employee_id, ${meta.column} AS file_path
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -86,24 +66,34 @@ async function streamDocument(req, res) {
     );
 
     const row = rows[0];
-    if (!row?.file_path) {
-      return res.status(404).json({ message: 'Document not found.' });
+    if (!row) {
+      return res.status(404).json({ message: 'User not found.' });
     }
 
     // Legacy remote URL — redirect (pre-migration safety)
-    if (/^https?:\/\//i.test(String(row.file_path))) {
+    if (row.file_path && /^https?:\/\//i.test(String(row.file_path))) {
       return res.redirect(row.file_path);
     }
 
     let abs;
     try {
-      abs = absoluteFromRelative(row.file_path);
-    } catch {
+      abs = resolveDocumentFile({
+        userId,
+        docType,
+        storedPath: row.file_path,
+        user: row,
+      });
+    } catch (err) {
+      console.error('resolveDocumentFile error:', err.message);
       return res.status(400).json({ message: 'Invalid stored file path.' });
     }
 
-    if (!abs || !fs.existsSync(abs)) {
-      return res.status(404).json({ message: 'File missing on server.' });
+    if (!abs) {
+      return res.status(404).json({
+        message: 'File missing on server.',
+        docType,
+        uploadHint: `Expected under private_uploads/id-${userId}/ (${meta.fileStems.join('|')}.*)`,
+      });
     }
 
     const ext = path.extname(abs).toLowerCase();
@@ -118,7 +108,8 @@ async function streamDocument(req, res) {
               ? 'image/gif'
               : 'image/jpeg';
 
-    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.setHeader('Content-Type', type);
     res.setHeader(
       'Content-Disposition',

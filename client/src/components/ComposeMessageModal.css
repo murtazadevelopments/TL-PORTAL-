@@ -1,0 +1,120 @@
+.compose-message-modal {
+  width: min(560px, calc(100vw - 2rem));
+  max-height: min(90vh, 760px);
+  overflow: auto;
+}
+
+.compose-message-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0 0 0.5rem;
+}
+
+.compose-step {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.compose-step legend {
+  padding: 0 0.35rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.compose-step label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.compose-step input,
+.compose-step select,
+.compose-step textarea,
+.compose-search {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.compose-search {
+  border-radius: 999px;
+}
+
+.compose-step input:focus,
+.compose-step select:focus,
+.compose-step textarea:focus,
+.compose-search:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
+.compose-step textarea {
+  resize: vertical;
+  min-height: 7rem;
+}
+
+.compose-locked {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.compose-delivery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.compose-audience {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.25rem;
+}
+
+.compose-audience-option,
+.compose-delivery-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  color: var(--muted);
+  background: rgba(5, 8, 16, 0.55);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.compose-audience-option input,
+.compose-delivery-option input {
+  accent-color: var(--green);
+}
+
+.compose-audience-option.is-active,
+.compose-delivery-option.is-active {
+  color: var(--text-h);
+  border-color: var(--border-strong);
+  background: rgba(61, 255, 122, 0.12);
+  box-shadow: 0 0 14px var(--glow-green);
+}
+
+.compose-preview {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-h);
+}

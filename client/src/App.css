@@ -278,6 +278,16 @@
   box-shadow: 0 0 28px var(--glow-purple);
 }
 
+.dashboard-profile-header {
+  justify-content: flex-start;
+  gap: 1.15rem;
+}
+
+.dashboard-profile-header .meta {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .avatar {
   width: 96px;
   height: 96px;

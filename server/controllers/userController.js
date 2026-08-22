@@ -5,7 +5,13 @@ const {
   notifyAdminsEmployeeSelfUpdate,
   summarizeChanges,
 } = require('../services/notifications');
-const { loadAdminPermissions } = require('../middleware/permissions');
+const {
+  loadAdminPermissions,
+  loadAdminPermissionAccess,
+} = require('../middleware/permissions');
+const {
+  hasTeamLeaderDashboardAccess,
+} = require('../utils/tlAccess');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -89,10 +95,68 @@ async function getMe(req, res) {
 
     if (role === 'ceo') {
       user.permissions = ['*'];
+      user.scopes = {};
+      user.tl_dashboard_access = true;
+      user.t_pin_configured = false;
+      try {
+        const { rows: pinRows } = await pool.query(
+          'SELECT t_pin_hash IS NOT NULL AS configured FROM users WHERE id = $1',
+          [user.id]
+        );
+        user.t_pin_configured = Boolean(pinRows[0]?.configured);
+      } catch {
+        /* migration 009 not applied yet */
+      }
     } else if (role === 'admin') {
-      user.permissions = await loadAdminPermissions(user.id);
+      const access = await loadAdminPermissionAccess(user.id);
+      user.permissions = access.permissions;
+      user.scopes = access.scopes;
+      user.t_pin_configured = false;
+      user.tl_dashboard_access = false;
+      try {
+        const { rows: asg } = await pool.query(
+          'SELECT 1 FROM tl_category_assignments WHERE user_id = $1 LIMIT 1',
+          [user.id]
+        );
+        user.tl_dashboard_access = hasTeamLeaderDashboardAccess({
+          role,
+          designation: user.designation,
+          assigned: Boolean(asg[0]),
+        });
+      } catch {
+        user.tl_dashboard_access = hasTeamLeaderDashboardAccess({
+          role,
+          designation: user.designation,
+          assigned: false,
+        });
+      }
+    } else if (role === 'team_leader') {
+      user.permissions = [];
+      user.scopes = {};
+      user.t_pin_configured = false;
+      user.tl_dashboard_access = true;
     } else {
       user.permissions = [];
+      user.scopes = {};
+      user.t_pin_configured = false;
+      user.tl_dashboard_access = false;
+      try {
+        const { rows: asg } = await pool.query(
+          'SELECT 1 FROM tl_category_assignments WHERE user_id = $1 LIMIT 1',
+          [user.id]
+        );
+        user.tl_dashboard_access = hasTeamLeaderDashboardAccess({
+          role,
+          designation: user.designation,
+          assigned: Boolean(asg[0]),
+        });
+      } catch {
+        user.tl_dashboard_access = hasTeamLeaderDashboardAccess({
+          role,
+          designation: user.designation,
+          assigned: false,
+        });
+      }
     }
 
     return res.json(user);

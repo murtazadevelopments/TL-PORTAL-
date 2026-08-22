@@ -1,12 +1,17 @@
 # Hostinger / Apache / LiteSpeed — SPA fallback for React Router
 # Must sit next to index.html in the site document root (public_html).
+#
+# IMPORTANT: If this domain should run the Node API + SPA together,
+# attach texturedlab.org to the Hostinger Node.js app (not static public_html).
+# While public_html is static-only, never rewrite /api/* to index.html —
+# that makes /api/health look like a "redirect" to the React home page.
 
 ErrorDocument 404 /index.html
 
 # Stop week-long CDN caching of the service worker and app shell.
 # (Do not apply long-cache rules to *.js here — that would override tl-sw.js.)
 <IfModule mod_headers.c>
-  <FilesMatch "^(index\.html|tl-sw\.js|sw\.js|registerSW\.js|manifest\.json|pwa-reset\.html|workbox-.*\.js)$">
+  <FilesMatch "^(index\.html|tl-sw\.js|tl-sw-.*\.js|sw\.js|registerSW\.js|manifest\.json|pwa-reset\.html|workbox-.*\.js)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
     Header set Pragma "no-cache"
     Header set CDN-Cache-Control "no-store"
@@ -21,7 +26,11 @@ ErrorDocument 404 /index.html
   RewriteRule ^index\.html$ - [L]
   RewriteRule ^pwa-reset\.html$ - [L]
 
+  # Do not SPA-fallback API paths (Node must own these when domain is on the app)
+  RewriteRule ^api(/|$) - [L]
+
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/api
   RewriteRule . /index.html [L]
 </IfModule>

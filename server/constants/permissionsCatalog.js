@@ -6,12 +6,14 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'employees:view',
     label: 'View employees',
-    description: 'List and open employee profiles in the admin panel',
+    description:
+      'List and open employee profiles (scope: all employees, a branch, or a team)',
   },
   {
     key: 'employees:edit',
     label: 'Edit employees',
-    description: 'Update employee ID, status, department, designation, branch, shift, salary, date of joining',
+    description:
+      'Update employee ID, status, department, designation, branch, shift, salary, date of joining (scope: all, branch, or team)',
   },
   {
     key: 'employees:deactivate',
@@ -21,7 +23,13 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'documents:view',
     label: 'View documents',
-    description: 'Open CNIC images and CV downloads on employee profiles',
+    description: 'View/download CV and employment forms on employee profiles',
+  },
+  {
+    key: 'documents:employment_form',
+    label: 'Upload employment forms',
+    description:
+      'Scan and upload employment form PDFs onto employee profiles (assign only to the person who handles this)',
   },
   {
     key: 'notifications:signup_recipient',
@@ -42,6 +50,11 @@ const PERMISSIONS_CATALOG = [
     key: 'accounts:unlock',
     label: 'Unlock locked accounts',
     description: 'View and unlock accounts locked after too many failed login attempts',
+  },
+  {
+    key: 'messages:send',
+    label: 'Send messages',
+    description: 'Compose portal and/or email messages to employees from the admin panel',
   },
 ];
 

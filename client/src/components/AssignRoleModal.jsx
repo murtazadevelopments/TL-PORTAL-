@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+<<<<<<< HEAD
 import { BRANCH_OPTIONS } from '../constants/branches';
+=======
+import {
+  BRANCH_OPTIONS,
+  describeEmployeeScope,
+  isScopedEmployeePermission,
+  normalizeEmployeeScope,
+} from '../utils/employeeScope';
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 import './AssignRoleModal.css';
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
+  { value: 'team_leader', label: 'Team Leader' },
   { value: 'employee', label: 'Employee' },
   { value: 'ceo', label: 'CEO' },
 ];
@@ -15,19 +25,25 @@ function employeeLabel(row) {
   return `${name} — ${empId}`;
 }
 
+function defaultScopesFromUser(user) {
+  const scopes = {};
+  const incoming = user?.scopes && typeof user.scopes === 'object' ? user.scopes : {};
+  for (const key of ['employees:view', 'employees:edit']) {
+    scopes[key] = normalizeEmployeeScope(incoming[key]);
+  }
+  return scopes;
+}
+
 /**
  * CEO-only modal to assign role + optional admin permission scopes.
- *
- * @param {{
- *   open: boolean,
- *   onClose: () => void,
- *   onSuccess: (payload: { message: string, user: object }) => void,
- *   initialUser?: object | null,
- * }} props
  */
 function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [employees, setEmployees] = useState([]);
   const [catalog, setCatalog] = useState([]);
+<<<<<<< HEAD
+=======
+  const [teams, setTeams] = useState([]);
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
   const [branchOptions, setBranchOptions] = useState(BRANCH_OPTIONS);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [metaError, setMetaError] = useState('');
@@ -36,7 +52,14 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('admin');
   const [permissions, setPermissions] = useState([]);
+<<<<<<< HEAD
   const [branch, setBranch] = useState('');
+=======
+  const [scopes, setScopes] = useState({
+    'employees:view': { type: 'all' },
+    'employees:edit': { type: 'all' },
+  });
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -50,20 +73,34 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setMetaError('');
       setFormError('');
       try {
+<<<<<<< HEAD
         const [listRes, catalogRes, branchesRes] = await Promise.all([
           api.get('/api/admin/employees-list'),
           api.get('/api/admin/permissions-catalog'),
           api.get('/api/admin/branches'),
+=======
+        const [listRes, catalogRes, teamsRes] = await Promise.all([
+          api.get('/api/admin/employees-list'),
+          api.get('/api/admin/permissions-catalog'),
+          api.get('/api/admin/teams'),
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
         ]);
         if (!active) return;
         setEmployees(Array.isArray(listRes.data?.employees) ? listRes.data.employees : []);
         setCatalog(
           Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []
         );
+<<<<<<< HEAD
         const fromApi = Array.isArray(branchesRes.data)
           ? branchesRes.data.map((b) => b.name).filter(Boolean)
           : [];
         setBranchOptions(fromApi.length ? fromApi : BRANCH_OPTIONS);
+=======
+        if (Array.isArray(catalogRes.data?.branch_options) && catalogRes.data.branch_options.length) {
+          setBranchOptions(catalogRes.data.branch_options);
+        }
+        setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       } catch (err) {
         if (!active) return;
         setMetaError(
@@ -90,7 +127,11 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setPermissions(
         Array.isArray(initialUser.permissions) ? [...initialUser.permissions] : []
       );
+<<<<<<< HEAD
       setBranch(initialUser.branch || '');
+=======
+      setScopes(defaultScopesFromUser(initialUser));
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       setReason('');
       setSearch('');
       setFormError('');
@@ -98,12 +139,27 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setUserId('');
       setRole('admin');
       setPermissions([]);
+<<<<<<< HEAD
       setBranch('');
+=======
+      setScopes({
+        'employees:view': { type: 'all' },
+        'employees:edit': { type: 'all' },
+      });
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       setReason('');
       setSearch('');
       setFormError('');
     }
   }, [open, initialUser]);
+
+  const teamNames = useMemo(
+    () =>
+      [...new Set(teams.map((t) => String(t.name || '').trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [teams]
+  );
 
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -120,9 +176,40 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   );
 
   function togglePermission(key) {
-    setPermissions((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
+    setPermissions((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+    if (isScopedEmployeePermission(key)) {
+      setScopes((prev) => ({
+        ...prev,
+        [key]: prev[key] || { type: 'all' },
+      }));
+    }
+  }
+
+  function setScopeType(key, type) {
+    setScopes((prev) => ({
+      ...prev,
+      [key]:
+        type === 'all'
+          ? { type: 'all' }
+          : { type, values: Array.isArray(prev[key]?.values) ? prev[key].values : [] },
+    }));
+  }
+
+  function toggleScopeValue(key, value) {
+    setScopes((prev) => {
+      const current = normalizeEmployeeScope(prev[key]);
+      const type = current.type === 'all' ? 'branch' : current.type;
+      const values = new Set(current.values || []);
+      if (values.has(value)) values.delete(value);
+      else values.add(value);
+      return {
+        ...prev,
+        [key]: { type, values: [...values] },
+      };
+    });
   }
 
   async function handleSubmit(e) {
@@ -146,6 +233,19 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       return;
     }
 
+    if (role === 'admin') {
+      for (const key of permissions) {
+        if (!isScopedEmployeePermission(key)) continue;
+        const scope = normalizeEmployeeScope(scopes[key]);
+        if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
+          setFormError(
+            `For ${key === 'employees:view' ? 'View employees' : 'Edit employees'}, choose All, or pick at least one branch/team.`
+          );
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -155,9 +255,20 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       };
       if (role === 'admin') {
         payload.permissions = permissions;
+<<<<<<< HEAD
         payload.branch = branch;
+=======
+        const permission_scopes = {};
+        for (const key of permissions) {
+          if (isScopedEmployeePermission(key)) {
+            permission_scopes[key] = normalizeEmployeeScope(scopes[key]);
+          }
+        }
+        payload.permission_scopes = permission_scopes;
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       } else {
         payload.permissions = [];
+        payload.permission_scopes = {};
       }
 
       const { data } = await api.post('/api/roles/assign', payload);
@@ -177,6 +288,79 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function renderScopeControls(permKey) {
+    if (!permissions.includes(permKey)) return null;
+    const scope = normalizeEmployeeScope(scopes[permKey] || { type: 'all' });
+    const options = scope.type === 'team' ? teamNames : branchOptions;
+
+    return (
+      <div
+        className="permission-scope"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <span className="permission-scope-label">Access scope</span>
+        <div className="permission-scope-types" role="radiogroup" aria-label="Access scope">
+          {[
+            { value: 'all', label: 'All employees' },
+            { value: 'branch', label: 'Specific branch' },
+            { value: 'team', label: 'Specific team' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`permission-scope-type ${scope.type === opt.value ? 'active' : ''}`}
+              aria-pressed={scope.type === opt.value}
+              onClick={() => setScopeType(permKey, opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {scope.type === 'branch' && (
+          <div className="permission-scope-values">
+            <span className="permission-scope-label">Branches</span>
+            {branchOptions.map((value) => (
+              <label key={value} className="permission-scope-chip">
+                <input
+                  type="checkbox"
+                  checked={(scope.values || []).includes(value)}
+                  onChange={() => toggleScopeValue(permKey, value)}
+                />
+                {value}
+              </label>
+            ))}
+          </div>
+        )}
+
+        {scope.type === 'team' && (
+          <div className="permission-scope-values">
+            <span className="permission-scope-label">Teams</span>
+            {teamNames.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>
+                No teams yet. Create a team under Employees first.
+              </p>
+            ) : (
+              teamNames.map((value) => (
+                <label key={value} className="permission-scope-chip">
+                  <input
+                    type="checkbox"
+                    checked={(scope.values || []).includes(value)}
+                    onChange={() => toggleScopeValue(permKey, value)}
+                  />
+                  {value}
+                </label>
+              ))
+            )}
+          </div>
+        )}
+
+        <p className="muted permission-scope-summary">{describeEmployeeScope(scope)}</p>
+      </div>
+    );
   }
 
   if (!open) return null;
@@ -244,6 +428,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
               {selectedEmployee && (
                 <p className="muted assign-selected">
                   Selected: <strong>{employeeLabel(selectedEmployee)}</strong>
+<<<<<<< HEAD
                   {selectedEmployee.department
                     ? ` · ${selectedEmployee.department}`
                     : ''}
@@ -251,6 +436,10 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                     ? ` · ${selectedEmployee.designation}`
                     : ''}
                   {selectedEmployee.branch ? ` · ${selectedEmployee.branch}` : ''}
+=======
+                  {selectedEmployee.department ? ` · ${selectedEmployee.department}` : ''}
+                  {selectedEmployee.designation ? ` · ${selectedEmployee.designation}` : ''}
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
                 </p>
               )}
             </fieldset>
@@ -303,17 +492,20 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                 <legend>4. Admin permissions</legend>
                 <div className="permission-list">
                   {catalog.map((perm) => (
-                    <label key={perm.key} className="permission-item">
-                      <input
-                        type="checkbox"
-                        checked={permissions.includes(perm.key)}
-                        onChange={() => togglePermission(perm.key)}
-                      />
-                      <span>
-                        <strong>{perm.label}</strong>
-                        <span className="muted">{perm.description}</span>
-                      </span>
-                    </label>
+                    <div key={perm.key} className="permission-block">
+                      <label className="permission-item">
+                        <input
+                          type="checkbox"
+                          checked={permissions.includes(perm.key)}
+                          onChange={() => togglePermission(perm.key)}
+                        />
+                        <span>
+                          <strong>{perm.label}</strong>
+                          <span className="muted">{perm.description}</span>
+                        </span>
+                      </label>
+                      {isScopedEmployeePermission(perm.key) && renderScopeControls(perm.key)}
+                    </div>
                   ))}
                 </div>
               </fieldset>

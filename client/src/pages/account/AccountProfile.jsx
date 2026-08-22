@@ -202,7 +202,10 @@ export default function AccountProfile() {
     }
   }
 
-  const avatarSrc = withAuthDocumentUrl(profile?.profile_picture_url);
+  const avatarSrc = withAuthDocumentUrl(
+    profile?.profile_picture_url,
+    profile?.updated_at || profile?.id
+  );
   const showAvatar = Boolean(avatarSrc) && !avatarBroken;
 
   return (

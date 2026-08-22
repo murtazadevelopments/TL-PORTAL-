@@ -23,10 +23,18 @@ const {
 const { listLoginLogs } = require('../controllers/loginLogsController');
 const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsController');
 const {
+<<<<<<< HEAD
   listBranches,
   createBranch,
   deleteBranch,
 } = require('../controllers/branchesController');
+=======
+  listMessageRecipients,
+  sendAdminMessage,
+} = require('../controllers/messagesController');
+const { uploadEmploymentForm } = require('../controllers/employmentFormController');
+const { employmentFormUpload } = require('../middleware/uploadMiddleware');
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 
 const router = express.Router();
 
@@ -134,5 +142,28 @@ router.delete(
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
+
+// Admin → employee messaging
+router.get(
+  '/messages/recipients',
+  requireRole('admin'),
+  requirePermission('messages:send'),
+  listMessageRecipients
+);
+router.post(
+  '/messages',
+  requireRole('admin'),
+  requirePermission('messages:send'),
+  sendAdminMessage
+);
+
+// Admin-only employment form (scanned pages → single PDF)
+router.post(
+  '/employees/:employeeId/employment-form',
+  requireRole('admin'),
+  requirePermission('documents:employment_form'),
+  employmentFormUpload,
+  uploadEmploymentForm
+);
 
 module.exports = router;

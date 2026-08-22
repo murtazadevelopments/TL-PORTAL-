@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { useAuthUser } from '../context/AuthUserContext';
+import { withAuthDocumentUrl } from '../utils/documentUrls';
 
 const INCOMPLETE_CHECK_FIELDS = [
   'reference_person_name',
@@ -27,10 +29,17 @@ function isBlank(value) {
 
 export default function DashboardHome() {
   const { user, loading, error } = useAuthUser();
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   const missing = user
     ? INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(user[key])).map((key) => FIELD_LABELS[key])
     : [];
+
+  const avatarSrc = withAuthDocumentUrl(
+    user?.profile_picture_url,
+    user?.updated_at || user?.id
+  );
+  const showAvatar = Boolean(avatarSrc) && !avatarBroken;
 
   return (
     <div className="card wide page-panel">
@@ -58,7 +67,21 @@ export default function DashboardHome() {
 
       {user && (
         <>
-          <section className="profile-header" style={{ marginTop: '1.25rem' }}>
+          <section className="profile-header dashboard-profile-header" style={{ marginTop: '1.25rem' }}>
+            <div className="avatar-block">
+              {showAvatar ? (
+                <img
+                  className="avatar"
+                  src={avatarSrc}
+                  alt=""
+                  onError={() => setAvatarBroken(true)}
+                />
+              ) : (
+                <div className="avatar placeholder" aria-hidden="true">
+                  {(user.name || user.username || '?').charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
             <div className="meta">
               <p>
                 <span className="label">Hello</span>

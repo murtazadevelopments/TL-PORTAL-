@@ -2,49 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.png" type="image/png" />
-    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#05060b" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Textured Lab Portal" />
+    <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Textured Lab Portal</title>
-    <!-- Bust stale Portal TL service workers before the app boots -->
-    <script>
-      (function () {
-        var BUILD = 'tl-portal-20260815c';
-        try {
-          if (localStorage.getItem('tl-build') === BUILD) return;
-          var done = function () {
-            try { localStorage.setItem('tl-build', BUILD); } catch (e) {}
-          };
-          var clear = Promise.resolve();
-          if ('serviceWorker' in navigator) {
-            clear = navigator.serviceWorker.getRegistrations().then(function (regs) {
-              return Promise.all(regs.map(function (r) { return r.unregister(); }));
-            });
-          }
-          clear
-            .then(function () {
-              if (!window.caches) return;
-              return caches.keys().then(function (keys) {
-                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
-              });
-            })
-            .then(function () {
-              done();
-              if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                location.reload();
-              }
-            })
-            .catch(done);
-        } catch (e) {}
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

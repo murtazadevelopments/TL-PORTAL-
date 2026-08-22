@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import AssignRoleModal from '../../components/AssignRoleModal';
 import { isCeo } from '../../utils/permissions';
+import {
+  describeEmployeeScope,
+  isScopedEmployeePermission,
+} from '../../utils/employeeScope';
 import './AdminDashboard.css';
+import '../../components/AssignRoleModal.css';
 
 function fullName(row) {
   return row?.name || '—';
@@ -147,11 +152,18 @@ export default function RolesPage() {
                         <span className="muted">Full access (all permissions)</span>
                       ) : Array.isArray(row.permissions) && row.permissions.length > 0 ? (
                         <div className="perm-chip-row">
-                          {row.permissions.map((key) => (
-                            <span key={key} className="perm-chip">
-                              {key}
-                            </span>
-                          ))}
+                          {row.permissions.map((key) => {
+                            const scope = row.scopes?.[key];
+                            const label =
+                              isScopedEmployeePermission(key) && scope
+                                ? `${key} · ${describeEmployeeScope(scope)}`
+                                : key;
+                            return (
+                              <span key={key} className="perm-chip" title={label}>
+                                {label}
+                              </span>
+                            );
+                          })}
                         </div>
                       ) : (
                         <span className="muted">None</span>

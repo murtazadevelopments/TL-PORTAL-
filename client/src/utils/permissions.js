@@ -14,6 +14,10 @@ export function isAdmin(role) {
   return normalizeRole(role) === 'admin';
 }
 
+export function isTeamLeader(role) {
+  return normalizeRole(role) === 'team_leader';
+}
+
 /** Admin panel / admin nav — CEO always included. */
 export function canAccessAdmin(role) {
   const r = normalizeRole(role);

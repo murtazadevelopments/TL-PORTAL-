@@ -1,18 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 import logo from '../assets/logo.png';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
+import { isCeo, isTeamLeader } from '../utils/permissions';
+import api from '../api/client';
 import './AppShell.css';
 
 function ShellInner() {
   const { user, role, permissions, loading, logout } = useAuthUser();
+  const tlDashboardAccess =
+    Boolean(user?.tl_dashboard_access) || isCeo(role) || isTeamLeader(role);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const location = useLocation();
+
+  const refreshUnread = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/messages/unread-count');
+      setUnreadMessages(Number(data?.count) || 0);
+    } catch {
+      /* ignore — badge optional */
+    }
+  }, []);
 
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    refreshUnread();
+    const id = setInterval(refreshUnread, 60_000);
+    return () => clearInterval(id);
+  }, [user, refreshUnread, location.pathname]);
 
   useEffect(() => {
     document.body.classList.toggle('drawer-lock', drawerOpen);
@@ -79,6 +100,8 @@ function ShellInner() {
         <SidebarNav
           role={role}
           permissions={permissions}
+          tlDashboardAccess={tlDashboardAccess}
+          unreadMessages={unreadMessages}
           onNavigate={() => setDrawerOpen(false)}
         />
 
@@ -90,7 +113,7 @@ function ShellInner() {
       </aside>
 
       <main className="app-main">
-        <Outlet />
+        <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
     </div>
   );

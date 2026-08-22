@@ -1,26 +1,44 @@
 import { NavLink, useLocation } from 'react-router';
-import { canAccessAdmin, hasPermission, isCeo } from '../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo, isTeamLeader } from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
  */
-export function buildSidebarGroups(role, permissions) {
+export function buildSidebarGroups(
+  role,
+  permissions,
+  { tlDashboardAccess = false, unreadMessages = 0 } = {}
+) {
   const groups = [
     {
       id: 'dashboard',
       label: 'Dashboard',
       items: [{ to: '/dashboard', label: 'Overview', end: true }],
     },
-    {
-      id: 'account',
-      label: 'My Account',
-      items: [
-        { to: '/account', label: 'Profile', end: true },
-        { to: '/account/documents', label: 'My Documents' },
-        { to: '/account/security', label: 'Security' },
-      ],
-    },
   ];
+
+  if (isCeo(role) || isTeamLeader(role) || tlDashboardAccess) {
+    groups.push({
+      id: 'team-leader',
+      label: 'Team Leader',
+      items: [{ to: '/team-leader', label: 'TL Dashboard', end: true }],
+    });
+  }
+
+  groups.push({
+    id: 'account',
+    label: 'My Account',
+    items: [
+      { to: '/account', label: 'Profile', end: true },
+      { to: '/account/documents', label: 'My Documents' },
+      {
+        to: '/account/messages',
+        label: 'Messages',
+        badge: unreadMessages > 0 ? unreadMessages : null,
+      },
+      { to: '/account/security', label: 'Security' },
+    ],
+  });
 
   if (canAccessAdmin(role)) {
     const employeeItems = [];
@@ -49,7 +67,13 @@ export function buildSidebarGroups(role, permissions) {
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
+<<<<<<< HEAD
     adminItems.push({ to: '/admin/branches', label: 'Manage Branches' });
+=======
+    if (hasPermission(permissions, 'messages:send', role)) {
+      adminItems.push({ to: '/admin/messages', label: 'Compose Message' });
+    }
+>>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
     if (hasPermission(permissions, 'notifications:signup_recipient', role)) {
       adminItems.push({ to: '/admin/notifications', label: 'Notification Settings' });
     }
@@ -62,7 +86,7 @@ export function buildSidebarGroups(role, permissions) {
   groups.push({
     id: 'settings',
     label: 'Settings',
-    items: [{ to: '/settings', label: 'Install App' }],
+    items: [{ to: '/settings', label: 'Install & Notifications' }],
   });
 
   return groups;
@@ -83,9 +107,18 @@ function isItemActive(item, pathname, search) {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export default function SidebarNav({ role, permissions, onNavigate }) {
+export default function SidebarNav({
+  role,
+  permissions,
+  tlDashboardAccess,
+  unreadMessages = 0,
+  onNavigate,
+}) {
   const location = useLocation();
-  const groups = buildSidebarGroups(role, permissions);
+  const groups = buildSidebarGroups(role, permissions, {
+    tlDashboardAccess,
+    unreadMessages,
+  });
 
   return (
     <nav className="sidebar-nav" aria-label="Main">
@@ -103,7 +136,12 @@ export default function SidebarNav({ role, permissions, onNavigate }) {
                     className={`sidebar-link${active ? ' sidebar-link-active' : ''}`}
                     onClick={onNavigate}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {item.badge != null && (
+                      <span className="sidebar-badge" aria-label={`${item.badge} unread`}>
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </NavLink>
                 </li>
               );

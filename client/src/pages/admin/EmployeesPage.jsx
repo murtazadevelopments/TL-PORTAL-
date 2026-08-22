@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
+import ComposeMessageModal from '../../components/ComposeMessageModal';
+import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import './AdminDashboard.css';
 
 const SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -108,6 +111,10 @@ function EmployeesPage() {
   const [branchError, setBranchError] = useState('');
 
   const [unlockingId, setUnlockingId] = useState(null);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeRecipient, setComposeRecipient] = useState(null);
+  const [composeToast, setComposeToast] = useState('');
+  const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
 
   useEffect(() => {
     const s = searchParams.get('status');
@@ -209,9 +216,15 @@ function EmployeesPage() {
     role
   );
   const canViewDocuments = hasPermission(permissions, 'documents:view', role);
+  const canUploadEmploymentForm = hasPermission(
+    permissions,
+    'documents:employment_form',
+    role
+  );
   const canCreateTeams = hasPermission(permissions, 'teams:create', role);
   const canCreateBranches = hasPermission(permissions, 'branches:create', role);
   const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
+  const canSendMessages = hasPermission(permissions, 'messages:send', role);
 
   async function loadTeams() {
     try {
@@ -738,6 +751,7 @@ function EmployeesPage() {
                   <th>Branch</th>
                   <th>Shift</th>
                   <th>Status</th>
+                  {canSendMessages && <th>Message</th>}
                 </tr>
               </thead>
               <tbody>
@@ -749,7 +763,7 @@ function EmployeesPage() {
                         {row.profile_picture_url ? (
                           <img
                             className="thumb"
-                            src={withAuthDocumentUrl(row.profile_picture_url)}
+                            src={withAuthDocumentUrl(row.profile_picture_url, row.updated_at || row.id)}
                             alt=""
                           />
                         ) : (
@@ -821,6 +835,37 @@ function EmployeesPage() {
                           </button>
                         )}
                       </td>
+                      {canSendMessages && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost msg-row-btn"
+                            title={`Message ${fullName(row)}`}
+                            aria-label={`Message ${fullName(row)}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setComposeRecipient(row);
+                              setComposeOpen(true);
+                              setComposeToast('');
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M4 6h16v10H7l-3 3V6z"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -829,6 +874,21 @@ function EmployeesPage() {
           )}
         </div>
       </div>
+
+      {composeToast && <p className="success">{composeToast}</p>}
+
+      <ComposeMessageModal
+        open={composeOpen}
+        initialRecipient={composeRecipient}
+        onClose={() => {
+          setComposeOpen(false);
+          setComposeRecipient(null);
+        }}
+        onSuccess={(payload) => {
+          const warn = payload?.emailError ? ` — ${payload.emailError}` : '';
+          setComposeToast((payload?.message || 'Message sent.') + warn);
+        }}
+      />
 
       {selectedId && (
         <div className="modal-backdrop" onClick={closeDetail}>
@@ -875,7 +935,7 @@ function EmployeesPage() {
                   {detail.profile_picture_url ? (
                     <img
                       className="thumb large"
-                      src={withAuthDocumentUrl(detail.profile_picture_url)}
+                      src={withAuthDocumentUrl(detail.profile_picture_url, detail.updated_at || detail.id)}
                       alt=""
                     />
                   ) : (
@@ -995,43 +1055,29 @@ function EmployeesPage() {
                 ) : (
                   <>
                 <div className="doc-row">
-                  <a
-                    className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_front_url) || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {detail.cnic_front_url ? (
-                      <img
-                        src={withAuthDocumentUrl(detail.cnic_front_url)}
-                        alt="CNIC front"
-                      />
-                    ) : (
-                      <span>No CNIC front</span>
-                    )}
+                  <div className="doc-preview">
+                    <span>
+                      {detail.cnic_front_on_file ? 'On file' : 'No CNIC front'}
+                    </span>
                     <span>CNIC front</span>
-                  </a>
-                  <a
-                    className="doc-preview"
-                    href={withAuthDocumentUrl(detail.cnic_back_url) || undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {detail.cnic_back_url ? (
-                      <img
-                        src={withAuthDocumentUrl(detail.cnic_back_url)}
-                        alt="CNIC back"
-                      />
-                    ) : (
-                      <span>No CNIC back</span>
-                    )}
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Not downloadable
+                    </span>
+                  </div>
+                  <div className="doc-preview">
+                    <span>
+                      {detail.cnic_back_on_file ? 'On file' : 'No CNIC back'}
+                    </span>
                     <span>CNIC back</span>
-                  </a>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Not downloadable
+                    </span>
+                  </div>
                 </div>
                 {detail.cv_url ? (
                   <a
                     className="cv-link"
-                    href={withAuthDocumentUrl(detail.cv_url)}
+                    href={withAuthDocumentUrl(detail.cv_url, detail.updated_at || detail.id)}
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -1039,6 +1085,60 @@ function EmployeesPage() {
                   </a>
                 ) : (
                   <p className="muted">No CV uploaded.</p>
+                )}
+                {detail.employment_form_url ? (
+                  <a
+                    className="cv-link"
+                    href={withAuthDocumentUrl(
+                      detail.employment_form_url,
+                      detail.updated_at || detail.id
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download Employment Form (PDF)
+                  </a>
+                ) : (
+                  <p className="muted">No employment form uploaded.</p>
+                )}
+                {canUploadEmploymentForm && (
+                <div
+                  style={{
+                    marginTop: '0.75rem',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={Boolean(detail.employment_form_url)}
+                    title={
+                      detail.employment_form_url
+                        ? 'A form is already on file. Use Change to replace it.'
+                        : undefined
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEmploymentFormOpen(true);
+                    }}
+                  >
+                    Upload Employment Form
+                  </button>
+                  {detail.employment_form_url && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEmploymentFormOpen(true);
+                      }}
+                    >
+                      Change Employment Form
+                    </button>
+                  )}
+                </div>
                 )}
                   </>
                 )}
@@ -1076,7 +1176,7 @@ function EmployeesPage() {
                   </p>
                 )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
-                  <fieldset disabled={!canEditEmployees} style={{ border: 0, margin: 0, padding: 0 }}>
+                  <fieldset disabled={!canEditEmployees}>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID
                     <input
@@ -1103,93 +1203,95 @@ function EmployeesPage() {
                     )}
                   </label>
 
-                  <label className={fieldErrors.department ? 'has-error' : ''}>
-                    Department / Team
-                    <select
-                      name="department"
-                      value={editForm.department}
-                      onChange={handleEditChange}
-                    >
-                      <option value="">Select team</option>
-                      {teams.map((t) => (
-                        <option key={t.id} value={t.name}>
-                          {t.name}
-                        </option>
-                      ))}
-                      {editForm.department &&
-                        !teams.some((t) => t.name === editForm.department) && (
-                          <option value={editForm.department}>
-                            {editForm.department} (legacy)
+                  <div className="field-with-action">
+                    <label className={fieldErrors.department ? 'has-error' : ''}>
+                      Department / Team
+                      <select
+                        name="department"
+                        value={editForm.department}
+                        onChange={handleEditChange}
+                      >
+                        <option value="">Select team</option>
+                        {teams.map((t) => (
+                          <option key={t.id} value={t.name}>
+                            {t.name}
                           </option>
-                        )}
-                    </select>
-                    {fieldErrors.department && (
-                      <span className="field-error">{fieldErrors.department}</span>
-                    )}
-                  </label>
+                        ))}
+                        {editForm.department &&
+                          !teams.some((t) => t.name === editForm.department) && (
+                            <option value={editForm.department}>
+                              {editForm.department} (legacy)
+                            </option>
+                          )}
+                      </select>
+                      {fieldErrors.department && (
+                        <span className="field-error">{fieldErrors.department}</span>
+                      )}
+                    </label>
 
-                  {canCreateTeams && canEditEmployees && (
-                    <div style={{ marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
-                      {!showAddTeam ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
-                          onClick={() => {
-                            setShowAddTeam(true);
-                            setTeamError('');
-                          }}
-                        >
-                          + Add New Team
-                        </button>
-                      ) : (
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '0.5rem',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <input
-                            type="text"
-                            value={newTeamName}
-                            onChange={(e) => setNewTeamName(e.target.value)}
-                            placeholder="New team name"
-                            style={{ flex: '1 1 160px', minWidth: 0 }}
-                            disabled={creatingTeam}
-                          />
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            style={{ padding: '0.35rem 0.75rem' }}
-                            disabled={creatingTeam}
-                            onClick={handleCreateTeam}
-                          >
-                            {creatingTeam ? 'Adding…' : 'Add'}
-                          </button>
+                    {canCreateTeams && canEditEmployees && (
+                      <div>
+                        {!showAddTeam ? (
                           <button
                             type="button"
                             className="btn btn-ghost"
-                            style={{ padding: '0.35rem 0.65rem' }}
-                            disabled={creatingTeam}
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
                             onClick={() => {
-                              setShowAddTeam(false);
-                              setNewTeamName('');
+                              setShowAddTeam(true);
                               setTeamError('');
                             }}
                           >
-                            Cancel
+                            + Add New Team
                           </button>
-                        </div>
-                      )}
-                      {teamError && (
-                        <p className="error" style={{ margin: '0.35rem 0 0' }}>
-                          {teamError}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={newTeamName}
+                              onChange={(e) => setNewTeamName(e.target.value)}
+                              placeholder="New team name"
+                              style={{ flex: '1 1 160px', minWidth: 0 }}
+                              disabled={creatingTeam}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              style={{ padding: '0.35rem 0.75rem' }}
+                              disabled={creatingTeam}
+                              onClick={handleCreateTeam}
+                            >
+                              {creatingTeam ? 'Adding…' : 'Add'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ padding: '0.35rem 0.65rem' }}
+                              disabled={creatingTeam}
+                              onClick={() => {
+                                setShowAddTeam(false);
+                                setNewTeamName('');
+                                setTeamError('');
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+                        {teamError && (
+                          <p className="error" style={{ margin: '0.35rem 0 0' }}>
+                            {teamError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   <label className={fieldErrors.designation ? 'has-error' : ''}>
                     Designation
@@ -1333,6 +1435,19 @@ function EmployeesPage() {
                     <button type="button" className="btn btn-ghost" onClick={closeDetail}>
                       Close
                     </button>
+                    {canSendMessages && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setComposeRecipient(detail);
+                          setComposeOpen(true);
+                          setComposeToast('');
+                        }}
+                      >
+                        Message
+                      </button>
+                    )}
                     {canUnlockAccounts && isAccountLocked(detail) && (
                       <button
                         type="button"
@@ -1387,6 +1502,16 @@ function EmployeesPage() {
           </aside>
         </div>
       )}
+
+      <UploadEmploymentFormModal
+        open={employmentFormOpen}
+        employee={detail}
+        onClose={() => setEmploymentFormOpen(false)}
+        onSuccess={() => {
+          setComposeToast('Employment form PDF saved.');
+          if (detail?.id) openDetail(detail.id);
+        }}
+      />
     </>
   );
 }
