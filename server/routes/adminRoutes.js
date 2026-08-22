@@ -22,6 +22,11 @@ const {
 } = require('../controllers/notificationSettingsController');
 const { listLoginLogs } = require('../controllers/loginLogsController');
 const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsController');
+const {
+  listBranches,
+  createBranch,
+  deleteBranch,
+} = require('../controllers/branchesController');
 
 const router = express.Router();
 
@@ -62,6 +67,21 @@ router.delete(
   requireRole('admin'),
   requirePermission('teams:create'),
   deleteTeam
+);
+
+// Branches catalog
+router.get('/branches', requireRole('admin'), listBranches);
+router.post(
+  '/branches',
+  requireRole('admin'),
+  requirePermission('branches:create'),
+  createBranch
+);
+router.delete(
+  '/branches/:id',
+  requireRole('admin'),
+  requirePermission('branches:create'),
+  deleteBranch
 );
 
 // CEO role-assignment helpers (register before /employees/:id)

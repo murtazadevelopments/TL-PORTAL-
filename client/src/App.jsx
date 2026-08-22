@@ -16,6 +16,7 @@ import LockedAccountsPage from './pages/admin/LockedAccountsPage';
 import DeactivatedEmployeesPage from './pages/admin/DeactivatedEmployeesPage';
 import RolesPage from './pages/admin/RolesPage';
 import TeamsPage from './pages/admin/TeamsPage';
+import BranchesPage from './pages/admin/BranchesPage';
 import NotificationSettingsPage from './pages/admin/NotificationSettingsPage';
 import LoginLogs from './pages/LoginLogs';
 import SettingsPage from './pages/SettingsPage';
@@ -49,6 +50,7 @@ function App() {
             <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
             <Route path="/admin/roles" element={<RolesPage />} />
             <Route path="/admin/teams" element={<TeamsPage />} />
+            <Route path="/admin/branches" element={<BranchesPage />} />
             <Route path="/admin/notifications" element={<NotificationSettingsPage />} />
             <Route path="/admin/login-logs" element={<LoginLogs />} />
             <Route path="/settings" element={<SettingsPage />} />

@@ -34,6 +34,11 @@ const PERMISSIONS_CATALOG = [
     description: 'Add or delete teams/departments used in the employee Department dropdown',
   },
   {
+    key: 'branches:create',
+    label: 'Manage branches',
+    description: 'Add or delete offices/branches used in employee and admin assignment dropdowns',
+  },
+  {
     key: 'accounts:unlock',
     label: 'Unlock locked accounts',
     description: 'View and unlock accounts locked after too many failed login attempts',

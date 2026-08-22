@@ -3,6 +3,7 @@ const {
   PERMISSIONS_CATALOG,
   normalizePermissionKeys,
 } = require('../constants/permissionsCatalog');
+const { findBranchName } = require('./branchesController');
 
 const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee']);
 
@@ -13,7 +14,7 @@ async function findTargetUser({ userId, employeeId }) {
   if (userId != null && String(userId).trim() !== '') {
     const { rows } = await pool.query(
       `
-        SELECT id, employee_id, username, name, email, role, is_active
+        SELECT id, employee_id, username, name, email, role, branch, is_active
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -26,7 +27,7 @@ async function findTargetUser({ userId, employeeId }) {
   if (employeeId != null && String(employeeId).trim() !== '') {
     const { rows } = await pool.query(
       `
-        SELECT id, employee_id, username, name, email, role, is_active
+        SELECT id, employee_id, username, name, email, role, branch, is_active
         FROM users
         WHERE employee_id = $1
         LIMIT 1
@@ -72,6 +73,7 @@ async function getPermissionsForUser(userId) {
  *   user_id | userId | employee_id | employeeId,
  *   role: 'admin' | 'employee' | 'ceo',
  *   permissions?: string[],
+ *   branch?: string,
  *   reason?: string
  * }
  * CEO only (via requireRole('ceo') on the route).
@@ -135,16 +137,27 @@ async function assignRole(req, res) {
       }
     }
 
+    let nextBranch = target.branch || null;
+    if (role === 'admin') {
+      const parsed = await findBranchName(body.branch);
+      if (!parsed) {
+        return res.status(400).json({
+          message: 'Select a branch when assigning the admin role.',
+        });
+      }
+      nextBranch = parsed;
+    }
+
     await client.query('BEGIN');
 
     const { rows } = await client.query(
       `
         UPDATE users
-        SET role = $1, updated_at = NOW()
-        WHERE id = $2
-        RETURNING id, employee_id, username, name, email, role
+        SET role = $1, branch = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, employee_id, username, name, email, role, branch
       `,
-      [role, target.id]
+      [role, nextBranch, target.id]
     );
 
     const updated = rows[0];
@@ -153,7 +166,8 @@ async function assignRole(req, res) {
     const auditReason =
       reasonRaw ||
       `Assigned role '${role}'` +
-        (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '');
+        (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '') +
+        (role === 'admin' && nextBranch ? ` branch=${nextBranch}` : '');
 
     await client.query(
       `
@@ -201,7 +215,7 @@ async function listEmployeesForRoleAssign(req, res) {
   try {
     const { rows } = await pool.query(
       `
-        SELECT id, employee_id, name, role, department, designation
+        SELECT id, employee_id, name, role, department, designation, branch
         FROM users
         WHERE is_active = true
         ORDER BY name ASC NULLS LAST, id ASC
@@ -230,6 +244,7 @@ async function listRoleHolders(req, res) {
           u.role,
           u.department,
           u.designation,
+          u.branch,
           COALESCE(
             (
               SELECT array_agg(ap.permission_key ORDER BY ap.permission_key)

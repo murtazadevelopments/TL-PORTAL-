@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { BRANCH_OPTIONS } from '../constants/branches';
 import './AssignRoleModal.css';
 
 const ROLE_OPTIONS = [
@@ -27,6 +28,7 @@ function employeeLabel(row) {
 function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [employees, setEmployees] = useState([]);
   const [catalog, setCatalog] = useState([]);
+  const [branchOptions, setBranchOptions] = useState(BRANCH_OPTIONS);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [metaError, setMetaError] = useState('');
 
@@ -34,6 +36,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('admin');
   const [permissions, setPermissions] = useState([]);
+  const [branch, setBranch] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -47,15 +50,20 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setMetaError('');
       setFormError('');
       try {
-        const [listRes, catalogRes] = await Promise.all([
+        const [listRes, catalogRes, branchesRes] = await Promise.all([
           api.get('/api/admin/employees-list'),
           api.get('/api/admin/permissions-catalog'),
+          api.get('/api/admin/branches'),
         ]);
         if (!active) return;
         setEmployees(Array.isArray(listRes.data?.employees) ? listRes.data.employees : []);
         setCatalog(
           Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []
         );
+        const fromApi = Array.isArray(branchesRes.data)
+          ? branchesRes.data.map((b) => b.name).filter(Boolean)
+          : [];
+        setBranchOptions(fromApi.length ? fromApi : BRANCH_OPTIONS);
       } catch (err) {
         if (!active) return;
         setMetaError(
@@ -82,6 +90,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setPermissions(
         Array.isArray(initialUser.permissions) ? [...initialUser.permissions] : []
       );
+      setBranch(initialUser.branch || '');
       setReason('');
       setSearch('');
       setFormError('');
@@ -89,6 +98,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setUserId('');
       setRole('admin');
       setPermissions([]);
+      setBranch('');
       setReason('');
       setSearch('');
       setFormError('');
@@ -127,6 +137,10 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setFormError('Choose a role to assign.');
       return;
     }
+    if (role === 'admin' && !branch) {
+      setFormError('Select a branch for this admin.');
+      return;
+    }
     if (role === 'admin' && permissions.length === 0) {
       setFormError('Select at least one permission for Admin.');
       return;
@@ -141,6 +155,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       };
       if (role === 'admin') {
         payload.permissions = permissions;
+        payload.branch = branch;
       } else {
         payload.permissions = [];
       }
@@ -179,7 +194,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
           <div>
             <h2>Assign Admin Role</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Choose an employee, role, and access scopes
+              Choose an employee, role, branch, and access scopes
             </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
@@ -210,7 +225,12 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
               />
               <select
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setUserId(nextId);
+                  const match = employees.find((row) => String(row.id) === String(nextId));
+                  if (match?.branch) setBranch(match.branch);
+                }}
                 aria-label="Employee"
                 required
               >
@@ -230,6 +250,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                   {selectedEmployee.designation
                     ? ` · ${selectedEmployee.designation}`
                     : ''}
+                  {selectedEmployee.branch ? ` · ${selectedEmployee.branch}` : ''}
                 </p>
               )}
             </fieldset>
@@ -254,7 +275,32 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
 
             {role === 'admin' && (
               <fieldset className="assign-step">
-                <legend>3. Admin permissions</legend>
+                <legend>3. Branch</legend>
+                <select
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  aria-label="Branch"
+                  required
+                >
+                  <option value="">Select branch…</option>
+                  {branchOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                  {branch && !branchOptions.includes(branch) && (
+                    <option value={branch}>{branch} (current)</option>
+                  )}
+                </select>
+                <p className="muted assign-selected">
+                  Required. Office this admin is assigned to.
+                </p>
+              </fieldset>
+            )}
+
+            {role === 'admin' && (
+              <fieldset className="assign-step">
+                <legend>4. Admin permissions</legend>
                 <div className="permission-list">
                   {catalog.map((perm) => (
                     <label key={perm.key} className="permission-item">
@@ -274,7 +320,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
             )}
 
             <fieldset className="assign-step">
-              <legend>{role === 'admin' ? '4' : '3'}. Reason (optional)</legend>
+              <legend>{role === 'admin' ? '5' : '3'}. Reason (optional)</legend>
               <textarea
                 rows={3}
                 value={reason}

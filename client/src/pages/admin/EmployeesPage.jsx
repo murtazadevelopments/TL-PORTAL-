@@ -5,7 +5,6 @@ import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import './AdminDashboard.css';
 
-const BRANCH_OPTIONS = ['Head Office', 'Unit', 'Branch', 'Amir Chamber'];
 const SHIFT_OPTIONS = ['Evening', 'Night'];
 
 const ADMIN_FIELD_LABELS = {
@@ -101,6 +100,12 @@ function EmployeesPage() {
   const [newTeamName, setNewTeamName] = useState('');
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [teamError, setTeamError] = useState('');
+
+  const [branches, setBranches] = useState([]);
+  const [showAddBranch, setShowAddBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [branchError, setBranchError] = useState('');
 
   const [unlockingId, setUnlockingId] = useState(null);
 
@@ -205,6 +210,7 @@ function EmployeesPage() {
   );
   const canViewDocuments = hasPermission(permissions, 'documents:view', role);
   const canCreateTeams = hasPermission(permissions, 'teams:create', role);
+  const canCreateBranches = hasPermission(permissions, 'branches:create', role);
   const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
 
   async function loadTeams() {
@@ -216,10 +222,20 @@ function EmployeesPage() {
     }
   }
 
+  async function loadBranches() {
+    try {
+      const { data } = await api.get('/api/admin/branches');
+      setBranches(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to load branches:', err.response?.data?.message || err.message);
+    }
+  }
+
   useEffect(() => {
     if (!role) return;
     if (canAccessAdmin(role) || hasPermission(permissions, 'employees:view', role)) {
       loadTeams();
+      loadBranches();
     }
   }, [role, permissions]);
 
@@ -269,6 +285,17 @@ function EmployeesPage() {
       a.localeCompare(b)
     );
   }, [employees, teams]);
+
+  const branchOptions = useMemo(() => {
+    const fromCatalog = branches.map((b) => String(b.name).trim()).filter(Boolean);
+    const fromEmployees = employees
+      .map((e) => e.branch)
+      .filter((d) => d != null && String(d).trim() !== '')
+      .map((d) => String(d).trim());
+    return [...new Set([...fromCatalog, ...fromEmployees])].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [employees, branches]);
 
   const tabCounts = useMemo(() => {
     const active = employees.filter((e) => e.status === 'active').length;
@@ -419,6 +446,40 @@ function EmployeesPage() {
       setTeamError(err.response?.data?.message || 'Failed to create team.');
     } finally {
       setCreatingTeam(false);
+    }
+  }
+
+  async function handleCreateBranch(e) {
+    e?.preventDefault?.();
+    const name = newBranchName.trim();
+    if (!name) {
+      setBranchError('Enter a branch name.');
+      return;
+    }
+    if (!canCreateBranches) {
+      setBranchError('You do not have permission to create branches.');
+      return;
+    }
+    setCreatingBranch(true);
+    setBranchError('');
+    try {
+      const { data } = await api.post('/api/admin/branches', { name });
+      setBranches((prev) =>
+        [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      );
+      setEditForm((prev) => ({ ...prev, branch: data.name }));
+      setFieldErrors((prev) => {
+        if (!prev.branch) return prev;
+        const next = { ...prev };
+        delete next.branch;
+        return next;
+      });
+      setNewBranchName('');
+      setShowAddBranch(false);
+    } catch (err) {
+      setBranchError(err.response?.data?.message || 'Failed to create branch.');
+    } finally {
+      setCreatingBranch(false);
     }
   }
 
@@ -619,7 +680,7 @@ function EmployeesPage() {
             aria-label="Filter by branch"
           >
             <option value="all">Branch: All</option>
-            {BRANCH_OPTIONS.map((opt) => (
+            {branchOptions.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
               </option>
@@ -1160,16 +1221,79 @@ function EmployeesPage() {
                     Branch
                     <select name="branch" value={editForm.branch} onChange={handleEditChange}>
                       <option value="">Select branch</option>
-                      {BRANCH_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.name}>
+                          {b.name}
                         </option>
                       ))}
+                      {editForm.branch &&
+                        !branches.some((b) => b.name === editForm.branch) && (
+                          <option value={editForm.branch}>
+                            {editForm.branch} (legacy)
+                          </option>
+                        )}
                     </select>
                     {fieldErrors.branch && (
                       <span className="field-error">{fieldErrors.branch}</span>
                     )}
                   </label>
+
+                  {canCreateBranches && canEditEmployees && (
+                    <div style={{ marginTop: '-0.35rem', marginBottom: '0.75rem' }}>
+                      {!showAddBranch ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
+                          onClick={() => {
+                            setShowAddBranch(true);
+                            setBranchError('');
+                          }}
+                        >
+                          + Add New Branch
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <input
+                            type="text"
+                            value={newBranchName}
+                            onChange={(e) => setNewBranchName(e.target.value)}
+                            placeholder="New branch name"
+                            style={{ flex: '1 1 160px', minWidth: 0 }}
+                            disabled={creatingBranch}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={creatingBranch}
+                            onClick={handleCreateBranch}
+                          >
+                            {creatingBranch ? 'Adding…' : 'Add'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={creatingBranch}
+                            onClick={() => {
+                              setShowAddBranch(false);
+                              setNewBranchName('');
+                              setBranchError('');
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {branchError && <p className="error">{branchError}</p>}
+                    </div>
+                  )}
 
                   <label className={fieldErrors.shift ? 'has-error' : ''}>
                     Shift

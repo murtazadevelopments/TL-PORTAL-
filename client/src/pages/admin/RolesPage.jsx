@@ -126,6 +126,7 @@ export default function RolesPage() {
                   <th>Name</th>
                   <th>Employee ID</th>
                   <th>Role</th>
+                  <th>Branch</th>
                   <th>Permissions</th>
                   <th />
                 </tr>
@@ -140,6 +141,7 @@ export default function RolesPage() {
                         {row.role}
                       </span>
                     </td>
+                    <td>{row.branch || '—'}</td>
                     <td>
                       {String(row.role || '').toLowerCase() === 'ceo' ? (
                         <span className="muted">Full access (all permissions)</span>

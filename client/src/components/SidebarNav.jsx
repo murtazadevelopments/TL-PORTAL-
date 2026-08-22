@@ -49,6 +49,7 @@ export function buildSidebarGroups(role, permissions) {
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
+    adminItems.push({ to: '/admin/branches', label: 'Manage Branches' });
     if (hasPermission(permissions, 'notifications:signup_recipient', role)) {
       adminItems.push({ to: '/admin/notifications', label: 'Notification Settings' });
     }
