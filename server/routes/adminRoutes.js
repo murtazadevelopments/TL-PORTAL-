@@ -23,18 +23,16 @@ const {
 const { listLoginLogs } = require('../controllers/loginLogsController');
 const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsController');
 const {
-<<<<<<< HEAD
   listBranches,
   createBranch,
   deleteBranch,
 } = require('../controllers/branchesController');
-=======
+const {
   listMessageRecipients,
   sendAdminMessage,
 } = require('../controllers/messagesController');
 const { uploadEmploymentForm } = require('../controllers/employmentFormController');
 const { employmentFormUpload } = require('../middleware/uploadMiddleware');
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 
 const router = express.Router();
 

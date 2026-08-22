@@ -5,8 +5,69 @@ const pool = require('../config/db');
 const {
   DOC_TYPES,
   resolveDocumentFile,
+  writeRelativeFile,
+  absoluteFromRelative,
 } = require('../services/localStorage');
 const { canDownloadDocument } = require('../utils/documentAccess');
+
+const DOC_BUCKET = {
+  profile: 'profile-pictures',
+  cnic_front: 'cnic-documents',
+  cnic_back: 'cnic-documents',
+  cv: 'cv-documents',
+};
+
+/**
+ * Local private_uploads is empty on a fresh clone. Pull the object from
+ * Supabase Storage (still the backup) and cache it on disk.
+ */
+async function hydrateMissingFile({ storedPath, docType, userId, user }) {
+  const bucket = DOC_BUCKET[docType];
+  if (!bucket) return null;
+
+  let supabase;
+  try {
+    ({ supabase } = require('../config/supabaseClient'));
+  } catch (err) {
+    console.warn('Supabase client unavailable for document hydrate:', err.message);
+    return null;
+  }
+
+  const keys = [];
+  const add = (k) => {
+    const v = String(k || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!v || /^https?:\/\//i.test(v) || keys.includes(v)) return;
+    keys.push(v);
+  };
+
+  add(storedPath);
+  const stems = DOC_TYPES[docType]?.fileStems || [docType];
+  const exts =
+    docType === 'cv' || docType === 'employment_form'
+      ? ['.pdf']
+      : ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+  const folders = [`id-${userId}`];
+  if (user?.employee_id) folders.push(String(user.employee_id).trim());
+  if (user?.username) folders.push(`user-${String(user.username).trim()}`);
+  if (userId != null) folders.push(`u${userId}`);
+  for (const folder of folders) {
+    for (const stem of stems) {
+      for (const ext of exts) add(`${folder}/${stem}${ext}`);
+    }
+  }
+
+  for (const key of keys) {
+    const { data, error } = await supabase.storage.from(bucket).download(key);
+    if (error || !data) continue;
+    const buf = Buffer.from(await data.arrayBuffer());
+    const dest =
+      storedPath && !/^https?:\/\//i.test(String(storedPath)) ? storedPath : key;
+    await writeRelativeFile(dest, buf);
+    return absoluteFromRelative(dest);
+  }
+
+  return null;
+}
 
 /**
  * Auth for document streaming: Bearer header OR ?token= query (for <img>/<a>).
@@ -86,6 +147,19 @@ async function streamDocument(req, res) {
     } catch (err) {
       console.error('resolveDocumentFile error:', err.message);
       return res.status(400).json({ message: 'Invalid stored file path.' });
+    }
+
+    if (!abs) {
+      try {
+        abs = await hydrateMissingFile({
+          storedPath: row.file_path,
+          docType,
+          userId,
+          user: row,
+        });
+      } catch (err) {
+        console.warn('hydrateMissingFile error:', err.message);
+      }
     }
 
     if (!abs) {

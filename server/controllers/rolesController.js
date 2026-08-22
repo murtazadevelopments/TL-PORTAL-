@@ -3,16 +3,13 @@ const {
   PERMISSIONS_CATALOG,
   normalizePermissionKeys,
 } = require('../constants/permissionsCatalog');
-<<<<<<< HEAD
 const { findBranchName } = require('./branchesController');
-=======
 const {
   normalizeScope,
   describeScope,
   isScopedPermissionKey,
   BRANCH_OPTIONS,
 } = require('../utils/employeeScope');
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 
 const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee', 'team_leader']);
 
@@ -95,11 +92,8 @@ async function getPermissionsForUser(userId) {
  *   user_id | userId | employee_id | employeeId,
  *   role: 'admin' | 'employee' | 'ceo',
  *   permissions?: string[],
-<<<<<<< HEAD
  *   branch?: string,
-=======
  *   permission_scopes?: { [permission_key]: { type, values? } },
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
  *   reason?: string
  * }
  */
@@ -208,11 +202,8 @@ async function assignRole(req, res) {
       reasonRaw ||
       `Assigned role '${role}'` +
         (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '') +
-<<<<<<< HEAD
-        (role === 'admin' && nextBranch ? ` branch=${nextBranch}` : '');
-=======
+        (role === 'admin' && nextBranch ? ` branch=${nextBranch}` : '') +
         (scopeParts.length ? `; scopes: ${scopeParts.join('; ')}` : '');
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 
     await client.query(
       `

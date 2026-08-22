@@ -30,6 +30,7 @@ const {
 const fs = require('fs');
 
 const dryRun = process.argv.includes('--dry-run');
+const filesOnly = process.argv.includes('--files-only');
 
 const FIELD_BUCKET = {
   cnic_front_url: BUCKETS.cnic,
@@ -50,7 +51,7 @@ const DOC_FILE_RE = {
   cnic_front: /^cnic_front\./i,
   cnic_back: /^cnic_back\./i,
   cv: /^cv\.pdf$/i,
-  profile_picture: /^profile\./i,
+  profile_picture: /^(profile|profile_picture)\./i,
 };
 
 function toObjectPath(value, bucket) {
@@ -260,7 +261,13 @@ async function downloadObject(bucket, objectPath) {
 
 async function main() {
   console.log(`Uploads root: ${getUploadsRoot()}`);
-  console.log(dryRun ? 'DRY RUN — no writes' : 'LIVE RUN — will write files + update DB');
+  console.log(
+    dryRun
+      ? 'DRY RUN — no writes'
+      : filesOnly
+        ? 'FILES ONLY — write local files, leave DB paths unchanged'
+        : 'LIVE RUN — will write files + update DB'
+  );
   await ensureUploadsRoot();
 
   console.log('\nListing live Supabase Storage objects…');
@@ -344,7 +351,17 @@ async function main() {
 
         if (!dryRun) {
           await saveRawRelative(rel, buf);
-          updates[column] = rel;
+          // Also place a copy at the existing DB relative path so Hostinger/local
+          // resolveDocumentFile finds the exact stored path.
+          const storedRel = String(stored || '').replace(/\\/g, '/');
+          if (storedRel && !/^https?:\/\//i.test(storedRel) && storedRel !== rel) {
+            try {
+              await saveRawRelative(storedRel, buf);
+            } catch (copyErr) {
+              console.warn(`Could not copy to stored path ${storedRel}:`, copyErr.message);
+            }
+          }
+          if (!filesOnly) updates[column] = rel;
         }
 
         migrated += 1;
