@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
-<<<<<<< HEAD
 import { BRANCH_OPTIONS } from '../constants/branches';
-=======
 import {
-  BRANCH_OPTIONS,
   describeEmployeeScope,
   isScopedEmployeePermission,
   normalizeEmployeeScope,
 } from '../utils/employeeScope';
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
 import './AssignRoleModal.css';
 
 const ROLE_OPTIONS = [
@@ -40,10 +36,7 @@ function defaultScopesFromUser(user) {
 function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [employees, setEmployees] = useState([]);
   const [catalog, setCatalog] = useState([]);
-<<<<<<< HEAD
-=======
   const [teams, setTeams] = useState([]);
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
   const [branchOptions, setBranchOptions] = useState(BRANCH_OPTIONS);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [metaError, setMetaError] = useState('');
@@ -52,14 +45,11 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('admin');
   const [permissions, setPermissions] = useState([]);
-<<<<<<< HEAD
   const [branch, setBranch] = useState('');
-=======
   const [scopes, setScopes] = useState({
     'employees:view': { type: 'all' },
     'employees:edit': { type: 'all' },
   });
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -73,34 +63,22 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setMetaError('');
       setFormError('');
       try {
-<<<<<<< HEAD
-        const [listRes, catalogRes, branchesRes] = await Promise.all([
+        const [listRes, catalogRes, branchesRes, teamsRes] = await Promise.all([
           api.get('/api/admin/employees-list'),
           api.get('/api/admin/permissions-catalog'),
           api.get('/api/admin/branches'),
-=======
-        const [listRes, catalogRes, teamsRes] = await Promise.all([
-          api.get('/api/admin/employees-list'),
-          api.get('/api/admin/permissions-catalog'),
           api.get('/api/admin/teams'),
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
         ]);
         if (!active) return;
         setEmployees(Array.isArray(listRes.data?.employees) ? listRes.data.employees : []);
         setCatalog(
           Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []
         );
-<<<<<<< HEAD
         const fromApi = Array.isArray(branchesRes.data)
           ? branchesRes.data.map((b) => b.name).filter(Boolean)
           : [];
         setBranchOptions(fromApi.length ? fromApi : BRANCH_OPTIONS);
-=======
-        if (Array.isArray(catalogRes.data?.branch_options) && catalogRes.data.branch_options.length) {
-          setBranchOptions(catalogRes.data.branch_options);
-        }
         setTeams(Array.isArray(teamsRes.data) ? teamsRes.data : []);
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       } catch (err) {
         if (!active) return;
         setMetaError(
@@ -127,11 +105,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setPermissions(
         Array.isArray(initialUser.permissions) ? [...initialUser.permissions] : []
       );
-<<<<<<< HEAD
       setBranch(initialUser.branch || '');
-=======
       setScopes(defaultScopesFromUser(initialUser));
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       setReason('');
       setSearch('');
       setFormError('');
@@ -139,14 +114,11 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setUserId('');
       setRole('admin');
       setPermissions([]);
-<<<<<<< HEAD
       setBranch('');
-=======
       setScopes({
         'employees:view': { type: 'all' },
         'employees:edit': { type: 'all' },
       });
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       setReason('');
       setSearch('');
       setFormError('');
@@ -255,9 +227,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       };
       if (role === 'admin') {
         payload.permissions = permissions;
-<<<<<<< HEAD
         payload.branch = branch;
-=======
         const permission_scopes = {};
         for (const key of permissions) {
           if (isScopedEmployeePermission(key)) {
@@ -265,7 +235,6 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
           }
         }
         payload.permission_scopes = permission_scopes;
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
       } else {
         payload.permissions = [];
         payload.permission_scopes = {};
@@ -428,18 +397,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
               {selectedEmployee && (
                 <p className="muted assign-selected">
                   Selected: <strong>{employeeLabel(selectedEmployee)}</strong>
-<<<<<<< HEAD
-                  {selectedEmployee.department
-                    ? ` · ${selectedEmployee.department}`
-                    : ''}
-                  {selectedEmployee.designation
-                    ? ` · ${selectedEmployee.designation}`
-                    : ''}
-                  {selectedEmployee.branch ? ` · ${selectedEmployee.branch}` : ''}
-=======
                   {selectedEmployee.department ? ` · ${selectedEmployee.department}` : ''}
                   {selectedEmployee.designation ? ` · ${selectedEmployee.designation}` : ''}
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
+                  {selectedEmployee.branch ? ` · ${selectedEmployee.branch}` : ''}
                 </p>
               )}
             </fieldset>

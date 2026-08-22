@@ -67,13 +67,10 @@ export function buildSidebarGroups(
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
-<<<<<<< HEAD
     adminItems.push({ to: '/admin/branches', label: 'Manage Branches' });
-=======
     if (hasPermission(permissions, 'messages:send', role)) {
       adminItems.push({ to: '/admin/messages', label: 'Compose Message' });
     }
->>>>>>> 26cb648ec4b238983f2472c30081ce976617c1cc
     if (hasPermission(permissions, 'notifications:signup_recipient', role)) {
       adminItems.push({ to: '/admin/notifications', label: 'Notification Settings' });
     }
