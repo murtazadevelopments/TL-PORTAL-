@@ -33,4 +33,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const SESSION_ENDED_CODES = new Set([
+  'ACCOUNT_BLOCKED',
+  'ACCOUNT_DEACTIVATED',
+  'ACCOUNT_LOCKED',
+]);
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const code = error.response?.data?.code;
+    const url = String(error.config?.url || '');
+    const isPublicAuth = /\/api\/auth\//.test(url);
+
+    if (
+      !isPublicAuth &&
+      (status === 401 || (status === 403 && SESSION_ENDED_CODES.has(code)))
+    ) {
+      localStorage.removeItem('token');
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.location.assign('/');
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 export default api;

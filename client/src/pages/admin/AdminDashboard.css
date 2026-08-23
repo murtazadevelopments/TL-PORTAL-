@@ -118,6 +118,7 @@
 .alert-banner {
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.85rem;
   align-items: flex-start;
   margin-bottom: 1rem;
@@ -228,6 +229,19 @@
 .cell-name {
   color: var(--text-h);
   font-weight: 700;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.row-actions .btn {
+  margin-top: 0;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
 }
 
 .muted-cell {
@@ -342,8 +356,12 @@
 
 .modal-panel {
   width: min(520px, 100%);
+  max-width: 100%;
+  min-width: 0;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
   background: #0d1322;
   border-left: 1px solid var(--border);
   box-shadow: -20px 0 50px rgba(0, 0, 0, 0.45);
@@ -536,12 +554,21 @@
 
 .modal-actions {
   display: flex;
-  gap: 0.65rem;
-  margin-top: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+  align-items: stretch;
 }
 
 .modal-actions .btn {
-  flex: 1;
+  flex: 1 1 8.75rem;
+  min-width: min(100%, 8.5rem);
+  max-width: 100%;
+  margin-top: 0;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 @keyframes fade-in {
@@ -645,7 +672,7 @@
 
   .modal-actions .btn {
     flex: 1 1 calc(50% - 0.4rem);
-    min-width: 0;
+    min-width: min(100%, 8.5rem);
   }
 }
 
@@ -674,6 +701,7 @@
 
   .modal-actions .btn {
     flex: 1 1 100%;
+    min-width: 0;
   }
 
   .perm-chip-row {
@@ -687,4 +715,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.alert-row-btn {
+  padding: 0.28rem 0.65rem !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(251, 191, 36, 0.55) !important;
+  background: rgba(251, 191, 36, 0.12) !important;
+}
+
+.cell-alert {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
 }

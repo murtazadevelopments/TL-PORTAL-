@@ -16,10 +16,12 @@ export default function LockedAccountsPage() {
   const [lockedAccounts, setLockedAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [unlockingId, setUnlockingId] = useState(null);
+  const [actingId, setActingId] = useState(null);
   const [success, setSuccess] = useState('');
 
   const canUnlock = hasPermission(permissions, 'accounts:unlock', role);
+  const canBlock = hasPermission(permissions, 'employees:deactivate', role);
+  const canOpen = canUnlock || canBlock;
 
   const loadLocked = useCallback(async () => {
     setLoading(true);
@@ -44,12 +46,16 @@ export default function LockedAccountsPage() {
           navigate('/dashboard', { replace: true });
           return;
         }
-        if (!hasPermission(data.permissions, 'accounts:unlock', data.role)) {
+        const perms = Array.isArray(data.permissions) ? data.permissions : [];
+        const allowed =
+          hasPermission(perms, 'accounts:unlock', data.role) ||
+          hasPermission(perms, 'employees:deactivate', data.role);
+        if (!allowed) {
           navigate('/dashboard', { replace: true });
           return;
         }
         setRole(data.role);
-        setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+        setPermissions(perms);
       } catch {
         if (!active) return;
         localStorage.removeItem('token');
@@ -65,21 +71,50 @@ export default function LockedAccountsPage() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!checking && canUnlock) loadLocked();
-  }, [checking, canUnlock, loadLocked]);
+    if (!checking && canOpen) loadLocked();
+  }, [checking, canOpen, loadLocked]);
 
   async function handleUnlock(userId) {
-    setUnlockingId(userId);
+    setActingId(userId);
     setError('');
     setSuccess('');
     try {
       await api.put(`/api/admin/accounts/${userId}/unlock`);
-      setLockedAccounts((prev) => prev.filter((r) => String(r.id) !== String(userId)));
-      setSuccess('Account unblocked. They can sign in again.');
+      setLockedAccounts((prev) =>
+        prev
+          .map((r) =>
+            String(r.id) === String(userId)
+              ? { ...r, locked_at: null, failed_login_attempts: 0 }
+              : r
+          )
+          .filter((r) => r.locked_at || r.blocked_at)
+      );
+      setSuccess('Login lock cleared. They can sign in if they are not admin-blocked.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to unlock account.');
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function handleUnblock(userId) {
+    setActingId(userId);
+    setError('');
+    setSuccess('');
+    try {
+      await api.put(`/api/admin/accounts/${userId}/unblock`);
+      setLockedAccounts((prev) =>
+        prev
+          .map((r) =>
+            String(r.id) === String(userId) ? { ...r, blocked_at: null, blocked_reason: null } : r
+          )
+          .filter((r) => r.locked_at || r.blocked_at)
+      );
+      setSuccess('Account unblocked. They can sign in if they are not locked.');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to unblock account.');
     } finally {
-      setUnlockingId(null);
+      setActingId(null);
     }
   }
 
@@ -98,9 +133,10 @@ export default function LockedAccountsPage() {
     <div className="admin-page page-panel">
       <div className="admin-toolbar" style={{ marginTop: 0 }}>
         <div>
-          <h1>Locked Accounts</h1>
+          <h1>Locked & blocked accounts</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Locked after 5 failed password attempts — unlock to restore sign-in
+            Failed-login lockouts and accounts blocked by an admin. Blocked users are signed out
+            immediately and cannot sign in until unblocked.
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadLocked}>
@@ -114,12 +150,12 @@ export default function LockedAccountsPage() {
       {loading && lockedAccounts.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />
-          Loading locked accounts…
+          Loading accounts…
         </div>
       )}
 
       {!loading && lockedAccounts.length === 0 && !error && (
-        <div className="admin-empty">No locked accounts.</div>
+        <div className="admin-empty">No locked or blocked accounts.</div>
       )}
 
       {lockedAccounts.length > 0 && (
@@ -129,34 +165,55 @@ export default function LockedAccountsPage() {
               <tr>
                 <th>Name</th>
                 <th>Username</th>
+                <th>Type</th>
                 <th>Employment</th>
-                <th>Attempts</th>
-                <th>Locked at</th>
+                <th>When</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {lockedAccounts.map((row) => (
-                <tr key={row.id}>
-                  <td className="cell-name">{fullName(row)}</td>
-                  <td>{row.username || '—'}</td>
-                  <td>{row.status === 'active' ? 'active' : 'pending'}</td>
-                  <td>{row.failed_login_attempts ?? '—'}</td>
-                  <td>
-                    {row.locked_at ? new Date(row.locked_at).toLocaleString() : '—'}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={unlockingId === row.id}
-                      onClick={() => handleUnlock(row.id)}
-                    >
-                      {unlockingId === row.id ? 'Unblocking…' : 'Unblock'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {lockedAccounts.map((row) => {
+                const blocked = Boolean(row.blocked_at);
+                const locked = Boolean(row.locked_at);
+                const when = row.blocked_at || row.locked_at;
+                return (
+                  <tr key={row.id}>
+                    <td className="cell-name">{fullName(row)}</td>
+                    <td>{row.username || '—'}</td>
+                    <td>
+                      {blocked ? 'admin blocked' : ''}
+                      {blocked && locked ? ' · ' : ''}
+                      {locked ? 'failed logins' : ''}
+                    </td>
+                    <td>{row.status === 'active' ? 'active' : 'pending'}</td>
+                    <td>{when ? new Date(when).toLocaleString() : '—'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {canUnlock && locked && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={actingId === row.id}
+                            onClick={() => handleUnlock(row.id)}
+                          >
+                            {actingId === row.id ? 'Unlocking…' : 'Unlock'}
+                          </button>
+                        )}
+                        {canBlock && blocked && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={actingId === row.id}
+                            onClick={() => handleUnblock(row.id)}
+                          >
+                            {actingId === row.id ? 'Unblocking…' : 'Unblock'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

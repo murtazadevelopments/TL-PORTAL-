@@ -1,15 +1,19 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
-const { requireRole, requirePermission } = require('../middleware/permissions');
+const { requireRole, requirePermission, requireCeoOrAnyPermission } = require('../middleware/permissions');
 const {
   listEmployees,
   getEmployeeById,
   updateEmployee,
   deactivateEmployee,
+  restoreEmployee,
   purgeEmployee,
   listDeactivated,
   listLockedAccounts,
   unlockAccount,
+  blockAccount,
+  unblockAccount,
+  sendProfileAlert,
 } = require('../controllers/adminController');
 const {
   getPermissionsCatalog,
@@ -50,7 +54,7 @@ router.get(
 router.get(
   '/locked-accounts',
   requireRole('admin'),
-  requirePermission('accounts:unlock'),
+  requireCeoOrAnyPermission('accounts:unlock', 'employees:deactivate'),
   listLockedAccounts
 );
 router.put(
@@ -58,6 +62,18 @@ router.put(
   requireRole('admin'),
   requirePermission('accounts:unlock'),
   unlockAccount
+);
+router.put(
+  '/accounts/:userId/block',
+  requireRole('admin'),
+  requirePermission('employees:deactivate'),
+  blockAccount
+);
+router.put(
+  '/accounts/:userId/unblock',
+  requireRole('admin'),
+  requirePermission('employees:deactivate'),
+  unblockAccount
 );
 
 // Teams / departments catalog
@@ -137,6 +153,20 @@ router.delete(
   requireRole('admin'),
   requirePermission('employees:deactivate'),
   deactivateEmployee
+);
+
+router.put(
+  '/employees/:id/restore',
+  requireRole('admin'),
+  requirePermission('employees:deactivate'),
+  restoreEmployee
+);
+
+router.post(
+  '/employees/:id/profile-alert',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('messages:send', 'employees:edit'),
+  sendProfileAlert
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);

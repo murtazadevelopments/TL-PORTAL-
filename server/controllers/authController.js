@@ -9,14 +9,8 @@ const {
   notifyUserSignup,
   notifyUsernameReminder,
   notifyPasswordReset,
-  notifyUserLogin,
 } = require('../services/notifications');
-const {
-  clientIp,
-  clientUserAgent,
-  approxLocationFromIp,
-} = require('../utils/requestMeta');
-const { recordLoginLog } = require('./loginLogsController');
+const { recordSuccessfulLogin } = require('../services/loginActivity');
 const { writeAuditLog } = require('../utils/auditLog');
 const { frontendBaseUrl } = require('../utils/frontendUrl');
 
@@ -286,6 +280,14 @@ async function login(req, res) {
     if (user.is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+    }
+
+    if (user.blocked_at) {
+      return res.status(403).json({
+        message: 'This account has been blocked. Contact an administrator.',
+        code: 'ACCOUNT_BLOCKED',
       });
     }
 
@@ -293,6 +295,7 @@ async function login(req, res) {
       return res.status(403).json({
         message:
           'Account locked due to too many failed attempts. Contact your admin.',
+        code: 'ACCOUNT_LOCKED',
         accountLocked: true,
       });
     }
@@ -370,25 +373,7 @@ async function login(req, res) {
     const safeUser = await attachReadableUrls(omitPassword(user));
 
     // Best-effort login log + email — never block the response
-    const ip = clientIp(req);
-    const userAgent = clientUserAgent(req);
-    (async () => {
-      try {
-        const locationLabel = await approxLocationFromIp(ip);
-        await recordLoginLog({
-          userId: user.id,
-          employeeId: user.employee_id,
-          employeeName: user.name,
-          username: user.username,
-          ipAddress: ip,
-          location: locationLabel,
-          userAgent,
-        });
-        await notifyUserLogin(safeUser, { ip, userAgent, locationLabel });
-      } catch (err) {
-        console.warn('login log/notify failed:', err.message || err);
-      }
-    })();
+    void recordSuccessfulLogin(req, user);
 
     return res.json({
       token: signToken(user),
@@ -460,12 +445,13 @@ async function forgotPassword(req, res) {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, username, email FROM users WHERE email = $1 LIMIT 1`,
+      `SELECT id, name, username, email, is_active, blocked_at
+       FROM users WHERE email = $1 LIMIT 1`,
       [email]
     );
 
     const user = rows[0];
-    if (user) {
+    if (user && user.is_active !== false && !user.blocked_at) {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);

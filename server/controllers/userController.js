@@ -12,6 +12,11 @@ const {
 const {
   hasTeamLeaderDashboardAccess,
 } = require('../utils/tlAccess');
+const {
+  ensureProfileAlertColumns,
+  missingEmployeePortalFields,
+  parseAlertFields,
+} = require('../utils/profileCompleteness');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -21,7 +26,8 @@ const USER_PUBLIC_COLUMNS = `
   date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
-  reference_person AS reference_person_name
+  reference_person AS reference_person_name,
+  profile_alert_at, profile_alert_fields
 `;
 
 const EMPLOYEE_UPDATE_WHITELIST = [
@@ -58,8 +64,28 @@ const EMPLOYEE_IGNORED_FIELDS = new Set([
   'is_active',
 ]);
 
+async function decorateProfileAlert(user) {
+  if (!user) return user;
+  user.profile_alert_fields = parseAlertFields(user.profile_alert_fields);
+  user.missing_portal_fields = missingEmployeePortalFields(user).map((f) => f.label);
+  if (user.profile_alert_at && user.missing_portal_fields.length === 0) {
+    await pool.query(
+      `
+        UPDATE users
+        SET profile_alert_at = NULL, profile_alert_fields = NULL, updated_at = NOW()
+        WHERE id = $1
+      `,
+      [user.id]
+    );
+    user.profile_alert_at = null;
+    user.profile_alert_fields = [];
+  }
+  return user;
+}
+
 async function getMe(req, res) {
   try {
+    await ensureProfileAlertColumns();
     const { rows } = await pool.query(
       `SELECT ${USER_PUBLIC_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [req.user.id]
@@ -72,6 +98,14 @@ async function getMe(req, res) {
     if (rows[0].is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+    }
+
+    if (rows[0].blocked_at) {
+      return res.status(403).json({
+        message: 'This account has been blocked. Contact an administrator.',
+        code: 'ACCOUNT_BLOCKED',
       });
     }
 
@@ -88,7 +122,7 @@ async function getMe(req, res) {
       });
     }
 
-    const user = await attachReadableUrls(rows[0]);
+    const user = await decorateProfileAlert(await attachReadableUrls(rows[0]));
     const role = String(user.role || '')
       .trim()
       .toLowerCase();
@@ -168,6 +202,7 @@ async function getMe(req, res) {
 
 async function updateMe(req, res) {
   try {
+    await ensureProfileAlertColumns();
     const body = req.body || {};
 
     // Admin-only keys are dropped silently (no error) if present
@@ -292,7 +327,7 @@ async function updateMe(req, res) {
       ]
     );
 
-    const user = await attachReadableUrls(rows[0]);
+    const user = await decorateProfileAlert(await attachReadableUrls(rows[0]));
 
     const changed = summarizeChanges(current, user, EMPLOYEE_UPDATE_WHITELIST);
     if (changed.length) {

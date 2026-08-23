@@ -8,11 +8,12 @@ import api from '../api/client';
 import './AppShell.css';
 
 function ShellInner() {
-  const { user, role, permissions, loading, logout } = useAuthUser();
+  const { user, role, permissions, loading, logout, refreshUser } = useAuthUser();
   const tlDashboardAccess =
     Boolean(user?.tl_dashboard_access) || isCeo(role) || isTeamLeader(role);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const location = useLocation();
 
   const refreshUnread = useCallback(async () => {
@@ -27,6 +28,16 @@ function ShellInner() {
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    setDismissProfileAlert(false);
+  }, [user?.profile_alert_at]);
+
+  useEffect(() => {
+    if (location.pathname === '/account') {
+      refreshUser?.();
+    }
+  }, [location.pathname, refreshUser]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -113,6 +124,42 @@ function ShellInner() {
       </aside>
 
       <main className="app-main">
+        {user?.profile_alert_at &&
+          !dismissProfileAlert &&
+          (Array.isArray(user.profile_alert_fields)
+            ? user.profile_alert_fields
+            : user.missing_portal_fields || []
+          ).length > 0 && (
+          <div className="portal-profile-alert" role="alert">
+            <div>
+              <strong>Complete your profile</strong>
+              <p>
+                HR asked you to fill:{' '}
+                {(Array.isArray(user.profile_alert_fields) && user.profile_alert_fields.length
+                  ? user.profile_alert_fields
+                  : user.missing_portal_fields
+                ).join(', ')}
+                . Open Profile to save these details.
+              </p>
+            </div>
+            <div className="portal-profile-alert-actions">
+              <Link to="/account" className="btn btn-primary">
+                Complete profile
+              </Link>
+              <Link to="/account/messages" className="btn btn-ghost">
+                View message
+              </Link>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Dismiss for now"
+                onClick={() => setDismissProfileAlert(true)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
     </div>

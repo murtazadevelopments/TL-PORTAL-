@@ -29,13 +29,19 @@ function requireRole(...allowedRoles) {
       }
 
       const { rows } = await pool.query(
-        'SELECT role, is_active FROM users WHERE id = $1 LIMIT 1',
+        'SELECT role, is_active, blocked_at FROM users WHERE id = $1 LIMIT 1',
         [req.user.id]
       );
 
       const row = rows[0];
-      if (!row || row.is_active === false) {
-        return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
+      if (!row || row.is_active === false || row.blocked_at) {
+        return res.status(403).json({
+          error: 'Forbidden: insufficient permissions',
+          message: row?.blocked_at
+            ? 'This account has been blocked. Contact an administrator.'
+            : 'This account has been deactivated. Contact an administrator.',
+          code: row?.blocked_at ? 'ACCOUNT_BLOCKED' : 'ACCOUNT_DEACTIVATED',
+        });
       }
 
       const role = normalizeRole(row.role);

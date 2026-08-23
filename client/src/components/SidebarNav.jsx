@@ -52,7 +52,10 @@ export function buildSidebarGroups(
         }
       );
     }
-    if (hasPermission(permissions, 'accounts:unlock', role)) {
+    if (
+      hasPermission(permissions, 'accounts:unlock', role) ||
+      hasPermission(permissions, 'employees:deactivate', role)
+    ) {
       employeeItems.push({ to: '/admin/locked', label: 'Locked Accounts' });
     }
     if (hasPermission(permissions, 'employees:deactivate', role)) {

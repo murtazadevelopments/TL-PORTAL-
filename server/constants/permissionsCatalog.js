@@ -18,7 +18,8 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'employees:deactivate',
     label: 'Deactivate employees',
-    description: 'Soft-delete employees (block login; keep records)',
+    description:
+      'Soft-delete employees and immediately end their session (keep records). Also block/unblock accounts so they cannot sign in.',
   },
   {
     key: 'documents:view',
@@ -49,7 +50,8 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'accounts:unlock',
     label: 'Unlock locked accounts',
-    description: 'View and unlock accounts locked after too many failed login attempts',
+    description:
+      'View and unlock accounts locked after too many failed login attempts (does not override an admin block)',
   },
   {
     key: 'messages:send',

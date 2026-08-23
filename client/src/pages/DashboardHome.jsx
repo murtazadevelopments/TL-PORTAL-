@@ -32,8 +32,11 @@ export default function DashboardHome() {
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   const missing = user
-    ? INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(user[key])).map((key) => FIELD_LABELS[key])
+    ? (Array.isArray(user.missing_portal_fields) && user.missing_portal_fields.length
+        ? user.missing_portal_fields
+        : INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(user[key])).map((key) => FIELD_LABELS[key]))
     : [];
+  const hrAsked = Boolean(user?.profile_alert_at);
 
   const avatarSrc = withAuthDocumentUrl(
     user?.profile_picture_url,
@@ -52,7 +55,7 @@ export default function DashboardHome() {
       {user && missing.length > 0 && (
         <div className="alert-banner" role="status">
           <div>
-            <strong>Your profile is incomplete.</strong>
+            <strong>{hrAsked ? 'HR asked you to complete your profile.' : 'Your profile is incomplete.'}</strong>
             <p className="muted" style={{ margin: '0.35rem 0 0' }}>
               Please fill in: {missing.join(', ')}
             </p>

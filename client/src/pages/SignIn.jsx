@@ -73,9 +73,12 @@ function SignIn() {
     setLoading(true);
 
     try {
+      const { collectDeviceHints } = await import('../utils/deviceHints');
+      const deviceHints = await collectDeviceHints();
       const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
+        deviceHints,
       });
       localStorage.setItem('token', data.token);
       navigate('/dashboard');
@@ -105,9 +108,12 @@ function SignIn() {
         username,
       });
       const assertion = await startAuthentication({ optionsJSON: options });
+      const { collectDeviceHints } = await import('../utils/deviceHints');
+      const deviceHints = await collectDeviceHints();
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
         username,
         response: assertion,
+        deviceHints,
       });
       localStorage.setItem('token', data.token);
       navigate('/dashboard');

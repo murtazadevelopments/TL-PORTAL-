@@ -21,6 +21,18 @@ function formatWhen(value) {
   }
 }
 
+function formatCoords(lat, lng) {
+  if (lat == null || lng == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lng))) {
+    return null;
+  }
+  return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
+}
+
+function mapsUrl(lat, lng) {
+  if (lat == null || lng == null) return null;
+  return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+}
+
 function shortDevice(ua) {
   if (!ua) return '—';
   const s = String(ua);
@@ -132,7 +144,8 @@ function LoginLogs() {
         <div>
           <h1>Login Logs</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Recent sign-ins across Textured Lab Portal
+            Recent sign-ins across Textured Lab Portal. People on the same Wi‑Fi share one public
+            IP; city/area come from that IP (not GPS).
           </p>
         </div>
       </div>
@@ -214,7 +227,10 @@ function LoginLogs() {
                 <th>Name</th>
                 <th>Employee ID</th>
                 <th>IP</th>
-                <th>Location</th>
+                <th>City</th>
+                <th>Area</th>
+                <th>Country</th>
+                <th>Coordinates</th>
                 <th>Device</th>
                 <th>Logged in</th>
               </tr>
@@ -225,8 +241,28 @@ function LoginLogs() {
                   <td className="cell-name">{row.employee_name || row.username || '—'}</td>
                   <td>{row.employee_id || '—'}</td>
                   <td>{row.ip_address || '—'}</td>
-                  <td>{row.location || '—'}</td>
-                  <td title={row.user_agent || ''}>{shortDevice(row.user_agent)}</td>
+                  <td>{row.city || '—'}</td>
+                  <td>{row.area || '—'}</td>
+                  <td>{row.country || '—'}</td>
+                  <td>
+                    {formatCoords(row.latitude, row.longitude) ? (
+                      <a
+                        className="coord-link"
+                        href={mapsUrl(row.latitude, row.longitude)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Open in Google Maps"
+                      >
+                        {formatCoords(row.latitude, row.longitude)}
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td title={row.user_agent || ''}>
+                    {row.device || shortDevice(row.user_agent)}
+                  </td>
                   <td>{formatWhen(row.logged_in_at)}</td>
                 </tr>
               ))}

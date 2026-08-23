@@ -16,12 +16,24 @@ const {
   scopeWhereClause,
   normalizeScope,
 } = require('../utils/employeeScope');
+const { ensureBlockedColumn } = require('../utils/accountStatus');
+const {
+  missingEmployeePortalFields,
+  formatFieldList,
+  ensureProfileAlertColumns,
+  profileAlertCooldown,
+} = require('../utils/profileCompleteness');
+const { deliverOneMessage } = require('./messagesController');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
   education, last_job_status, profile_picture_url, created_at, is_active,
-  failed_login_attempts, locked_at
+  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+  bank_name, account_title, iban, account_number,
+  emergency_contact_name, emergency_contact_number,
+  reference_person AS reference_person_name,
+  profile_alert_at, profile_alert_sent_at
 `;
 
 const DETAIL_COLUMNS = `
@@ -33,7 +45,8 @@ const DETAIL_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  failed_login_attempts, locked_at
+  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+  profile_alert_at, profile_alert_sent_at
 `;
 
 const ALLOWED_UPDATE_FIELDS = [
@@ -93,6 +106,8 @@ function scopeForPermission(scopes, key) {
 
 async function listEmployees(req, res) {
   try {
+    await ensureBlockedColumn();
+    await ensureProfileAlertColumns();
     const scopes = await resolvePermissionScopes(req);
     const viewScope = scopeForPermission(scopes, 'employees:view');
     const filter = scopeWhereClause(viewScope, 1);
@@ -118,6 +133,7 @@ async function listEmployees(req, res) {
 
 async function getEmployeeById(req, res) {
   try {
+    await ensureProfileAlertColumns();
     const { id } = req.params;
 
     const { rows } = await pool.query(
@@ -377,17 +393,82 @@ async function deactivateEmployee(req, res) {
 }
 
 /**
+ * PUT /api/admin/employees/:id/restore
+ * Soft-restore: set is_active = true (admin + CEO with employees:deactivate).
+ */
+async function restoreEmployee(req, res) {
+  try {
+    const { id } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, branch, department, is_active
+        FROM users
+        WHERE id = $1 AND is_active = false
+        LIMIT 1
+      `,
+      [id]
+    );
+    if (!existingRows[0]) {
+      return res.status(404).json({ message: 'Deactivated employee not found.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const editScope = scopes['employees:edit']
+      ? scopeForPermission(scopes, 'employees:edit')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(existingRows[0], editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET is_active = true, updated_at = NOW()
+        WHERE id = $1 AND is_active = false
+        RETURNING id, employee_id, username, name, email, role, is_active
+      `,
+      [id]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Deactivated employee not found.' });
+    }
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'restore',
+        targetTable: 'users',
+        targetId: id,
+        reason: `Restored ${rows[0].username || rows[0].name || id}`,
+      });
+    } catch (auditErr) {
+      console.warn('restore audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({
+      message: 'Employee restored.',
+      user: rows[0],
+    });
+  } catch (err) {
+    console.error('restoreEmployee error:', err);
+    return res.status(500).json({ message: 'Server error restoring employee.' });
+  }
+}
+
+/**
  * DELETE /api/admin/employees/:id/purge
  * Hard-delete: permanent removal (CEO only). Body: { reason }
  */
 async function purgeEmployee(req, res) {
   try {
     const { id } = req.params;
-    const reason = String(req.body?.reason || '').trim();
-
-    if (!reason) {
-      return res.status(400).json({ message: 'reason is required for permanent purge.' });
-    }
+    const reason =
+      String(req.body?.reason || '').trim() || 'Permanent delete from deactivated list';
 
     if (String(id) === String(req.user.id)) {
       return res.status(400).json({ message: 'You cannot purge your own account.' });
@@ -463,18 +544,22 @@ async function listDeactivated(req, res) {
 
 /**
  * GET /api/admin/locked-accounts
- * Accounts locked after failed password attempts.
+ * Failed-login lockouts and admin-blocked accounts.
  */
 async function listLockedAccounts(req, res) {
   try {
+    await ensureBlockedColumn();
     const { rows } = await pool.query(
       `
         SELECT
           id, employee_id, username, name, email, role, status,
-          failed_login_attempts, locked_at, is_active, created_at
+          failed_login_attempts, locked_at, blocked_at, blocked_reason,
+          is_active, created_at
         FROM users
-        WHERE locked_at IS NOT NULL
-        ORDER BY locked_at DESC NULLS LAST, id DESC
+        WHERE locked_at IS NOT NULL OR blocked_at IS NOT NULL
+        ORDER BY
+          COALESCE(blocked_at, locked_at) DESC NULLS LAST,
+          id DESC
       `
     );
     return res.json(rows);
@@ -497,7 +582,7 @@ async function unlockAccount(req, res) {
         SET failed_login_attempts = 0, locked_at = NULL, updated_at = NOW()
         WHERE id = $1
         RETURNING id, employee_id, username, name, email, role, status,
-                  failed_login_attempts, locked_at, is_active
+                  failed_login_attempts, locked_at, blocked_at, is_active
       `,
       [userId]
     );
@@ -529,13 +614,285 @@ async function unlockAccount(req, res) {
   }
 }
 
+function normalizeRoleName(role) {
+  return String(role || '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * PUT /api/admin/accounts/:userId/block
+ * Immediately ends the user's session; they cannot sign in again until unblocked.
+ */
+async function blockAccount(req, res) {
+  try {
+    await ensureBlockedColumn();
+    const { userId } = req.params;
+    const reason = String(req.body?.reason || '').trim() || null;
+
+    if (String(userId) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot block your own account.' });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, name, role, branch, department, is_active, blocked_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [userId]
+    );
+    const target = existingRows[0];
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeRoleName(target.role) === 'ceo') {
+      return res.status(403).json({ message: 'CEO accounts cannot be blocked.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const editScope = scopes['employees:edit']
+      ? scopeForPermission(scopes, 'employees:edit')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(target, editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    if (target.blocked_at) {
+      return res.json({
+        message: 'Account is already blocked.',
+        user: target,
+      });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET blocked_at = NOW(), blocked_reason = $2, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, employee_id, username, name, email, role, status,
+                  failed_login_attempts, locked_at, blocked_at, blocked_reason, is_active
+      `,
+      [userId, reason]
+    );
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'account_blocked',
+        targetTable: 'users',
+        targetId: rows[0].id,
+        reason: reason || `Blocked account ${rows[0].username}`,
+      });
+    } catch (auditErr) {
+      console.warn('account_blocked audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({
+      message: 'Account blocked. They are signed out and cannot sign in.',
+      user: rows[0],
+    });
+  } catch (err) {
+    console.error('blockAccount error:', err);
+    return res.status(500).json({ message: 'Server error blocking account.' });
+  }
+}
+
+/**
+ * PUT /api/admin/accounts/:userId/unblock
+ * Clears an admin block (does not clear failed-login lockout).
+ */
+async function unblockAccount(req, res) {
+  try {
+    await ensureBlockedColumn();
+    const { userId } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, role, branch, department, is_active, blocked_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [userId]
+    );
+    const target = existingRows[0];
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const editScope = scopes['employees:edit']
+      ? scopeForPermission(scopes, 'employees:edit')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(target, editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET blocked_at = NULL, blocked_reason = NULL, updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, employee_id, username, name, email, role, status,
+                  failed_login_attempts, locked_at, blocked_at, blocked_reason, is_active
+      `,
+      [userId]
+    );
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'account_unblocked',
+        targetTable: 'users',
+        targetId: rows[0].id,
+        reason: `Unblocked account ${rows[0].username}`,
+      });
+    } catch (auditErr) {
+      console.warn('account_unblocked audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({
+      message: 'Account unblocked. They can sign in again.',
+      user: rows[0],
+    });
+  } catch (err) {
+    console.error('unblockAccount error:', err);
+    return res.status(500).json({ message: 'Server error unblocking account.' });
+  }
+}
+
+
+/**
+ * POST /api/admin/employees/:id/profile-alert
+ * Notify the employee to complete portal fields they fill themselves.
+ */
+async function sendProfileAlert(req, res) {
+  try {
+    await ensureProfileAlertColumns();
+    const { id } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT ${DETAIL_COLUMNS}
+        FROM users
+        WHERE id = $1 AND is_active = true
+        LIMIT 1
+      `,
+      [id]
+    );
+    const target = existingRows[0];
+    if (!target) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const viewScope = scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(target, viewScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    const missing = missingEmployeePortalFields(target);
+    if (!missing.length) {
+      return res.status(400).json({
+        message: 'This employee has already filled their portal fields.',
+      });
+    }
+
+    const cooldown = profileAlertCooldown(target);
+    if (cooldown.active) {
+      return res.status(429).json({
+        message: `Alert already sent. You can send another after ${cooldown.remainingLabel}.`,
+        retryAfterMs: cooldown.remainingMs,
+        retryAt: cooldown.retryAt,
+        code: 'PROFILE_ALERT_COOLDOWN',
+      });
+    }
+
+    const labels = missing.map((f) => f.label);
+    const fieldList = formatFieldList(missing);
+    const firstName = String(target.name || target.username || 'there').split(' ')[0];
+    const subject = 'Please complete your portal profile';
+    const messageBody =
+      `Hi ${firstName},\n\n` +
+      'HR asked you to complete the following fields in your portal profile. ' +
+      'These are fields you fill yourself (not assigned by admin):\n\n' +
+      labels.map((l) => `• ${l}`).join('\n') +
+      '\n\nOpen My Account → Profile and save the missing details.\n\n' +
+      '— Textured Lab Portal';
+
+    const sender = {
+      id: req.user.id,
+      name: req.user.name,
+      username: req.user.username,
+    };
+
+    const result = await deliverOneMessage({
+      sender,
+      recipient: target,
+      subject,
+      messageBody,
+      deliveryMethod: 'both',
+    });
+
+    await pool.query(
+      `
+        UPDATE users
+        SET profile_alert_at = NOW(),
+            profile_alert_sent_at = NOW(),
+            profile_alert_fields = $2,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [id, JSON.stringify(labels)]
+    );
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'profile_alert_sent',
+        targetTable: 'users',
+        targetId: target.id,
+        reason: `Asked ${target.username || target.name} to complete: ${fieldList}`,
+      });
+    } catch (auditErr) {
+      console.warn('profile_alert_sent audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({
+      message: 'Alert sent. They will get a portal message, email, and a banner on next login. Next alert is available after 24 hours.',
+      missingFields: labels,
+      emailSent: Boolean(result?.emailSent),
+      emailError: result?.emailError || null,
+      profileAlertSentAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('sendProfileAlert error:', err);
+    return res.status(500).json({ message: 'Server error sending profile alert.' });
+  }
+}
+
 module.exports = {
   listEmployees,
   getEmployeeById,
   updateEmployee,
   deactivateEmployee,
+  restoreEmployee,
   purgeEmployee,
   listDeactivated,
   listLockedAccounts,
   unlockAccount,
+  blockAccount,
+  unblockAccount,
+  sendProfileAlert,
 };

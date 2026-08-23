@@ -523,4 +523,5 @@ module.exports = {
   listMyMessages,
   unreadCount,
   markMessageRead,
+  deliverOneMessage,
 };

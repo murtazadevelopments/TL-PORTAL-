@@ -6,6 +6,7 @@ import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
+import { missingEmployeePortalFields, profileAlertCooldown } from '../../utils/profileCompleteness';
 import './AdminDashboard.css';
 
 const SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -53,6 +54,14 @@ function isAccountLocked(row) {
   return Boolean(row?.locked_at);
 }
 
+function isAccountBlocked(row) {
+  return Boolean(row?.blocked_at);
+}
+
+function isSignInDisabled(row) {
+  return isAccountLocked(row) || isAccountBlocked(row);
+}
+
 function employmentStatusLabel(status) {
   if (status === 'active') return 'active';
   if (status === 'inactive') return 'pending';
@@ -76,6 +85,7 @@ function EmployeesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [employees, setEmployees] = useState([]);
@@ -111,6 +121,9 @@ function EmployeesPage() {
   const [branchError, setBranchError] = useState('');
 
   const [unlockingId, setUnlockingId] = useState(null);
+  const [blockingId, setBlockingId] = useState(null);
+  const [alertingId, setAlertingId] = useState(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeRecipient, setComposeRecipient] = useState(null);
   const [composeToast, setComposeToast] = useState('');
@@ -121,6 +134,11 @@ function EmployeesPage() {
     const next = s === 'pending' || s === 'active' || s === 'locked' ? s : 'all';
     setStatusTab(next);
   }, [searchParams]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -135,6 +153,7 @@ function EmployeesPage() {
         }
         setRole(data.role);
         setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+        setCurrentUserId(data.id ?? null);
         // Load list in the same flow so CEO/admin never sit on an empty table
         setLoading(true);
         setListError('');
@@ -225,6 +244,7 @@ function EmployeesPage() {
   const canCreateBranches = hasPermission(permissions, 'branches:create', role);
   const canUnlockAccounts = hasPermission(permissions, 'accounts:unlock', role);
   const canSendMessages = hasPermission(permissions, 'messages:send', role);
+  const canSendProfileAlert = canSendMessages || canEditEmployees;
 
   async function loadTeams() {
     try {
@@ -279,12 +299,97 @@ function EmployeesPage() {
     }
   }
 
+  async function handleSendProfileAlert(userId, event) {
+    event?.stopPropagation?.();
+    if (!canSendProfileAlert || !userId) return;
+    const target = employees.find((e) => String(e.id) === String(userId)) || detail;
+    const missing = missingEmployeePortalFields(target);
+    if (!missing.length) {
+      setSaveError('This employee has already filled their portal fields.');
+      return;
+    }
+    const cooldown = profileAlertCooldown(target);
+    if (cooldown.active) {
+      setSaveError(`Alert already sent. You can send another after ${cooldown.remainingLabel}.`);
+      return;
+    }
+    setAlertingId(userId);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      const { data } = await api.post(`/api/admin/employees/${userId}/profile-alert`);
+      const sentAt = data?.profileAlertSentAt || new Date().toISOString();
+      applyAccountPatch(userId, {
+        profile_alert_at: sentAt,
+        profile_alert_sent_at: sentAt,
+      });
+      setNowMs(Date.now());
+      setSaveSuccess(
+        data?.message ||
+          'Alert sent. Next alert is available after 24 hours.'
+      );
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to send profile alert.');
+    } finally {
+      setAlertingId(null);
+    }
+  }
+
+  async function applyAccountPatch(userId, patch) {
+    setEmployees((prev) =>
+      prev.map((row) => (String(row.id) === String(userId) ? { ...row, ...patch } : row))
+    );
+    setDetail((prev) =>
+      prev && String(prev.id) === String(userId) ? { ...prev, ...patch } : prev
+    );
+  }
+
+  async function handleBlockAccount(userId) {
+    if (!canDeactivateEmployees || !userId) return;
+    const target = employees.find((e) => String(e.id) === String(userId)) || detail;
+    const label = target?.name || target?.username || 'this account';
+    const ok = window.confirm(
+      `Block ${label}? They will be signed out immediately and cannot sign in until you unblock them.`
+    );
+    if (!ok) return;
+    setBlockingId(userId);
+    setSaveError('');
+    try {
+      const { data } = await api.put(`/api/admin/accounts/${userId}/block`);
+      const user = data?.user || {};
+      await applyAccountPatch(userId, {
+        blocked_at: user.blocked_at || new Date().toISOString(),
+        blocked_reason: user.blocked_reason || null,
+      });
+      setSaveSuccess('Account blocked. They are signed out and cannot sign in.');
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to block account.');
+    } finally {
+      setBlockingId(null);
+    }
+  }
+
+  async function handleUnblockAccount(userId) {
+    if (!canDeactivateEmployees || !userId) return;
+    setBlockingId(userId);
+    setSaveError('');
+    try {
+      await api.put(`/api/admin/accounts/${userId}/unblock`);
+      await applyAccountPatch(userId, { blocked_at: null, blocked_reason: null });
+      setSaveSuccess('Account unblocked. They can sign in again.');
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to unblock account.');
+    } finally {
+      setBlockingId(null);
+    }
+  }
+
   const stats = useMemo(() => {
     const total = employees.length;
     const active = employees.filter((e) => e.status === 'active').length;
     const inactive = employees.filter((e) => e.status !== 'active').length;
     const pendingId = employees.filter((e) => isBlank(e.employee_id)).length;
-    const locked = employees.filter((e) => isAccountLocked(e)).length;
+    const locked = employees.filter((e) => isSignInDisabled(e)).length;
     return { total, active, inactive, pendingId, locked };
   }, [employees]);
 
@@ -313,7 +418,7 @@ function EmployeesPage() {
   const tabCounts = useMemo(() => {
     const active = employees.filter((e) => e.status === 'active').length;
     const pending = employees.filter((e) => e.status !== 'active').length;
-    const locked = employees.filter((e) => isAccountLocked(e)).length;
+    const locked = employees.filter((e) => isSignInDisabled(e)).length;
     return { active, pending, locked };
   }, [employees]);
 
@@ -324,7 +429,7 @@ function EmployeesPage() {
       if (statusTab === 'active' && e.status !== 'active') return false;
       if (statusTab === 'pending' && e.status === 'active') return false;
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
-      if (statusTab === 'locked' && !isAccountLocked(e)) return false;
+      if (statusTab === 'locked' && !isSignInDisabled(e)) return false;
 
       if (filters.status !== 'all' && e.status !== filters.status) return false;
       if (
@@ -346,6 +451,10 @@ function EmployeesPage() {
 
   const detailMissingAdmin = useMemo(
     () => missingAdminFields(detail).map((key) => ADMIN_FIELD_LABELS[key]),
+    [detail]
+  );
+  const detailMissingEmployee = useMemo(
+    () => missingEmployeePortalFields(detail).map((f) => f.label),
     [detail]
   );
 
@@ -742,6 +851,7 @@ function EmployeesPage() {
             <table className="admin-table">
               <thead>
                 <tr>
+                  {canSendProfileAlert && <th>Alert</th>}
                   <th>Photo</th>
                   <th>Full Name</th>
                   <th>Username</th>
@@ -756,9 +866,42 @@ function EmployeesPage() {
               </thead>
               <tbody>
                 {filtered.map((row) => {
-                  const incomplete = missingAdminFields(row).length > 0;
+                  const missingAdmin = missingAdminFields(row);
+                  const missingEmployee = missingEmployeePortalFields(row);
+                  const incomplete = missingAdmin.length > 0 || missingEmployee.length > 0;
+                  const alertCooldown = profileAlertCooldown(row, nowMs);
                   return (
                     <tr key={row.id} onClick={() => openDetail(row.id)}>
+                      {canSendProfileAlert && (
+                        <td className="cell-alert">
+                          {missingEmployee.length > 0 ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost alert-row-btn"
+                              title={
+                                alertCooldown.active
+                                  ? `Already sent. Try again in ${alertCooldown.remainingLabel}`
+                                  : `Ask them to fill: ${missingEmployee.map((f) => f.label).join(', ')}`
+                              }
+                              aria-label={
+                                alertCooldown.active
+                                  ? `Alert available in ${alertCooldown.remainingLabel}`
+                                  : `Alert ${fullName(row)} to complete portal fields`
+                              }
+                              disabled={alertingId === row.id || alertCooldown.active}
+                              onClick={(e) => handleSendProfileAlert(row.id, e)}
+                            >
+                              {alertingId === row.id
+                                ? '…'
+                                : alertCooldown.active
+                                  ? `Wait ${alertCooldown.remainingLabel}`
+                                  : 'Alert'}
+                            </button>
+                          ) : (
+                            <span className="muted-cell">—</span>
+                          )}
+                        </td>
+                      )}
                       <td>
                         {row.profile_picture_url ? (
                           <img
@@ -778,8 +921,17 @@ function EmployeesPage() {
                           {incomplete && (
                             <span
                               className="warn-badge"
-                              title="Admin assignment incomplete"
-                              aria-label="Incomplete admin fields"
+                              title={[
+                                missingEmployee.length
+                                  ? `Employee portal: ${missingEmployee.map((f) => f.label).join(', ')}`
+                                  : '',
+                                missingAdmin.length
+                                  ? `Admin assign: ${missingAdmin.map((k) => ADMIN_FIELD_LABELS[k]).join(', ')}`
+                                  : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' | ')}
+                              aria-label="Incomplete profile fields"
                             >
                               !
                             </span>
@@ -803,16 +955,28 @@ function EmployeesPage() {
                           <span className={`status-pill ${statusClass(row.status)}`}>
                             {employmentStatusLabel(row.status)}
                           </span>
+                          {isAccountBlocked(row) && (
+                            <span
+                              className="status-pill locked"
+                              title={
+                                row.blocked_at
+                                  ? `Admin blocked since ${new Date(row.blocked_at).toLocaleString()}`
+                                  : 'Account blocked'
+                              }
+                            >
+                              blocked
+                            </span>
+                          )}
                           {isAccountLocked(row) && (
                             <span
                               className="status-pill locked"
                               title={
                                 row.locked_at
-                                  ? `Blocked since ${new Date(row.locked_at).toLocaleString()}`
-                                  : 'Account blocked'
+                                  ? `Locked since ${new Date(row.locked_at).toLocaleString()}`
+                                  : 'Account locked'
                               }
                             >
-                              blocked
+                              locked
                             </span>
                           )}
                         </div>
@@ -831,7 +995,27 @@ function EmployeesPage() {
                               handleUnlockAccount(row.id);
                             }}
                           >
-                            {unlockingId === row.id ? '…' : 'Unblock'}
+                            {unlockingId === row.id ? '…' : 'Unlock'}
+                          </button>
+                        )}
+                        {canDeactivateEmployees &&
+                          isAccountBlocked(row) &&
+                          String(row.id) !== String(currentUserId) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{
+                              marginTop: '0.35rem',
+                              padding: '0.25rem 0.55rem',
+                              fontSize: '0.8rem',
+                            }}
+                            disabled={blockingId === row.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnblockAccount(row.id);
+                            }}
+                          >
+                            {blockingId === row.id ? '…' : 'Unblock'}
                           </button>
                         )}
                       </td>
@@ -920,14 +1104,43 @@ function EmployeesPage() {
 
             {!detailLoading && detail && (
               <>
-                {detailMissingAdmin.length > 0 && (
+                {(detailMissingEmployee.length > 0 || detailMissingAdmin.length > 0) && (
                   <div className="alert-banner admin-incomplete" role="status">
                     <div>
                       <strong>This employee&apos;s profile is incomplete.</strong>
-                      <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-                        Missing: {detailMissingAdmin.join(', ')}
-                      </p>
+                      {detailMissingEmployee.length > 0 && (
+                        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                          Employee fills in portal: {detailMissingEmployee.join(', ')}
+                        </p>
+                      )}
+                      {detailMissingAdmin.length > 0 && (
+                        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                          Admin assigns here: {detailMissingAdmin.join(', ')}
+                        </p>
+                      )}
+                      {profileAlertCooldown(detail, nowMs).active && (
+                        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                          Next alert available in {profileAlertCooldown(detail, nowMs).remainingLabel}.
+                        </p>
+                      )}
                     </div>
+                    {canSendProfileAlert && detailMissingEmployee.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={
+                          alertingId === detail.id ||
+                          profileAlertCooldown(detail, nowMs).active
+                        }
+                        onClick={(e) => handleSendProfileAlert(detail.id, e)}
+                      >
+                        {alertingId === detail.id
+                          ? 'Sending…'
+                          : profileAlertCooldown(detail, nowMs).active
+                            ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
+                            : 'Alert employee'}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -954,17 +1167,50 @@ function EmployeesPage() {
                       <span className={`status-pill ${statusClass(detail.status)}`}>
                         {employmentStatusLabel(detail.status)}
                       </span>
-                      {isAccountLocked(detail) ? (
+                      {isAccountBlocked(detail) && (
+                        <span className="status-pill locked">blocked</span>
+                      )}
+                      {isAccountLocked(detail) && (
                         <span className="status-pill locked">
-                          blocked
+                          locked
                           {detail.failed_login_attempts
                             ? ` · ${detail.failed_login_attempts} attempts`
                             : ''}
                         </span>
-                      ) : (
+                      )}
+                      {!isSignInDisabled(detail) && (
                         <span className="status-pill active">login ok</span>
                       )}
                     </div>
+                    {isAccountBlocked(detail) && (
+                      <div
+                        style={{
+                          marginTop: '0.55rem',
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '0.5rem',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                          Admin blocked{' '}
+                          {detail.blocked_at
+                            ? new Date(detail.blocked_at).toLocaleString()
+                            : ''}
+                          {detail.blocked_reason ? ` · ${detail.blocked_reason}` : ''}
+                        </p>
+                        {canDeactivateEmployees && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={blockingId === detail.id}
+                            onClick={() => handleUnblockAccount(detail.id)}
+                          >
+                            {blockingId === detail.id ? 'Unblocking…' : 'Unblock'}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {isAccountLocked(detail) && (
                       <div
                         style={{
@@ -976,7 +1222,7 @@ function EmployeesPage() {
                         }}
                       >
                         <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                          Locked{' '}
+                          Locked after failed logins{' '}
                           {detail.locked_at
                             ? new Date(detail.locked_at).toLocaleString()
                             : ''}
@@ -988,7 +1234,7 @@ function EmployeesPage() {
                             disabled={unlockingId === detail.id}
                             onClick={() => handleUnlockAccount(detail.id)}
                           >
-                            {unlockingId === detail.id ? 'Unblocking…' : 'Unblock'}
+                            {unlockingId === detail.id ? 'Unlocking…' : 'Unlock'}
                           </button>
                         )}
                       </div>
@@ -1448,6 +1694,25 @@ function EmployeesPage() {
                         Message
                       </button>
                     )}
+                    {canSendProfileAlert && detailMissingEmployee.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={
+                          alertingId === detail.id ||
+                          saving ||
+                          deactivating ||
+                          profileAlertCooldown(detail, nowMs).active
+                        }
+                        onClick={(e) => handleSendProfileAlert(detail.id, e)}
+                      >
+                        {alertingId === detail.id
+                          ? 'Sending…'
+                          : profileAlertCooldown(detail, nowMs).active
+                            ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
+                            : 'Alert profile'}
+                      </button>
+                    )}
                     {canUnlockAccounts && isAccountLocked(detail) && (
                       <button
                         type="button"
@@ -1455,7 +1720,32 @@ function EmployeesPage() {
                         disabled={unlockingId === detail.id || saving || deactivating}
                         onClick={() => handleUnlockAccount(detail.id)}
                       >
-                        {unlockingId === detail.id ? 'Unblocking…' : 'Unblock account'}
+                        {unlockingId === detail.id ? 'Unlocking…' : 'Unlock login'}
+                      </button>
+                    )}
+                    {canDeactivateEmployees &&
+                      isAccountBlocked(detail) &&
+                      String(detail.id) !== String(currentUserId) && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={blockingId === detail.id || saving || deactivating}
+                        onClick={() => handleUnblockAccount(detail.id)}
+                      >
+                        {blockingId === detail.id ? 'Unblocking…' : 'Unblock account'}
+                      </button>
+                    )}
+                    {canDeactivateEmployees &&
+                      !isAccountBlocked(detail) &&
+                      String(detail.role || '').toLowerCase() !== 'ceo' &&
+                      String(detail.id) !== String(currentUserId) && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={blockingId === detail.id || saving || deactivating}
+                        onClick={() => handleBlockAccount(detail.id)}
+                      >
+                        {blockingId === detail.id ? 'Blocking…' : 'Block'}
                       </button>
                     )}
                     {canDeactivateEmployees && (

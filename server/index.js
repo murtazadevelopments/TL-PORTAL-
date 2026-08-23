@@ -52,6 +52,18 @@ app.use(
 );
 app.use(express.json({ limit: '2mb' }));
 
+const CLIENT_HINTS =
+  'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Arch, Sec-CH-UA-Form-Factors';
+app.use((req, res, next) => {
+  res.setHeader('Accept-CH', CLIENT_HINTS);
+  res.setHeader('Critical-CH', 'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Arch');
+  res.setHeader(
+    'Permissions-Policy',
+    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*'
+  );
+  next();
+});
+
 // Vite build output is client/dist → copied to server/public by root `npm run build`.
 // Optional when the frontend is deployed separately (FTP → public_html).
 const publicDir = path.join(__dirname, 'public');

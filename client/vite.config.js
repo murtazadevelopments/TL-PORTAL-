@@ -125,11 +125,18 @@ export default defineConfig({
     }),
   ],
   server: {
+    headers: {
+      'Accept-CH':
+        'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Arch, Sec-CH-UA-Form-Factors',
+      'Permissions-Policy':
+        'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*',
+    },
     proxy: {
       // Forward /api/* to the Express backend during local development
       '/api': {
         target: 'http://localhost:5001',
         changeOrigin: true,
+        xfwd: true,
       },
     },
   },

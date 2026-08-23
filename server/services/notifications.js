@@ -300,12 +300,20 @@ async function notifyAdminsEmployeeSelfUpdate(employee, changedFields) {
 /**
  * Feature B — routine login notification to the user.
  */
-async function notifyUserLogin(user, { ip, userAgent, locationLabel } = {}) {
+async function notifyUserLogin(user, { ip, userAgent, locationLabel, device, geo } = {}) {
   if (!user?.email) return null;
 
   const when = formatTimestamp(new Date());
-  const device = escapeHtml(userAgent || 'Unknown device');
-  const where = escapeHtml(locationLabel || ip || 'Unknown location');
+  const deviceLabel = escapeHtml(device || userAgent || 'Unknown device');
+  const where = escapeHtml(locationLabel || 'Unknown location');
+  const ipLabel = escapeHtml(ip || 'Unknown IP');
+  const city = escapeHtml(geo?.city || '');
+  const area = escapeHtml(geo?.area || '');
+  const country = escapeHtml(geo?.country || '');
+  const coords =
+    geo?.latitude != null && geo?.longitude != null
+      ? `${Number(geo.latitude).toFixed(4)}, ${Number(geo.longitude).toFixed(4)}`
+      : '';
 
   const result = await sendEmailSafe({
     to: user.email,
@@ -315,8 +323,13 @@ async function notifyUserLogin(user, { ip, userAgent, locationLabel } = {}) {
       <p>You just logged in to your Textured Lab Portal account.</p>
       <ul>
         <li><strong>When:</strong> ${escapeHtml(when)}</li>
-        <li><strong>Approximate location:</strong> ${where}</li>
-        <li><strong>Device:</strong> ${device}</li>
+        <li><strong>IP address:</strong> ${ipLabel}</li>
+        ${city ? `<li><strong>City:</strong> ${city}</li>` : ''}
+        ${area ? `<li><strong>Area:</strong> ${area}</li>` : ''}
+        ${country ? `<li><strong>Country:</strong> ${country}</li>` : ''}
+        ${coords ? `<li><strong>Coordinates:</strong> ${escapeHtml(coords)}</li>` : ''}
+        ${!city && !country ? `<li><strong>Approximate location:</strong> ${where}</li>` : ''}
+        <li><strong>Device:</strong> ${deviceLabel}</li>
       </ul>
       <p>If this was you, no action is needed.</p>
     `,

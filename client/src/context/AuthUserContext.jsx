@@ -19,7 +19,14 @@ export function AuthUserProvider({ children }) {
       setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
       return data;
     } catch (err) {
-      if (err.response?.status === 401) {
+      const code = err.response?.data?.code;
+      if (
+        err.response?.status === 401 ||
+        (err.response?.status === 403 &&
+          (code === 'ACCOUNT_BLOCKED' ||
+            code === 'ACCOUNT_DEACTIVATED' ||
+            code === 'ACCOUNT_LOCKED'))
+      ) {
         localStorage.removeItem('token');
         navigate('/', { replace: true });
         return null;

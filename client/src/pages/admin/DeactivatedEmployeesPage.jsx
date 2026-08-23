@@ -17,9 +17,12 @@ export default function DeactivatedEmployeesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [restoringId, setRestoringId] = useState(null);
   const [purgingId, setPurgingId] = useState(null);
 
   const canView = hasPermission(permissions, 'employees:deactivate', role);
+  const canRestore = canView;
+  const canPurge = isCeo(role);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,21 +71,44 @@ export default function DeactivatedEmployeesPage() {
     if (!checking && canView) load();
   }, [checking, canView, load]);
 
-  async function handlePurge(id, label) {
-    if (!isCeo(role)) return;
+  async function handleRestore(id, label) {
     const ok = window.confirm(
-      `Permanently purge ${label}? This cannot be undone.`
+      `Restore ${label}? They will appear in the active employee list and can sign in again.`
     );
     if (!ok) return;
+    setRestoringId(id);
+    setError('');
+    setSuccess('');
+    try {
+      await api.put(`/api/admin/employees/${id}/restore`);
+      setUsers((prev) => prev.filter((u) => String(u.id) !== String(id)));
+      setSuccess(`${label} was restored.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to restore employee.');
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  async function handlePurge(id, label) {
+    if (!canPurge) return;
+    const ok = window.confirm(
+      `Permanently delete ${label}? Their profile, documents, and login access will be removed. This cannot be undone.`
+    );
+    if (!ok) return;
+    const reason =
+      window.prompt('Optional note for the audit log (permanent delete):', '') ?? '';
     setPurgingId(id);
     setError('');
     setSuccess('');
     try {
-      await api.delete(`/api/admin/employees/${id}/purge`);
-      setUsers((prev) => prev.filter((u) => u.id !== id));
-      setSuccess('Employee permanently purged.');
+      await api.delete(`/api/admin/employees/${id}/purge`, {
+        data: { reason: reason.trim() || 'Permanent delete from deactivated list' },
+      });
+      setUsers((prev) => prev.filter((u) => String(u.id) !== String(id)));
+      setSuccess(`${label} was permanently deleted.`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to purge employee.');
+      setError(err.response?.data?.message || 'Failed to permanently delete employee.');
     } finally {
       setPurgingId(null);
     }
@@ -99,16 +125,18 @@ export default function DeactivatedEmployeesPage() {
     );
   }
 
+  const busy = Boolean(restoringId || purgingId);
+
   return (
     <div className="admin-page page-panel">
       <div className="admin-toolbar" style={{ marginTop: 0 }}>
         <div>
           <h1>Deactivated</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Soft-deleted employees — CEO can permanently purge
+            Restore an employee to the active list, or permanently delete them (CEO only).
           </p>
         </div>
-        <button type="button" className="btn btn-ghost" disabled={loading} onClick={load}>
+        <button type="button" className="btn btn-ghost" disabled={loading || busy} onClick={load}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
@@ -136,32 +164,45 @@ export default function DeactivatedEmployeesPage() {
                 <th>Username</th>
                 <th>Employee ID</th>
                 <th>Department</th>
-                {isCeo(role) && <th />}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((row) => (
-                <tr key={row.id}>
-                  <td className="cell-name">{fullName(row)}</td>
-                  <td>{row.username || '—'}</td>
-                  <td>{row.employee_id || '—'}</td>
-                  <td>{row.department || '—'}</td>
-                  {isCeo(role) && (
+              {users.map((row) => {
+                const label = row.name || row.username || 'this employee';
+                return (
+                  <tr key={row.id}>
+                    <td className="cell-name">{fullName(row)}</td>
+                    <td>{row.username || '—'}</td>
+                    <td>{row.employee_id || '—'}</td>
+                    <td>{row.department || '—'}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={purgingId === row.id}
-                        onClick={() =>
-                          handlePurge(row.id, row.name || row.username || 'this employee')
-                        }
-                      >
-                        {purgingId === row.id ? 'Purging…' : 'Purge'}
-                      </button>
+                      <div className="row-actions">
+                        {canRestore && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={busy}
+                            onClick={() => handleRestore(row.id, label)}
+                          >
+                            {restoringId === row.id ? 'Restoring…' : 'Restore'}
+                          </button>
+                        )}
+                        {canPurge && (
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            disabled={busy}
+                            onClick={() => handlePurge(row.id, label)}
+                          >
+                            {purgingId === row.id ? 'Deleting…' : 'Permanently delete'}
+                          </button>
+                        )}
+                      </div>
                     </td>
-                  )}
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

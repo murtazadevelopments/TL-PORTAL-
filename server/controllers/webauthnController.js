@@ -8,6 +8,7 @@ const { isoBase64URL } = require('@simplewebauthn/server/helpers');
 const pool = require('../config/db');
 const { attachReadableUrls } = require('../utils/storageUrls');
 const { frontendBaseUrl, PUBLIC_FRONTEND_URL } = require('../utils/frontendUrl');
+const { recordSuccessfulLogin } = require('../services/loginActivity');
 const jwt = require('jsonwebtoken');
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -338,12 +339,12 @@ async function loginOptions(req, res) {
     }
 
     const { rows: users } = await pool.query(
-      `SELECT id, username, is_active, status, role FROM users WHERE username = $1 LIMIT 1`,
+      `SELECT id, username, is_active, blocked_at, status, role FROM users WHERE username = $1 LIMIT 1`,
       [username]
     );
     const user = users[0];
     // Generic: don't reveal whether user exists
-    if (!user || user.is_active === false) {
+    if (!user || user.is_active === false || user.blocked_at) {
       return res.status(404).json({
         message: 'No Face/Fingerprint login is set up for this username on this account.',
       });
@@ -403,12 +404,20 @@ async function loginVerify(req, res) {
     if (user.is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+    }
+    if (user.blocked_at) {
+      return res.status(403).json({
+        message: 'This account has been blocked. Contact an administrator.',
+        code: 'ACCOUNT_BLOCKED',
       });
     }
     if (user.locked_at) {
       return res.status(403).json({
         message:
           'Account locked due to too many failed attempts. Contact your admin.',
+        code: 'ACCOUNT_LOCKED',
         accountLocked: true,
       });
     }
@@ -489,6 +498,7 @@ async function loginVerify(req, res) {
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));
+    void recordSuccessfulLogin(req, user);
     return res.json({
       token: signToken(user),
       user: safeUser,

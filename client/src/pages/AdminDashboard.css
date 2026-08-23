@@ -230,6 +230,18 @@
   font-weight: 700;
 }
 
+.coord-link {
+  color: var(--cyan-soft);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.coord-link:hover {
+  text-decoration: underline;
+  color: var(--green);
+}
+
 .muted-cell {
   color: var(--muted);
   font-style: italic;
@@ -492,12 +504,21 @@
 
 .modal-actions {
   display: flex;
-  gap: 0.65rem;
-  margin-top: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+  align-items: stretch;
 }
 
 .modal-actions .btn {
-  flex: 1;
+  flex: 1 1 8.75rem;
+  min-width: min(100%, 8.5rem);
+  max-width: 100%;
+  margin-top: 0;
+  white-space: normal;
+  line-height: 1.25;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 @keyframes fade-in {
@@ -587,7 +608,7 @@
 
   .modal-actions .btn {
     flex: 1 1 calc(50% - 0.4rem);
-    min-width: 0;
+    min-width: min(100%, 8.5rem);
   }
 }
 

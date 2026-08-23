@@ -9,6 +9,7 @@ const {
   absoluteFromRelative,
 } = require('../services/localStorage');
 const { canDownloadDocument } = require('../utils/documentAccess');
+const { rejectIfAccountDisabled } = require('../utils/accountStatus');
 
 const DOC_BUCKET = {
   profile: 'profile-pictures',
@@ -87,10 +88,18 @@ function documentAuth(req, res, next) {
 
   try {
     req.user = jwt.verify(token, process.env.JWT_SECRET);
-    return next();
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token.' });
   }
+
+  rejectIfAccountDisabled(req.user.id, res)
+    .then((denied) => {
+      if (!denied) next();
+    })
+    .catch((err) => {
+      console.error('documentAuth account gate:', err);
+      return res.status(500).json({ message: 'Server error verifying account.' });
+    });
 }
 
 /**
