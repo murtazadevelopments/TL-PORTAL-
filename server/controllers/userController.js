@@ -17,12 +17,13 @@ const {
   missingEmployeePortalFields,
   parseAlertFields,
 } = require('../utils/profileCompleteness');
+const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
-  education, last_job_status, date_of_birth,
+  education, last_job_status, employment_type, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
@@ -62,6 +63,7 @@ const EMPLOYEE_IGNORED_FIELDS = new Set([
   'salary',
   'role',
   'is_active',
+  'employment_type',
 ]);
 
 async function decorateProfileAlert(user) {
@@ -86,6 +88,7 @@ async function decorateProfileAlert(user) {
 async function getMe(req, res) {
   try {
     await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
     const { rows } = await pool.query(
       `SELECT ${USER_PUBLIC_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [req.user.id]
@@ -203,6 +206,7 @@ async function getMe(req, res) {
 async function updateMe(req, res) {
   try {
     await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
     const body = req.body || {};
 
     // Admin-only keys are dropped silently (no error) if present

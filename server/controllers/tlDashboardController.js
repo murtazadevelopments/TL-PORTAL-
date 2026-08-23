@@ -595,8 +595,9 @@ async function saveSection(req, res) {
         const itemType = String(item?.item_type || item?.itemType || 'text')
           .trim()
           .toLowerCase();
-        if (!label || !value) continue;
+        if (!value) continue;
         if (!ITEM_TYPES.has(itemType)) continue;
+        const storedLabel = label || value;
         itemOrder += 1;
 
         const itemRaw = item.id;

@@ -47,6 +47,7 @@ function clampOffset(offset, maxX, maxY) {
  */
 function AvatarEditor({ open, currentUrl, onClose, onSave, saving = false }) {
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const imgRef = useRef(null);
   const [sourceUrl, setSourceUrl] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -128,6 +129,7 @@ function AvatarEditor({ open, currentUrl, onClose, onSave, saving = false }) {
     setZoom(1);
     setRotate(0);
     setOffset({ x: 0, y: 0 });
+    e.target.value = '';
   }
 
   function onImageLoad(e) {
@@ -375,6 +377,14 @@ function AvatarEditor({ open, currentUrl, onClose, onSave, saving = false }) {
         </fieldset>
 
         <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          hidden
+          onChange={handleFile}
+        />
+        <input
           ref={fileInputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/gif"
@@ -388,10 +398,18 @@ function AvatarEditor({ open, currentUrl, onClose, onSave, saving = false }) {
           <button
             type="button"
             className="btn btn-ghost"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={saving}
+          >
+            Take photo
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
             onClick={() => fileInputRef.current?.click()}
             disabled={saving}
           >
-            Change image
+            Upload
           </button>
           <button
             type="button"

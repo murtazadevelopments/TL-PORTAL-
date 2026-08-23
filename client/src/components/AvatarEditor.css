@@ -129,3 +129,7 @@
   gap: 0.65rem;
   justify-content: flex-end;
 }
+
+.avatar-editor-actions .btn {
+  flex: 1 1 7.5rem;
+}

@@ -160,13 +160,29 @@
 
 .tl-add-link {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 0.5rem;
   margin-top: 0.85rem;
+}
+
+.tl-add-link > input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+  box-sizing: border-box;
+}
+
+.tl-add-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   align-items: center;
 }
 
-.tl-add-link input {
+.tl-add-link-row input {
   flex: 1 1 220px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -225,6 +241,13 @@
 
 .tl-item {
   padding-top: 0.45rem;
+}
+
+.tl-item-label {
+  margin: 0 0 0.2rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-h);
 }
 
 .tl-item-value-row {

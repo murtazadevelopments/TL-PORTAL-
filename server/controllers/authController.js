@@ -13,6 +13,10 @@ const {
 const { recordSuccessfulLogin } = require('../services/loginActivity');
 const { writeAuditLog } = require('../utils/auditLog');
 const { frontendBaseUrl } = require('../utils/frontendUrl');
+const {
+  ensureEmploymentTypeColumn,
+  normalizeEmploymentType,
+} = require('../utils/employmentType');
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -20,6 +24,7 @@ const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url,
   profile_picture_url, role, department, education, last_job_status,
+  employment_type,
   bank_name, account_title, iban, account_number,
   date_joined, created_at, updated_at
 `;
@@ -64,6 +69,8 @@ function getFile(req, field) {
  */
 async function signup(req, res) {
   try {
+    await ensureEmploymentTypeColumn();
+
     const {
       username,
       name,
@@ -72,9 +79,9 @@ async function signup(req, res) {
       contact_number,
       address,
       cnic_number,
-      department,
       education,
       last_job_status,
+      employment_type,
       bank_name,
       account_title,
       account_number,
@@ -95,6 +102,7 @@ async function signup(req, res) {
       !address ||
       !education ||
       !last_job_status ||
+      !employment_type ||
       !bank_name ||
       !account_title ||
       !account_number ||
@@ -102,7 +110,7 @@ async function signup(req, res) {
     ) {
       return res.status(400).json({
         message:
-          'username, name, email, password, contact_number, address, education, last_job_status, bank_name, account_title, account_number, and iban are required.',
+          'username, name, email, password, contact_number, address, education, last_job_status, employment_type, bank_name, account_title, account_number, and iban are required.',
       });
     }
 
@@ -132,10 +140,17 @@ async function signup(req, res) {
       });
     }
 
-    // CV + profile required; CNIC files optional
-    if (!cv || !profilePicture) {
+    const normalizedEmploymentType = normalizeEmploymentType(employment_type);
+    if (!normalizedEmploymentType) {
       return res.status(400).json({
-        message: 'CV and profile_picture are required.',
+        message: 'employment_type must be one of: onsite, remote.',
+      });
+    }
+
+    // Profile picture required; CV and CNIC files optional
+    if (!profilePicture) {
+      return res.status(400).json({
+        message: 'profile_picture is required.',
       });
     }
 
@@ -149,7 +164,7 @@ async function signup(req, res) {
         employee_id, username, name, email, password,
         contact_number, address, cnic_number,
         cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
-        role, department, education, last_job_status,
+        role, department, education, last_job_status, employment_type,
         bank_name, account_title, account_number, iban,
         status, date_joined
       )
@@ -157,8 +172,8 @@ async function signup(req, res) {
         NULL, $1, $2, $3, $4,
         $5, $6, $7,
         NULL, NULL, NULL, NULL,
-        $8, $9, $10, $11,
-        $12, $13, $14, $15,
+        $8, $9, $10, $11, $12,
+        $13, $14, $15, $16,
         'inactive', NOW()
       )
       RETURNING ${USER_PUBLIC_COLUMNS}
@@ -173,9 +188,10 @@ async function signup(req, res) {
       String(address).trim(),
       normalizedCnic,
       'employee',
-      department ? String(department).trim() : null,
+      null,
       String(education).trim(),
       String(last_job_status).trim(),
+      normalizedEmploymentType,
       String(bank_name).trim(),
       String(account_title).trim(),
       String(account_number).trim(),
@@ -186,7 +202,7 @@ async function signup(req, res) {
 
     try {
       const [cv_url, profile_picture_url, cnic_front_url, cnic_back_url] = await Promise.all([
-        saveUserFile(userRow, 'cv', cv),
+        cv ? saveUserFile(userRow, 'cv', cv) : Promise.resolve(null),
         saveUserFile(userRow, 'profile', profilePicture),
         cnicFront ? saveUserFile(userRow, 'cnic_front', cnicFront) : Promise.resolve(null),
         cnicBack ? saveUserFile(userRow, 'cnic_back', cnicBack) : Promise.resolve(null),

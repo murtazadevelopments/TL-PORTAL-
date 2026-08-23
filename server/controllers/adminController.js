@@ -23,12 +23,13 @@ const {
   ensureProfileAlertColumns,
   profileAlertCooldown,
 } = require('../utils/profileCompleteness');
+const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { deliverOneMessage } = require('./messagesController');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
-  education, last_job_status, profile_picture_url, created_at, is_active,
+  education, last_job_status, employment_type, profile_picture_url, created_at, is_active,
   failed_login_attempts, locked_at, blocked_at, blocked_reason,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
@@ -40,7 +41,7 @@ const DETAIL_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
-  education, last_job_status, date_of_birth,
+  education, last_job_status, employment_type, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
@@ -108,6 +109,7 @@ async function listEmployees(req, res) {
   try {
     await ensureBlockedColumn();
     await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
     const scopes = await resolvePermissionScopes(req);
     const viewScope = scopeForPermission(scopes, 'employees:view');
     const filter = scopeWhereClause(viewScope, 1);
@@ -134,6 +136,7 @@ async function listEmployees(req, res) {
 async function getEmployeeById(req, res) {
   try {
     await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
     const { id } = req.params;
 
     const { rows } = await pool.query(
@@ -777,6 +780,7 @@ async function unblockAccount(req, res) {
 async function sendProfileAlert(req, res) {
   try {
     await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
     const { id } = req.params;
 
     const { rows: existingRows } = await pool.query(

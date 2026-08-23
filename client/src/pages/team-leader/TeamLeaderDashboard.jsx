@@ -134,11 +134,11 @@ function normalizeCategories(list) {
     name: c.name || '',
     items: (c.items || []).map((it) => {
       const value = it.value || it.label || '';
+      const label = String(it.label || '').trim();
       return {
         id: it.id,
         value,
-        // Keep DB shape; UI only shows the link
-        label: value,
+        label: label && label !== value ? label : '',
         item_type: 'link',
       };
     }),
@@ -160,6 +160,7 @@ export default function TeamLeaderDashboard() {
 
   const [newCategoryName, setNewCategoryName] = useState('');
   const [linkDrafts, setLinkDrafts] = useState({});
+  const [labelDrafts, setLabelDrafts] = useState({});
   const [openIds, setOpenIds] = useState(() => new Set());
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [assignCategory, setAssignCategory] = useState(null);
@@ -196,6 +197,7 @@ export default function TeamLeaderDashboard() {
       setCanManage(Boolean(data.canManage));
       setDirty(false);
       setLinkDrafts({});
+      setLabelDrafts({});
       const next = normalizeCategories(data.categories);
       // Open first category by default
       setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
@@ -341,6 +343,7 @@ export default function TeamLeaderDashboard() {
   function handleAddLink(cat) {
     if (!canManage) return;
     const link = String(linkDrafts[cat.id] || '').trim();
+    const label = String(labelDrafts[cat.id] || '').trim();
     if (!link) {
       setError('Enter a link.');
       return;
@@ -355,7 +358,7 @@ export default function TeamLeaderDashboard() {
                 {
                   id: tempId('item'),
                   value: link,
-                  label: link,
+                  label,
                   item_type: 'link',
                 },
               ],
@@ -364,6 +367,7 @@ export default function TeamLeaderDashboard() {
       )
     );
     setLinkDrafts((prev) => ({ ...prev, [cat.id]: '' }));
+    setLabelDrafts((prev) => ({ ...prev, [cat.id]: '' }));
     setOpenIds((prev) => new Set([...prev, String(cat.id)]));
     markDirty();
     setError('');
@@ -436,10 +440,11 @@ export default function TeamLeaderDashboard() {
           id: c.id,
           name: c.name,
           items: (c.items || []).map((it) => {
-            const link = String(it.value || it.label || '').trim();
+            const link = String(it.value || '').trim();
+            const label = String(it.label || '').trim();
             return {
               id: it.id,
-              label: link,
+              label: label || link,
               value: link,
               item_type: 'link',
             };
@@ -720,6 +725,9 @@ export default function TeamLeaderDashboard() {
                   <ul className="tl-item-list">
                     {(cat.items || []).map((item) => (
                       <li key={item.id} className="tl-item">
+                        {item.label ? (
+                          <p className="tl-item-label">{item.label}</p>
+                        ) : null}
                         <div className="tl-item-value-row">
                           <a
                             href={linkHref(item.value)}
@@ -749,11 +757,11 @@ export default function TeamLeaderDashboard() {
                   {canManage && (
                     <div className="tl-add-link">
                       <input
-                        type="url"
-                        placeholder="Paste link (https://…)"
-                        value={linkDrafts[cat.id] || ''}
+                        type="text"
+                        placeholder="Label (optional)"
+                        value={labelDrafts[cat.id] || ''}
                         onChange={(e) =>
-                          setLinkDrafts((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                          setLabelDrafts((prev) => ({ ...prev, [cat.id]: e.target.value }))
                         }
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
@@ -762,13 +770,29 @@ export default function TeamLeaderDashboard() {
                           }
                         }}
                       />
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={() => handleAddLink(cat)}
-                      >
-                        Add link
-                      </button>
+                      <div className="tl-add-link-row">
+                        <input
+                          type="url"
+                          placeholder="Paste link (https://…)"
+                          value={linkDrafts[cat.id] || ''}
+                          onChange={(e) =>
+                            setLinkDrafts((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddLink(cat);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => handleAddLink(cat)}
+                        >
+                          Add link
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

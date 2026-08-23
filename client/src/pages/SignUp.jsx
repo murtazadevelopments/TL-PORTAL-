@@ -13,6 +13,11 @@ const LAST_JOB_OPTIONS = [
   { value: 'other', label: 'Other' },
 ];
 
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: 'onsite', label: 'Onsite' },
+  { value: 'remote', label: 'Remote' },
+];
+
 const INITIAL = {
   username: '',
   name: '',
@@ -21,14 +26,27 @@ const INITIAL = {
   contact_number: '',
   address: '',
   cnic_number: '',
-  department: '',
   education: '',
   last_job_status: '',
+  employment_type: '',
   bank_name: '',
   account_title: '',
   account_number: '',
   iban: '',
 };
+
+function LabelText({ children, required: isRequired }) {
+  return (
+    <span>
+      {children}
+      {isRequired ? (
+        <span className="req-mark" aria-hidden="true">
+          *
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 
@@ -75,8 +93,8 @@ function SignUp() {
       return;
     }
 
-    if (!files.cv || !files.profile_picture) {
-      setError('Please upload CV and profile picture.');
+    if (!files.profile_picture) {
+      setError('Please upload a profile picture.');
       return;
     }
 
@@ -89,7 +107,7 @@ function SignUp() {
       });
       if (files.cnic_front) body.append('cnic_front', files.cnic_front);
       if (files.cnic_back) body.append('cnic_back', files.cnic_back);
-      body.append('cv', files.cv);
+      if (files.cv) body.append('cv', files.cv);
       body.append('profile_picture', files.profile_picture);
 
       const { data } = await api.post('/api/auth/signup', body);
@@ -126,7 +144,7 @@ function SignUp() {
 
         <form onSubmit={handleSubmit} className="form" encType="multipart/form-data">
           <label>
-            Username
+            <LabelText required>Username</LabelText>
             <input
               type="text"
               name="username"
@@ -145,12 +163,12 @@ function SignUp() {
           </label>
 
           <label>
-            Name
+            <LabelText required>Name</LabelText>
             <input type="text" name="name" value={form.name} onChange={handleChange} required />
           </label>
 
           <label>
-            Email
+            <LabelText required>Email</LabelText>
             <input
               type="email"
               name="email"
@@ -166,12 +184,13 @@ function SignUp() {
             value={form.password}
             onChange={handleChange}
             required
+            requiredMark
             minLength={6}
             autoComplete="new-password"
           />
 
           <label>
-            Contact number
+            <LabelText required>Contact number</LabelText>
             <input
               type="tel"
               name="contact_number"
@@ -182,7 +201,7 @@ function SignUp() {
           </label>
 
           <label>
-            Address
+            <LabelText required>Address</LabelText>
             <input
               type="text"
               name="address"
@@ -193,7 +212,7 @@ function SignUp() {
           </label>
 
           <label>
-            Education
+            <LabelText required>Education</LabelText>
             <input
               type="text"
               name="education"
@@ -205,7 +224,7 @@ function SignUp() {
           </label>
 
           <label>
-            Last job status
+            <LabelText required>Last job status</LabelText>
             <select
               name="last_job_status"
               value={form.last_job_status}
@@ -221,10 +240,27 @@ function SignUp() {
             </select>
           </label>
 
+          <label>
+            <LabelText required>Employment type</LabelText>
+            <select
+              name="employment_type"
+              value={form.employment_type}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select type</option>
+              {EMPLOYMENT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <h2>Banking details</h2>
           <div className="grid-2">
             <label>
-              Bank name
+              <LabelText required>Bank name</LabelText>
               <input
                 type="text"
                 name="bank_name"
@@ -234,7 +270,7 @@ function SignUp() {
               />
             </label>
             <label>
-              Account title
+              <LabelText required>Account title</LabelText>
               <input
                 type="text"
                 name="account_title"
@@ -246,7 +282,7 @@ function SignUp() {
           </div>
           <div className="grid-2">
             <label>
-              Account number
+              <LabelText required>Account number</LabelText>
               <input
                 type="text"
                 name="account_number"
@@ -256,7 +292,7 @@ function SignUp() {
               />
             </label>
             <label>
-              IBAN
+              <LabelText required>IBAN</LabelText>
               <input type="text" name="iban" value={form.iban} onChange={handleChange} required />
             </label>
           </div>
@@ -267,16 +303,6 @@ function SignUp() {
               type="text"
               name="cnic_number"
               value={form.cnic_number}
-              onChange={handleChange}
-            />
-          </label>
-
-          <label>
-            Department (optional)
-            <input
-              type="text"
-              name="department"
-              value={form.department}
               onChange={handleChange}
             />
           </label>
@@ -304,25 +330,43 @@ function SignUp() {
 
           <div className="grid-2">
             <label>
-              CV (PDF)
+              CV (PDF, optional)
               <input
                 type="file"
                 name="cv"
                 accept=".pdf,application/pdf"
                 onChange={handleFileChange}
-                required
               />
             </label>
-            <label>
-              Profile picture
-              <input
-                type="file"
-                name="profile_picture"
-                accept="image/*"
-                onChange={handleFileChange}
-                required
-              />
-            </label>
+            <div className="photo-picker">
+              <LabelText required>Profile picture</LabelText>
+              <div className="photo-picker-actions">
+                <label className="btn btn-ghost photo-picker-btn">
+                  Take photo
+                  <input
+                    type="file"
+                    name="profile_picture"
+                    accept="image/*"
+                    capture="user"
+                    onChange={handleFileChange}
+                  />
+                </label>
+                <label className="btn btn-ghost photo-picker-btn">
+                  Upload
+                  <input
+                    type="file"
+                    name="profile_picture"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                </label>
+              </div>
+              <span className="field-hint">
+                {files.profile_picture
+                  ? files.profile_picture.name
+                  : 'Take a photo or upload from your device'}
+              </span>
+            </div>
           </div>
 
           {error && <p className="error">{error}</p>}

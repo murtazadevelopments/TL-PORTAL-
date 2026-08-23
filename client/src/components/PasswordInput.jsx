@@ -6,6 +6,7 @@ function PasswordInput({
   value,
   onChange,
   required = false,
+  requiredMark = false,
   minLength,
   autoComplete = 'current-password',
   label = 'Password',
@@ -14,7 +15,14 @@ function PasswordInput({
 
   return (
     <label className="password-field">
-      {label}
+      <span>
+        {label}
+        {requiredMark ? (
+          <span className="req-mark" aria-hidden="true">
+            *
+          </span>
+        ) : null}
+      </span>
       <div className="password-input-wrap">
         <input
           type={visible ? 'text' : 'password'}

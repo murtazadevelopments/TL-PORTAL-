@@ -121,6 +121,13 @@ async function notifyDesignatedNewSignup(user) {
         <li><strong>Username:</strong> ${escapeHtml(user.username)}</li>
         <li><strong>Email:</strong> ${escapeHtml(user.email)}</li>
         <li><strong>Department:</strong> ${escapeHtml(user.department || '—')}</li>
+        <li><strong>Employment type:</strong> ${escapeHtml(
+          user.employment_type === 'remote'
+            ? 'Remote'
+            : user.employment_type === 'onsite'
+              ? 'Onsite'
+              : user.employment_type || '—'
+        )}</li>
         <li><strong>Designation:</strong> ${escapeHtml(user.designation || '—')}</li>
         <li><strong>Signed up:</strong> ${escapeHtml(when)}</li>
       </ul>

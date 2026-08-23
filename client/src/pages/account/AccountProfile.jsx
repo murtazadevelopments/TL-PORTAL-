@@ -64,6 +64,7 @@ const EMPTY_FORM = {
   account_number: '',
   education: '',
   last_job_status: '',
+  employment_type: '',
   cnic_number: '',
 };
 
@@ -106,6 +107,7 @@ export default function AccountProfile() {
           account_number: data.account_number || '',
           education: data.education || '',
           last_job_status: data.last_job_status || '',
+          employment_type: data.employment_type || '',
           cnic_number: data.cnic_number || '',
         });
         const dismissed = sessionStorage.getItem('profileIncompleteDismissed') === '1';
@@ -352,6 +354,20 @@ export default function AccountProfile() {
                   <option value="fresh_graduate">Fresh graduate</option>
                   <option value="other">Other</option>
                 </select>
+              </label>
+              <label>
+                Employment type
+                <input
+                  type="text"
+                  value={
+                    form.employment_type === 'onsite'
+                      ? 'Onsite'
+                      : form.employment_type === 'remote'
+                        ? 'Remote'
+                        : form.employment_type || '—'
+                  }
+                  readOnly
+                />
               </label>
               <label>
                 Address

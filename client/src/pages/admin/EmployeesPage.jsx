@@ -1254,6 +1254,16 @@ function EmployeesPage() {
                     <strong>{detail.last_job_status || '—'}</strong>
                   </p>
                   <p>
+                    <span className="label">Employment type</span>
+                    <strong>
+                      {detail.employment_type === 'onsite'
+                        ? 'Onsite'
+                        : detail.employment_type === 'remote'
+                          ? 'Remote'
+                          : detail.employment_type || '—'}
+                    </strong>
+                  </p>
+                  <p>
                     <span className="label">Email</span>
                     <strong>{detail.email || '—'}</strong>
                   </p>
