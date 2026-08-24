@@ -142,9 +142,11 @@ function LowerFilePick({
   existingUrl,
   cacheKey,
   imagePreview,
+  allowCapture = false,
   onFile,
 }) {
-  const inputId = useId();
+  const uploadId = useId();
+  const captureId = useId();
   const [dragOver, setDragOver] = useState(false);
   const objectUrl = useObjectUrl(file);
   const existingHref = withAuthDocumentUrl(existingUrl, cacheKey);
@@ -155,6 +157,11 @@ function LowerFilePick({
 
   function takeFile(next) {
     if (next) onFile(next);
+  }
+
+  function onPick(e) {
+    takeFile(e.target.files?.[0]);
+    e.target.value = '';
   }
 
   return (
@@ -182,18 +189,39 @@ function LowerFilePick({
             ↑
           </div>
         )}
+        {allowCapture && (
+          <input
+            id={captureId}
+            className="lower-file-input"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={onPick}
+          />
+        )}
         <input
-          id={inputId}
+          id={uploadId}
           className="lower-file-input"
           type="file"
           accept={accept}
-          onChange={(e) => takeFile(e.target.files?.[0])}
+          onChange={onPick}
         />
-        <label htmlFor={inputId} className="lower-file-cta">
-          {file || existingUrl ? 'Replace' : 'Choose file'}
-        </label>
+        <div className="lower-file-actions">
+          {allowCapture && (
+            <label htmlFor={captureId} className="lower-file-cta lower-file-cta-capture">
+              Capture
+            </label>
+          )}
+          <label htmlFor={uploadId} className="lower-file-cta">
+            {file || existingUrl ? 'Replace' : 'Upload'}
+          </label>
+        </div>
         <p className="lower-file-hint">
-          {file ? file.name : existingUrl ? 'On file — drop a new file to replace' : hint}
+          {file
+            ? file.name
+            : existingUrl
+              ? 'On file — capture or upload to replace'
+              : hint}
         </p>
         <div className="lower-file-links">
           {existingHref && !file && (
@@ -1367,25 +1395,31 @@ function EmployeesPage() {
 
             <section className="lower-staff-section">
               <h3>CNIC</h3>
+              <p className="lower-staff-section-note">
+                On a phone, tap Capture to take the photo. Upload still works from the gallery or
+                desktop.
+              </p>
               <div className="lower-cnic-grid">
                 <LowerFilePick
                   label="Front"
-                  hint="Drop an image or click to upload"
+                  hint="Capture on mobile or upload an image"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   file={lowerCnicFront}
                   existingUrl={lowerExisting?.cnic_front_url}
                   cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
                   imagePreview
+                  allowCapture
                   onFile={setLowerCnicFront}
                 />
                 <LowerFilePick
                   label="Back"
-                  hint="Drop an image or click to upload"
+                  hint="Capture on mobile or upload an image"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   file={lowerCnicBack}
                   existingUrl={lowerExisting?.cnic_back_url}
                   cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
                   imagePreview
+                  allowCapture
                   onFile={setLowerCnicBack}
                 />
               </div>
@@ -1477,12 +1511,13 @@ function EmployeesPage() {
                     ) : (
                       <LowerFilePick
                         label="Document"
-                        hint="Image or PDF, up to 5MB"
+                        hint="Capture a photo on mobile, or upload an image or PDF"
                         accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
                         file={slot.file}
                         existingUrl={slot.existingUrl}
                         cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
                         imagePreview
+                        allowCapture
                         onFile={slot.setFile}
                       />
                     )}

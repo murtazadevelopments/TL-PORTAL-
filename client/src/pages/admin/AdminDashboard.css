@@ -1038,6 +1038,13 @@
   font-weight: 800;
 }
 
+.lower-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
 .lower-file-cta {
   display: inline-flex;
   align-items: center;
@@ -1054,6 +1061,12 @@
 
 .lower-file-cta:hover {
   border-color: var(--border-strong);
+}
+
+.lower-file-cta-capture {
+  border-color: var(--border-strong);
+  background: rgba(61, 255, 122, 0.14);
+  color: var(--green);
 }
 
 .lower-file-hint {
