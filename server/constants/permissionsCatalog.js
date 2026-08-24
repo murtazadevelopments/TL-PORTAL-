@@ -31,7 +31,7 @@ const PERMISSIONS_CATALOG = [
     key: 'hr:add_employee',
     label: 'Add employees (HR)',
     description:
-      'For HR / lower staff only: create new employee accounts and fill their details. Other admins cannot add employees.',
+      'For HR: create portal employees and subordinate staff records. Other admins cannot add employees.',
   },
   {
     key: 'attendance:view',

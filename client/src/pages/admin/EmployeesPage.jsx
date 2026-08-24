@@ -103,6 +103,13 @@ function lowerFormFromRow(row) {
   };
 }
 
+function parseEmployeeStatusTab(value) {
+  const s = String(value || '');
+  if (s === 'pending' || s === 'active' || s === 'locked') return s;
+  if (s === 'lower-staff' || s === 'subordinate-staff') return 'subordinate-staff';
+  return 'all';
+}
+
 function extraSlotSummary(row, slot) {
   const kind = row?.[`staff_extra_${slot}_kind`];
   const label = String(row?.[`staff_extra_${slot}_label`] || '').trim();
@@ -286,10 +293,7 @@ function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [statusTab, setStatusTab] = useState(() => {
-    const s = searchParams.get('status');
-    return s === 'pending' || s === 'active' || s === 'locked' || s === 'lower-staff'
-      ? s
-      : 'all';
+    return parseEmployeeStatusTab(searchParams.get('status'));
   });
 
   const [selectedId, setSelectedId] = useState(null);
@@ -339,10 +343,7 @@ function EmployeesPage() {
   const [deletingLowerId, setDeletingLowerId] = useState(null);
 
   useEffect(() => {
-    const s = searchParams.get('status');
-    const next =
-      s === 'pending' || s === 'active' || s === 'locked' || s === 'lower-staff' ? s : 'all';
-    setStatusTab(next);
+    setStatusTab(parseEmployeeStatusTab(searchParams.get('status')));
   }, [searchParams]);
 
   useEffect(() => {
@@ -652,10 +653,10 @@ function EmployeesPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const source = statusTab === 'lower-staff' ? lowerStaff : portalEmployees;
+    const source = statusTab === 'subordinate-staff' ? lowerStaff : portalEmployees;
 
     return source.filter((e) => {
-      if (statusTab === 'lower-staff') {
+      if (statusTab === 'subordinate-staff') {
         if (!q) return true;
         const extra = `${e.staff_extra_1_label || ''} ${e.staff_extra_1_text || ''} ${e.staff_extra_2_label || ''} ${e.staff_extra_2_text || ''}`;
         return (
@@ -993,7 +994,7 @@ function EmployeesPage() {
   async function handleAddLowerStaff(e) {
     e.preventDefault();
     if (!canAddEmployees) {
-      setLowerError('Only HR can add lower staff.');
+      setLowerError('Only HR can add subordinate staff.');
       return;
     }
     const name = lowerForm.name.trim();
@@ -1025,7 +1026,7 @@ function EmployeesPage() {
     } catch (err) {
       setLowerError(
         err.response?.data?.message ||
-          (editingLowerId ? 'Failed to update lower staff.' : 'Failed to add lower staff.')
+          (editingLowerId ? 'Failed to update subordinate staff.' : 'Failed to add subordinate staff.')
       );
     } finally {
       setAddingLower(false);
@@ -1092,7 +1093,7 @@ function EmployeesPage() {
 
   async function handleDeleteLowerStaff(row) {
     const label = fullName(row);
-    if (!window.confirm(`Delete ${label} from lower staff? This cannot be undone.`)) {
+    if (!window.confirm(`Delete ${label} from subordinate staff? This cannot be undone.`)) {
       return;
     }
     setDeletingLowerId(row.id);
@@ -1102,7 +1103,7 @@ function EmployeesPage() {
       if (editingLowerId === row.id) cancelEditLowerStaff();
       await loadEmployees();
     } catch (err) {
-      setLowerError(err.response?.data?.message || 'Failed to delete lower staff.');
+      setLowerError(err.response?.data?.message || 'Failed to delete subordinate staff.');
     } finally {
       setDeletingLowerId(null);
     }
@@ -1211,18 +1212,18 @@ function EmployeesPage() {
           {canAddEmployees && (
             <button
               type="button"
-              className={`status-tab ${statusTab === 'lower-staff' ? 'active' : ''}`}
+              className={`status-tab ${statusTab === 'subordinate-staff' ? 'active' : ''}`}
               onClick={() => {
-                setStatusTab('lower-staff');
-                setSearchParams({ status: 'lower-staff' });
+                setStatusTab('subordinate-staff');
+                setSearchParams({ status: 'subordinate-staff' });
               }}
             >
-              Lower Staff <span className="tab-badge">{tabCounts.lower}</span>
+              Subordinate Staff <span className="tab-badge">{tabCounts.lower}</span>
             </button>
           )}
         </div>
 
-        {statusTab !== 'lower-staff' && (
+        {statusTab !== 'subordinate-staff' && (
         <div className="admin-toolbar filters-toolbar">
           <input
             className="admin-search"
@@ -1295,7 +1296,7 @@ function EmployeesPage() {
         </div>
         )}
 
-        {statusTab === 'lower-staff' && canAddEmployees && (
+        {statusTab === 'subordinate-staff' && canAddEmployees && (
           <form
             key={lowerFormKey}
             className="lower-staff-form"
@@ -1305,7 +1306,7 @@ function EmployeesPage() {
               <div>
                 <p className="lower-staff-kicker">Payroll only</p>
                 <h2>
-                  {editingLowerId ? `Edit ${lowerForm.name || 'lower staff'}` : 'Add lower staff'}
+                  {editingLowerId ? `Edit ${lowerForm.name || 'subordinate staff'}` : 'Add subordinate staff'}
                 </h2>
                 <p>
                   Name, salary, and branch are required. CNIC and extra info are optional if you
@@ -1498,7 +1499,7 @@ function EmployeesPage() {
                     : 'Adding…'
                   : editingLowerId
                     ? 'Save changes'
-                    : 'Add lower staff'}
+                    : 'Add subordinate staff'}
               </button>
               {editingLowerId && (
                 <button type="button" className="btn btn-ghost" onClick={cancelEditLowerStaff}>
@@ -1522,15 +1523,15 @@ function EmployeesPage() {
 
           {!loading && !listError && filtered.length === 0 && (
             <div className="admin-empty">
-              {statusTab === 'lower-staff'
-                ? 'No lower staff yet. Add a record above.'
+              {statusTab === 'subordinate-staff'
+                ? 'No subordinate staff yet. Add a record above.'
                 : employees.length === 0
                   ? 'No employees found yet.'
                   : 'No employees match your search or filters.'}
             </div>
           )}
 
-          {!loading && !listError && filtered.length > 0 && statusTab === 'lower-staff' && (
+          {!loading && !listError && filtered.length > 0 && statusTab === 'subordinate-staff' && (
             <table className="admin-table lower-staff-table">
               <thead>
                 <tr>
@@ -1605,7 +1606,7 @@ function EmployeesPage() {
             </table>
           )}
 
-          {!loading && !listError && filtered.length > 0 && statusTab !== 'lower-staff' && (
+          {!loading && !listError && filtered.length > 0 && statusTab !== 'subordinate-staff' && (
             <table className="admin-table">
               <thead>
                 <tr>
@@ -2630,7 +2631,7 @@ function EmployeesPage() {
               </button>
             </div>
             <p className="muted" style={{ margin: '0 1.25rem 0.5rem' }}>
-              HR only. Creates a login for lower staff and fills their job details.
+              HR only. Creates a portal login and fills their job details.
             </p>
             <form className="edit-box add-employee-form" onSubmit={handleAddSubmit}>
               <div className="add-employee-grid">

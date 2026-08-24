@@ -335,7 +335,7 @@ async function createLowerStaff(req, res, body) {
   await ensureLowerStaffExtraColumns();
   if (!canManageLowerStaff(req)) {
     return res.status(403).json({
-      message: 'Only HR with Add employees permission can add lower staff.',
+      message: 'Only HR with Add employees permission can add subordinate staff.',
     });
   }
 
@@ -428,7 +428,7 @@ async function createLowerStaff(req, res, body) {
       action: 'lower_staff_created',
       targetTable: 'users',
       targetId: employee.id,
-      reason: `HR added lower staff ${employee.name}`,
+      reason: `HR added subordinate staff ${employee.name}`,
     });
   } catch (auditErr) {
     console.warn('lower_staff_created audit failed:', auditErr.message || auditErr);
@@ -443,7 +443,7 @@ async function updateLowerStaff(req, res) {
     await ensureLowerStaffExtraColumns();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
-        message: 'Only HR with Add employees permission can edit lower staff.',
+        message: 'Only HR with Add employees permission can edit subordinate staff.',
       });
     }
 
@@ -476,7 +476,7 @@ async function updateLowerStaff(req, res) {
     );
     const existing = existingRows[0];
     if (!existing || !isLowerStaff(existing)) {
-      return res.status(404).json({ message: 'Lower staff record not found.' });
+      return res.status(404).json({ message: 'Subordinate staff record not found.' });
     }
 
     const filePatch = await saveLowerStaffUploads(existing, req);
@@ -528,7 +528,7 @@ async function updateLowerStaff(req, res) {
       ]
     );
     if (!rows[0]) {
-      return res.status(404).json({ message: 'Lower staff record not found.' });
+      return res.status(404).json({ message: 'Subordinate staff record not found.' });
     }
 
     const employee = redactSalary(await attachReadableUrls(rows[0]), true);
@@ -539,7 +539,7 @@ async function updateLowerStaff(req, res) {
         action: 'lower_staff_updated',
         targetTable: 'users',
         targetId: employee.id,
-        reason: `HR updated lower staff ${employee.name}`,
+        reason: `HR updated subordinate staff ${employee.name}`,
       });
     } catch (auditErr) {
       console.warn('lower_staff_updated audit failed:', auditErr.message || auditErr);
@@ -548,7 +548,7 @@ async function updateLowerStaff(req, res) {
     return res.json(employee);
   } catch (err) {
     console.error('updateLowerStaff error:', err);
-    return res.status(500).json({ message: 'Server error updating lower staff.' });
+    return res.status(500).json({ message: 'Server error updating subordinate staff.' });
   }
 }
 
@@ -557,7 +557,7 @@ async function deleteLowerStaff(req, res) {
     await ensureStaffKindColumn();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
-        message: 'Only HR with Add employees permission can delete lower staff.',
+        message: 'Only HR with Add employees permission can delete subordinate staff.',
       });
     }
 
@@ -577,7 +577,7 @@ async function deleteLowerStaff(req, res) {
     );
     const existing = rows[0];
     if (!existing || !isLowerStaff(existing)) {
-      return res.status(404).json({ message: 'Lower staff record not found.' });
+      return res.status(404).json({ message: 'Subordinate staff record not found.' });
     }
 
     await pool.query(`DELETE FROM users WHERE id = $1 AND COALESCE(staff_kind, 'portal') = 'lower'`, [
@@ -591,16 +591,16 @@ async function deleteLowerStaff(req, res) {
         action: 'lower_staff_deleted',
         targetTable: 'users',
         targetId: existing.id,
-        reason: `HR deleted lower staff ${existing.name}`,
+        reason: `HR deleted subordinate staff ${existing.name}`,
       });
     } catch (auditErr) {
       console.warn('lower_staff_deleted audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({ message: 'Lower staff record deleted.' });
+    return res.json({ message: 'Subordinate staff record deleted.' });
   } catch (err) {
     console.error('deleteLowerStaff error:', err);
-    return res.status(500).json({ message: 'Server error deleting lower staff.' });
+    return res.status(500).json({ message: 'Server error deleting subordinate staff.' });
   }
 }
 

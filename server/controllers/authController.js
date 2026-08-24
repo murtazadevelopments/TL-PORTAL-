@@ -295,7 +295,7 @@ async function login(req, res) {
 
     if (String(user.staff_kind || '').toLowerCase() === 'lower') {
       return res.status(403).json({
-        message: 'This is a payroll record only. Lower staff cannot sign in to the portal.',
+        message: 'This is a payroll record only. Subordinate staff cannot sign in to the portal.',
         code: 'LOWER_STAFF_NO_LOGIN',
       });
     }
