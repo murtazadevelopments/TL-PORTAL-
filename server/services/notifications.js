@@ -246,6 +246,7 @@ const SENSITIVE_KEYS = new Set([
   'iban',
   'bank_name',
   'account_title',
+  'salary',
 ]);
 
 function summarizeChanges(before, after, keys) {

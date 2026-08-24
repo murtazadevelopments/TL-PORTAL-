@@ -13,7 +13,13 @@ const PERMISSIONS_CATALOG = [
     key: 'employees:edit',
     label: 'Edit employees',
     description:
-      'Update employee ID, status, department, designation, branch, shift, salary, date of joining (scope: all, a branch, or a team)',
+      'Update employee ID, status, department, designation, branch, shift, date of joining (scope: all, a branch, or a team). Does not include salary.',
+  },
+  {
+    key: 'employees:salary',
+    label: 'View employee salary',
+    description:
+      'See and update salary on employee profiles. Assign only to the person who should handle pay. Employees always see their own salary.',
   },
   {
     key: 'hr:followup',

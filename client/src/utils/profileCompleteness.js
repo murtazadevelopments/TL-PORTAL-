@@ -35,9 +35,11 @@ export function missingEmployeePortalFields(row) {
 
 export function missingAdminAssignFields(row) {
   if (!row) return [];
-  return ADMIN_ASSIGN_FIELDS.filter((field) =>
-    field.key === 'salary' ? isSalaryMissing(row[field.key]) : isBlank(row[field.key])
-  );
+  return ADMIN_ASSIGN_FIELDS.filter((field) => {
+    if (field.key !== 'salary') return isBlank(row[field.key]);
+    if (row.salary_hidden) return row.salary_on_file === false;
+    return isSalaryMissing(row[field.key]);
+  });
 }
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;

@@ -83,11 +83,23 @@ function isSalaryMissing(value) {
   return !Number.isFinite(n) || n <= 0;
 }
 
-function missingAdminFields(row) {
+function isSalaryUnsetOnRow(row) {
+  if (!row) return true;
+  if (row.salary_hidden) return row.salary_on_file === false;
+  return isSalaryMissing(row.salary);
+}
+
+function missingAdminFields(row, { includeSalary = true } = {}) {
   if (!row) return [];
   return Object.keys(ADMIN_FIELD_LABELS)
     .filter((key) => key !== 'date_of_joining')
-    .filter((key) => (key === 'salary' ? isSalaryMissing(row[key]) : isBlank(row[key])));
+    .filter((key) => {
+      if (key === 'salary') {
+        if (!includeSalary) return false;
+        return isSalaryUnsetOnRow(row);
+      }
+      return isBlank(row[key]);
+    });
 }
 
 function EmployeesPage() {
@@ -239,6 +251,7 @@ function EmployeesPage() {
   }
 
   const canEditEmployees = hasPermission(permissions, 'employees:edit', role);
+  const canViewSalary = hasPermission(permissions, 'employees:salary', role);
   const canDeactivateEmployees = hasPermission(
     permissions,
     'employees:deactivate',
@@ -460,8 +473,11 @@ function EmployeesPage() {
   }, [employees, search, filters, statusTab]);
 
   const detailMissingAdmin = useMemo(
-    () => missingAdminFields(detail).map((key) => ADMIN_FIELD_LABELS[key]),
-    [detail]
+    () =>
+      missingAdminFields(detail, { includeSalary: canViewSalary }).map(
+        (key) => ADMIN_FIELD_LABELS[key]
+      ),
+    [detail, canViewSalary]
   );
   const detailMissingEmployee = useMemo(
     () => missingEmployeePortalFields(detail).map((f) => f.label),
@@ -550,11 +566,12 @@ function EmployeesPage() {
     const errors = {};
     for (const key of Object.keys(ADMIN_FIELD_LABELS)) {
       if (key === 'date_of_joining') continue; // optional
+      if (key === 'salary' && !canViewSalary) continue;
       if (isBlank(editForm[key])) {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
     }
-    if (isSalaryMissing(editForm.salary)) {
+    if (canViewSalary && isSalaryMissing(editForm.salary)) {
       errors.salary = 'Salary is required and must be greater than 0.';
     }
     return errors;
@@ -655,12 +672,14 @@ function EmployeesPage() {
       designation: editForm.designation.trim(),
       branch: editForm.branch,
       shift: editForm.shift,
-      salary: Number(editForm.salary),
       date_of_joining: editForm.date_of_joining ? editForm.date_of_joining : null,
       employment_type: editForm.employment_type === 'remote' ? 'remote' : 'onsite',
       work_start_hour: Number(editForm.work_start_hour),
       work_end_hour: Number(editForm.work_end_hour),
     };
+    if (canViewSalary) {
+      payload.salary = Number(editForm.salary);
+    }
 
     try {
       const { data } = await api.put(`/api/admin/employees/${selectedId}`, payload);
@@ -1734,6 +1753,7 @@ function EmployeesPage() {
                     )}
                   </label>
 
+                  {canViewSalary && (
                   <label className={fieldErrors.salary ? 'has-error' : ''}>
                     Salary <span className="req-star" aria-hidden="true">*</span>
                     <input
@@ -1750,6 +1770,7 @@ function EmployeesPage() {
                       <span className="field-error">{fieldErrors.salary}</span>
                     )}
                   </label>
+                  )}
                   </fieldset>
 
                   {saveError && <p className="error">{saveError}</p>}

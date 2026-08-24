@@ -89,6 +89,26 @@ function isSalaryMissing(value) {
   return !Number.isFinite(n) || n <= 0;
 }
 
+function viewerCanSeeSalary(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'ceo') return true;
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  return perms.includes('employees:salary') || perms.includes('*');
+}
+
+function redactSalary(row, canSee) {
+  if (!row) return row;
+  const salaryOnFile = !isSalaryMissing(row.salary);
+  if (canSee) {
+    return { ...row, salary_hidden: false, salary_on_file: salaryOnFile };
+  }
+  const copy = { ...row };
+  delete copy.salary;
+  copy.salary_hidden = true;
+  copy.salary_on_file = salaryOnFile;
+  return copy;
+}
+
 function storagePathFromUrl(value) {
   if (!value) return null;
   const v = String(value);
@@ -139,7 +159,10 @@ async function listEmployees(req, res) {
       filter.params
     );
 
-    const employees = await Promise.all(rows.map(withListUrls));
+    const canSeeSalary = viewerCanSeeSalary(req);
+    const employees = await Promise.all(
+      rows.map(async (row) => redactSalary(await withListUrls(row), canSeeSalary))
+    );
     return res.json(employees);
   } catch (err) {
     console.error('listEmployees error:', err);
@@ -175,7 +198,10 @@ async function getEmployeeById(req, res) {
       });
     }
 
-    const employee = await attachReadableUrls(rows[0]);
+    const employee = redactSalary(
+      await attachReadableUrls(rows[0]),
+      viewerCanSeeSalary(req)
+    );
 
     // Redact CNIC/CV unless CEO or admin has documents:view
     const role = String(req.user?.role || '').toLowerCase();
@@ -229,7 +255,17 @@ async function updateEmployee(req, res) {
       });
     }
 
-    const missing = REQUIRED_ADMIN_FIELDS.filter((key) =>
+    const canSeeSalary = viewerCanSeeSalary(req);
+    if (Object.prototype.hasOwnProperty.call(body, 'salary') && !canSeeSalary) {
+      return res.status(403).json({
+        message: 'You do not have permission to view or update employee salary.',
+      });
+    }
+
+    const requiredFields = canSeeSalary
+      ? REQUIRED_ADMIN_FIELDS
+      : REQUIRED_ADMIN_FIELDS.filter((key) => key !== 'salary');
+    const missing = requiredFields.filter((key) =>
       key === 'salary' ? isSalaryMissing(body[key]) : isEmptyValue(body[key])
     );
     if (missing.length > 0) {
@@ -265,7 +301,7 @@ async function updateEmployee(req, res) {
       designation: String(body.designation).trim(),
       branch: String(body.branch).trim(),
       shift: String(body.shift).trim(),
-      salary: Number(body.salary),
+      salary: canSeeSalary ? Number(body.salary) : before.salary,
       date_of_joining:
         body.date_of_joining === undefined
           ? before.date_of_joining
@@ -288,7 +324,7 @@ async function updateEmployee(req, res) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
     }
 
-    if (Number.isNaN(next.salary) || next.salary <= 0) {
+    if (canSeeSalary && (Number.isNaN(next.salary) || next.salary <= 0)) {
       return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
     }
 
@@ -366,7 +402,7 @@ async function updateEmployee(req, res) {
       }
     }
 
-    return res.json(employee);
+    return res.json(redactSalary(employee, canSeeSalary));
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Employee ID is already in use.' });
@@ -572,7 +608,10 @@ async function listDeactivated(req, res) {
       `
     );
 
-    const employees = await Promise.all(rows.map(withListUrls));
+    const canSeeSalary = viewerCanSeeSalary(req);
+    const employees = await Promise.all(
+      rows.map(async (row) => redactSalary(await withListUrls(row), canSeeSalary))
+    );
     return res.json({
       users: employees,
       // Reserved for future soft-deletable resources (documents, tasks, etc.)
