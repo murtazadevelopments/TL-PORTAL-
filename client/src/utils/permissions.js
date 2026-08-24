@@ -41,3 +41,8 @@ export function hasPermission(permissions, key, role) {
 export function can(role, permissions, key) {
   return hasPermission(permissions, key, role);
 }
+
+/** Incomplete-employee inbox is only for people the CEO named as HR. */
+export function isHrAssignee(user) {
+  return Boolean(user?.is_hr);
+}

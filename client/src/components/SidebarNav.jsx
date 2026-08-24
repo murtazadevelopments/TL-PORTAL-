@@ -7,13 +7,18 @@ import { canAccessAdmin, hasPermission, isCeo, isTeamLeader } from '../utils/per
 export function buildSidebarGroups(
   role,
   permissions,
-  { tlDashboardAccess = false, unreadMessages = 0 } = {}
+  { tlDashboardAccess = false, unreadMessages = 0, employmentType = null } = {}
 ) {
+  const dashboardItems = [{ to: '/dashboard', label: 'Overview', end: true }];
+  if (employmentType === 'remote') {
+    dashboardItems.push({ to: '/attendance', label: 'My Attendance' });
+  }
+
   const groups = [
     {
       id: 'dashboard',
       label: 'Dashboard',
-      items: [{ to: '/dashboard', label: 'Overview', end: true }],
+      items: dashboardItems,
     },
   ];
 
@@ -42,7 +47,7 @@ export function buildSidebarGroups(
 
   if (canAccessAdmin(role)) {
     const employeeItems = [];
-    if (hasPermission(permissions, 'employees:view', role)) {
+    if (hasPermission(permissions, 'employees:view', role) || isCeo(role)) {
       employeeItems.push(
         { to: '/admin/employees', label: 'All Employees', end: true, match: 'employees-all' },
         {
@@ -51,6 +56,15 @@ export function buildSidebarGroups(
           match: 'employees-pending',
         }
       );
+    }
+    if (
+      isCeo(role) ||
+      hasPermission(permissions, 'employees:view', role) ||
+      hasPermission(permissions, 'employees:edit', role) ||
+      hasPermission(permissions, 'attendance:view', role) ||
+      hasPermission(permissions, 'attendance:edit', role)
+    ) {
+      employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance' });
     }
     if (
       hasPermission(permissions, 'accounts:unlock', role) ||
@@ -112,12 +126,14 @@ export default function SidebarNav({
   permissions,
   tlDashboardAccess,
   unreadMessages = 0,
+  employmentType = null,
   onNavigate,
 }) {
   const location = useLocation();
   const groups = buildSidebarGroups(role, permissions, {
     tlDashboardAccess,
     unreadMessages,
+    employmentType,
   });
 
   return (
@@ -129,7 +145,7 @@ export default function SidebarNav({
             {group.items.map((item) => {
               const active = isItemActive(item, location.pathname, location.search);
               return (
-                <li key={item.to}>
+                <li key={`${item.to}:${item.match || item.label}`}>
                   <NavLink
                     to={item.to}
                     end={Boolean(item.end)}

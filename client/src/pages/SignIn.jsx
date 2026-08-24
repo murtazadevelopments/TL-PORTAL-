@@ -5,7 +5,7 @@ import api from '../api/client';
 import Navbar from '../components/Navbar';
 import InstallAppButton from '../components/InstallAppButton';
 import PasswordInput from '../components/PasswordInput';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 function supportsWebAuthn() {
   return (
@@ -138,7 +138,7 @@ function SignIn() {
       <main className="card">
         <InstallAppButton />
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab Portal" />
+          <img src={logo} alt="Textured Lab Portal" width={200} height={200} />
           <p className="brand-name">Textured Lab Portal</p>
         </div>
 

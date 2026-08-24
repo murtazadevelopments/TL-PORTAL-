@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 const LAST_JOB_OPTIONS = [
   { value: 'still_employed', label: 'Still employed elsewhere' },
@@ -135,7 +135,7 @@ function SignUp() {
       <Navbar />
       <main className="card wide">
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab Portal" />
+          <img src={logo} alt="Textured Lab Portal" width={200} height={200} />
           <p className="brand-name">Textured Lab Portal</p>
         </div>
 

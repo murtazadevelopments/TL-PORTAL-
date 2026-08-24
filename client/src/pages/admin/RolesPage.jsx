@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import AssignRoleModal from '../../components/AssignRoleModal';
@@ -12,6 +12,130 @@ import '../../components/AssignRoleModal.css';
 
 function fullName(row) {
   return row?.name || '—';
+}
+
+function HrPeoplePicker({ onSaved }) {
+  const [people, setPeople] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.get('/api/admin/hr-people');
+      const list = Array.isArray(data?.people) ? data.people : [];
+      setPeople(list);
+      setSelected(new Set(list.filter((p) => p.is_hr).map((p) => String(p.id))));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load people.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return people;
+    return people.filter((p) => {
+      const hay = `${p.name || ''} ${p.employee_id || ''} ${p.designation || ''} ${p.department || ''}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [people, query]);
+
+  function toggle(id) {
+    const key = String(id);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const { data } = await api.put('/api/admin/hr-people', {
+        user_ids: [...selected].map((id) => Number(id)),
+      });
+      await load();
+      onSaved?.(data?.message || 'HR people saved.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save HR people.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const named = people.filter((p) => selected.has(String(p.id)));
+
+  return (
+    <section className="hr-people-card">
+      <div className="hr-people-head">
+        <div>
+          <h2>HR people</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            Tick names. Those people get the incomplete-employee list. Other admins will not.
+          </p>
+        </div>
+        <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={save}>
+          {saving ? 'Saving…' : 'Save HR people'}
+        </button>
+      </div>
+      {named.length > 0 && (
+        <p className="hr-people-selected">
+          Selected: {named.map((p) => p.name || 'Unnamed').join(', ')}
+        </p>
+      )}
+      <input
+        type="search"
+        className="admin-search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search by name…"
+        aria-label="Search people to assign as HR"
+      />
+      {error && <p className="error">{error}</p>}
+      {loading ? (
+        <p className="muted">Loading names…</p>
+      ) : (
+        <ul className="hr-people-list">
+          {filtered.map((person) => {
+            const id = String(person.id);
+            return (
+              <li key={id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(id)}
+                    onChange={() => toggle(person.id)}
+                  />
+                  <span>
+                    <strong>{person.name || 'Unnamed'}</strong>
+                    <em>
+                      {[person.employee_id, person.designation, person.department]
+                        .filter(Boolean)
+                        .join(' · ') || 'No ID'}
+                    </em>
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+          {filtered.length === 0 && <li className="muted">No matching names.</li>}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export default function RolesPage() {
@@ -111,6 +235,14 @@ export default function RolesPage() {
           </p>
         )}
         {error && <p className="error">{error}</p>}
+
+        <HrPeoplePicker
+          onSaved={(message) => {
+            setBanner(message);
+            loadHolders();
+            window.setTimeout(() => setBanner(''), 5000);
+          }}
+        />
 
         {loading && roleHolders.length === 0 && (
           <div className="admin-loading">

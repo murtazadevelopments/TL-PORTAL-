@@ -376,6 +376,34 @@ async function notifyBirthday(user) {
   return result;
 }
 
+async function notifyAttendanceFailed(user, hourKey) {
+  const emails = await getAdminEmails();
+  if (!emails.length) return null;
+
+  const who = user?.name || user?.username || `User ${user?.id}`;
+  const result = await sendEmailSafe({
+    to: emails,
+    subject: `Attendance check-in failed: ${who}`,
+    html: `
+      <p>A remote employee failed face verification after multiple attempts.</p>
+      <ul>
+        <li><strong>Name:</strong> ${escapeHtml(who)}</li>
+        <li><strong>Username:</strong> ${escapeHtml(user?.username)}</li>
+        <li><strong>Hour:</strong> ${escapeHtml(hourKey)}</li>
+      </ul>
+      <p>No face image was stored. Review Attendance in the admin portal if a manual mark is needed.</p>
+    `,
+  });
+
+  await logEmail({
+    emailType: 'attendance_failed',
+    recipient: emails.join(','),
+    meta: { userId: user?.id, hourKey, ok: Boolean(result) },
+  });
+
+  return result;
+}
+
 module.exports = {
   getAdminEmails,
   notifyAdminsNewSignup,
@@ -388,6 +416,8 @@ module.exports = {
   notifyAdminsEmployeeSelfUpdate,
   notifyUserLogin,
   notifyBirthday,
+  notifyAttendanceFailed,
+  notifyAttendanceFailed: notifyAttendanceFailed,
   summarizeChanges,
   firstName,
   formatTimestamp,

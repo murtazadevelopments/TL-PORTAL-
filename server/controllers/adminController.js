@@ -23,8 +23,12 @@ const {
   ensureProfileAlertColumns,
   profileAlertCooldown,
 } = require('../utils/profileCompleteness');
-const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
-const { deliverOneMessage } = require('./messagesController');
+const {
+  ensureEmploymentTypeColumn,
+  normalizeEmploymentType,
+} = require('../utils/employmentType');
+const { ensureAttendanceTables } = require('../utils/attendanceSchema');
+const { normalizeWorkHours } = require('../utils/workHours');
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -43,6 +47,7 @@ const DETAIL_COLUMNS = `
   role, department, designation, status, branch, shift, salary,
   education, last_job_status, employment_type, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
+  work_start_hour, work_end_hour,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
@@ -59,6 +64,9 @@ const ALLOWED_UPDATE_FIELDS = [
   'shift',
   'salary',
   'date_of_joining',
+  'employment_type',
+  'work_start_hour',
+  'work_end_hour',
 ];
 
 const REQUIRED_ADMIN_FIELDS = [
@@ -73,6 +81,12 @@ const REQUIRED_ADMIN_FIELDS = [
 
 function isEmptyValue(value) {
   return value === undefined || value === null || String(value).trim() === '';
+}
+
+function isSalaryMissing(value) {
+  if (isEmptyValue(value)) return true;
+  const n = Number(value);
+  return !Number.isFinite(n) || n <= 0;
 }
 
 function storagePathFromUrl(value) {
@@ -196,6 +210,7 @@ async function getEmployeeById(req, res) {
 
 async function updateEmployee(req, res) {
   try {
+    await ensureAttendanceTables();
     const { id } = req.params;
     const body = req.body || {};
     const keys = Object.keys(body);
@@ -203,18 +218,20 @@ async function updateEmployee(req, res) {
     if (keys.length === 0) {
       return res.status(400).json({
         message:
-          'Required fields: employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining.',
+          'Required fields: employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining, employment_type.',
       });
     }
 
     const rejected = keys.filter((key) => !ALLOWED_UPDATE_FIELDS.includes(key));
     if (rejected.length > 0) {
       return res.status(400).json({
-        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, salary, and date_of_joining can be updated.`,
+        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, salary, date_of_joining, employment_type, and working hours can be updated.`,
       });
     }
 
-    const missing = REQUIRED_ADMIN_FIELDS.filter((key) => isEmptyValue(body[key]));
+    const missing = REQUIRED_ADMIN_FIELDS.filter((key) =>
+      key === 'salary' ? isSalaryMissing(body[key]) : isEmptyValue(body[key])
+    );
     if (missing.length > 0) {
       return res.status(400).json({
         message: `All fields are required before saving. Missing: ${missing.join(', ')}.`,
@@ -255,14 +272,32 @@ async function updateEmployee(req, res) {
           : body.date_of_joining === null || String(body.date_of_joining).trim() === ''
             ? null
             : String(body.date_of_joining).trim().slice(0, 10),
+      employment_type:
+        body.employment_type === undefined || String(body.employment_type).trim() === ''
+          ? before.employment_type || 'onsite'
+          : normalizeEmploymentType(body.employment_type),
     };
+    const hours = normalizeWorkHours(
+      body.work_start_hour ?? before.work_start_hour,
+      body.work_end_hour ?? before.work_end_hour
+    );
+    next.work_start_hour = hours.start;
+    next.work_end_hour = hours.end;
 
     if (!['active', 'inactive'].includes(next.status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
     }
 
-    if (Number.isNaN(next.salary)) {
-      return res.status(400).json({ message: 'Salary must be a valid number.' });
+    if (Number.isNaN(next.salary) || next.salary <= 0) {
+      return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
+    }
+
+    if (!next.employee_id) {
+      return res.status(400).json({ message: 'Employee ID is required.' });
+    }
+
+    if (!next.employment_type) {
+      return res.status(400).json({ message: 'employment_type must be "onsite" or "remote".' });
     }
 
     const { rows } = await pool.query(
@@ -277,8 +312,11 @@ async function updateEmployee(req, res) {
           shift = $6,
           salary = $7,
           date_of_joining = $8,
+          employment_type = $9,
+          work_start_hour = $10,
+          work_end_hour = $11,
           updated_at = NOW()
-        WHERE id = $9 AND is_active = true
+        WHERE id = $12 AND is_active = true
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
@@ -290,6 +328,9 @@ async function updateEmployee(req, res) {
         next.shift,
         next.salary,
         next.date_of_joining,
+        next.employment_type,
+        next.work_start_hour,
+        next.work_end_hour,
         id,
       ]
     );

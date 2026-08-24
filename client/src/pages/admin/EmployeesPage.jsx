@@ -7,6 +7,8 @@ import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import { missingEmployeePortalFields, profileAlertCooldown } from '../../utils/profileCompleteness';
+import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
+import ClockHourSelect from '../../components/ClockHourSelect';
 import './AdminDashboard.css';
 
 const SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -31,6 +33,9 @@ const EMPTY_EDIT = {
   shift: '',
   salary: '',
   date_of_joining: '',
+  employment_type: 'onsite',
+  work_start_hour: 9,
+  work_end_hour: 18,
 };
 
 const EMPTY_FILTERS = {
@@ -72,12 +77,17 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+function isSalaryMissing(value) {
+  if (isBlank(value)) return true;
+  const n = Number(value);
+  return !Number.isFinite(n) || n <= 0;
+}
+
 function missingAdminFields(row) {
   if (!row) return [];
-  // date_of_joining is optional for save validation of incomplete banner
   return Object.keys(ADMIN_FIELD_LABELS)
     .filter((key) => key !== 'date_of_joining')
-    .filter((key) => isBlank(row[key]));
+    .filter((key) => (key === 'salary' ? isSalaryMissing(row[key]) : isBlank(row[key])));
 }
 
 function EmployeesPage() {
@@ -480,6 +490,9 @@ function EmployeesPage() {
         date_of_joining: data.date_of_joining
           ? String(data.date_of_joining).slice(0, 10)
           : '',
+        employment_type: data.employment_type === 'remote' ? 'remote' : 'onsite',
+        work_start_hour: data.work_start_hour ?? 9,
+        work_end_hour: data.work_end_hour ?? 18,
       });
       setShowAddTeam(false);
       setNewTeamName('');
@@ -491,12 +504,25 @@ function EmployeesPage() {
     }
   }
 
+  useEffect(() => {
+    const fillId = searchParams.get('fill');
+    if (!fillId || checkingAuth) return;
+    if (String(selectedId) === String(fillId)) return;
+    openDetail(fillId);
+  }, [searchParams, checkingAuth, selectedId]);
+
   function closeDetail() {
     setSelectedId(null);
     setDetail(null);
     setSaveError('');
     setSaveSuccess('');
     setFieldErrors({});
+    setSearchParams((prev) => {
+      if (!prev.get('fill')) return prev;
+      const next = new URLSearchParams(prev);
+      next.delete('fill');
+      return next;
+    }, { replace: true });
   }
 
   function handleEditChange(e) {
@@ -528,11 +554,8 @@ function EmployeesPage() {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
     }
-    if (
-      !isBlank(editForm.salary) &&
-      Number.isNaN(Number(editForm.salary))
-    ) {
-      errors.salary = 'Salary must be a valid number.';
+    if (isSalaryMissing(editForm.salary)) {
+      errors.salary = 'Salary is required and must be greater than 0.';
     }
     return errors;
   }
@@ -633,9 +656,10 @@ function EmployeesPage() {
       branch: editForm.branch,
       shift: editForm.shift,
       salary: Number(editForm.salary),
-      date_of_joining: editForm.date_of_joining
-        ? editForm.date_of_joining
-        : null,
+      date_of_joining: editForm.date_of_joining ? editForm.date_of_joining : null,
+      employment_type: editForm.employment_type === 'remote' ? 'remote' : 'onsite',
+      work_start_hour: Number(editForm.work_start_hour),
+      work_end_hour: Number(editForm.work_end_hour),
     };
 
     try {
@@ -656,11 +680,13 @@ function EmployeesPage() {
                 shift: data.shift,
                 salary: data.salary,
                 date_of_joining: data.date_of_joining,
+                employment_type: data.employment_type,
                 profile_picture_url: data.profile_picture_url || row.profile_picture_url,
               }
             : row
         )
       );
+      window.dispatchEvent(new Event(ADMIN_INCOMPLETE_EVENT));
     } catch (err) {
       setSaveError(err.response?.data?.message || 'Failed to save changes.');
     } finally {
@@ -1105,17 +1131,24 @@ function EmployeesPage() {
             {!detailLoading && detail && (
               <>
                 {(detailMissingEmployee.length > 0 || detailMissingAdmin.length > 0) && (
-                  <div className="alert-banner admin-incomplete" role="status">
+                  <div
+                    className={`alert-banner admin-incomplete${detailMissingAdmin.length ? ' admin-force' : ''}`}
+                    role="alert"
+                  >
                     <div>
-                      <strong>This employee&apos;s profile is incomplete.</strong>
+                      <strong>
+                        {detailMissingAdmin.length
+                          ? 'Admin fields still missing for this employee.'
+                          : 'This employee still has incomplete portal fields.'}
+                      </strong>
                       {detailMissingEmployee.length > 0 && (
                         <p className="muted" style={{ margin: '0.35rem 0 0' }}>
                           Employee fills in portal: {detailMissingEmployee.join(', ')}
                         </p>
                       )}
                       {detailMissingAdmin.length > 0 && (
-                        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-                          Admin assigns here: {detailMissingAdmin.join(', ')}
+                        <p style={{ margin: '0.35rem 0 0' }}>
+                          You must assign: {detailMissingAdmin.join(', ')}
                         </p>
                       )}
                       {profileAlertCooldown(detail, nowMs).active && (
@@ -1434,13 +1467,15 @@ function EmployeesPage() {
                 <form className="edit-box" onSubmit={handleSave} noValidate>
                   <fieldset disabled={!canEditEmployees}>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
-                    Employee ID
+                    Employee ID <span className="req-star" aria-hidden="true">*</span>
                     <input
                       type="text"
                       name="employee_id"
                       value={editForm.employee_id}
                       onChange={handleEditChange}
                       placeholder="e.g. EMP-001"
+                      required
+                      aria-required="true"
                     />
                     {fieldErrors.employee_id && (
                       <span className="field-error">{fieldErrors.employee_id}</span>
@@ -1653,6 +1688,37 @@ function EmployeesPage() {
                     </div>
                   )}
 
+                  <label>
+                    Employment type
+                    <select
+                      name="employment_type"
+                      value={editForm.employment_type}
+                      onChange={handleEditChange}
+                    >
+                      <option value="onsite">Onsite</option>
+                      <option value="remote">Remote</option>
+                    </select>
+                  </label>
+                  {editForm.employment_type === 'remote' && (
+                    <>
+                      <ClockHourSelect
+                        label="Work start time"
+                        value={editForm.work_start_hour ?? 9}
+                        onChange={(hour) =>
+                          setEditForm((prev) => ({ ...prev, work_start_hour: hour }))
+                        }
+                      />
+                      <ClockHourSelect
+                        label="Work end time"
+                        value={editForm.work_end_hour ?? 18}
+                        isEnd
+                        onChange={(hour) =>
+                          setEditForm((prev) => ({ ...prev, work_end_hour: hour }))
+                        }
+                      />
+                    </>
+                  )}
+
                   <label className={fieldErrors.shift ? 'has-error' : ''}>
                     Shift
                     <select name="shift" value={editForm.shift} onChange={handleEditChange}>
@@ -1669,14 +1735,16 @@ function EmployeesPage() {
                   </label>
 
                   <label className={fieldErrors.salary ? 'has-error' : ''}>
-                    Salary
+                    Salary <span className="req-star" aria-hidden="true">*</span>
                     <input
                       type="number"
                       name="salary"
                       value={editForm.salary}
                       onChange={handleEditChange}
-                      min="0"
+                      min="1"
                       step="1"
+                      required
+                      aria-required="true"
                     />
                     {fieldErrors.salary && (
                       <span className="field-error">{fieldErrors.salary}</span>

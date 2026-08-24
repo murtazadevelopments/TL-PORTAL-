@@ -1,0 +1,347 @@
+.attendance-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.attendance-admin .attendance-hero h1 {
+  margin: 0;
+}
+
+.attendance-admin .attendance-hero p {
+  margin: 0.35rem 0 0;
+  max-width: 42rem;
+}
+
+.attendance-admin .attendance-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.attendance-admin .attendance-stat {
+  background: var(--surface-strong, rgba(22, 30, 52, 0.92));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.95rem 1rem;
+}
+
+.attendance-admin .attendance-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.attendance-admin .attendance-stat strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.5rem;
+  color: var(--text-h);
+}
+
+.attendance-admin .attendance-filters {
+  display: grid;
+  grid-template-columns: minmax(9.5rem, 0.9fr) minmax(8.5rem, 0.8fr) minmax(12rem, 1.4fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.attendance-admin .attendance-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.attendance-admin .attendance-filters input,
+.attendance-admin .attendance-filters select,
+.attendance-admin .modal-card input,
+.attendance-admin .modal-card select,
+.attendance-admin .modal-card textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.68rem 0.85rem;
+  background: rgba(5, 8, 16, 0.88);
+  color: var(--text-h);
+  color-scheme: dark;
+  font: inherit;
+}
+
+.attendance-admin .attendance-filters input,
+.attendance-admin .attendance-filters select {
+  border-radius: 999px;
+}
+
+.attendance-admin select option {
+  background: #121826;
+  color: var(--text-h);
+}
+
+.attendance-admin .attendance-filters input:focus,
+.attendance-admin .attendance-filters select:focus,
+.attendance-admin .modal-card input:focus,
+.attendance-admin .modal-card select:focus,
+.attendance-admin .modal-card textarea:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
+.attendance-admin .attendance-filters .btn {
+  height: 2.7rem;
+  padding: 0 1.15rem;
+}
+
+.attendance-admin-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.attendance-admin-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.05rem;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.attendance-admin-card header {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.attendance-admin-card header img,
+.attendance-admin-card .avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.attendance-admin-card .avatar {
+  display: grid;
+  place-items: center;
+  background: rgba(126, 203, 255, 0.12);
+  color: var(--text-h);
+  font-weight: 800;
+}
+
+.attendance-admin-card header > div {
+  min-width: 0;
+}
+
+.attendance-admin-card header strong {
+  display: block;
+  color: var(--text-h);
+}
+
+.attendance-admin-card header p {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+}
+
+.attendance-admin-card .badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  text-transform: capitalize;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.attendance-admin-card .badge.verified,
+.attendance-admin-card .badge.present {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(61, 255, 122, 0.1);
+}
+.attendance-admin-card .badge.late {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.5);
+}
+.attendance-admin-card .badge.missed,
+.attendance-admin-card .badge.failed,
+.attendance-admin-card .badge.absent {
+  color: var(--danger);
+  border-color: rgba(255, 107, 129, 0.45);
+}
+.attendance-admin-card .badge.leave {
+  color: var(--cyan);
+  border-color: rgba(126, 203, 255, 0.5);
+}
+
+.attendance-mini-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.attendance-mini-slots .dot {
+  min-width: 3.4rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 0.32rem 0.4rem;
+  border: 1px solid var(--border);
+  color: var(--text-h);
+  background: rgba(8, 12, 22, 0.55);
+}
+
+.attendance-mini-slots .dot.verified,
+.attendance-mini-slots .dot.present {
+  background: rgba(61, 255, 122, 0.14);
+  border-color: rgba(61, 255, 122, 0.4);
+}
+.attendance-mini-slots .dot.missed,
+.attendance-mini-slots .dot.failed,
+.attendance-mini-slots .dot.absent {
+  background: rgba(255, 107, 129, 0.12);
+  border-color: rgba(255, 107, 129, 0.35);
+}
+.attendance-mini-slots .dot.pending {
+  background: rgba(251, 191, 36, 0.08);
+}
+.attendance-mini-slots .dot.late {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.4);
+}
+.attendance-mini-slots .dot.leave {
+  background: rgba(126, 203, 255, 0.14);
+}
+
+.attendance-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.attendance-admin-actions .btn {
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+}
+
+.attendance-admin .modal-backdrop,
+.attendance-admin .modal-backdrop.modal-backdrop-stack {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+  padding: 1.25rem;
+}
+
+.attendance-admin .modal-card {
+  width: min(440px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  background: var(--surface-strong, #121826);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.3rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+
+.attendance-admin .modal-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--text-h);
+}
+
+.attendance-admin .modal-card p {
+  margin: 0;
+}
+
+.attendance-admin .modal-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.attendance-admin .modal-card textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.attendance-admin .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
+.attendance-admin .history-card {
+  width: min(520px, 100%);
+}
+
+.attendance-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.attendance-day {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  text-transform: capitalize;
+}
+
+.attendance-day.present,
+.attendance-day.verified {
+  background: rgba(61, 255, 122, 0.08);
+}
+.attendance-day.late {
+  background: rgba(251, 191, 36, 0.1);
+}
+.attendance-day.absent,
+.attendance-day.missed {
+  background: rgba(255, 107, 129, 0.08);
+}
+.attendance-day.leave {
+  background: rgba(126, 203, 255, 0.1);
+}
+
+@media (max-width: 900px) {
+  .attendance-admin .attendance-summary,
+  .attendance-admin .attendance-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .attendance-admin .attendance-summary,
+  .attendance-admin .attendance-filters {
+    grid-template-columns: 1fr;
+  }
+}

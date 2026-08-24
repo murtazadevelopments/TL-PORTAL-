@@ -132,10 +132,24 @@
   border-color: rgba(251, 191, 36, 0.5);
 }
 
+.alert-banner.admin-force {
+  border-color: rgba(255, 107, 129, 0.7);
+  background: rgba(255, 107, 129, 0.16);
+}
+
+.alert-banner.admin-force strong {
+  color: #ff8a9a;
+}
+
 .field-error {
   color: var(--danger);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.req-star {
+  color: var(--danger, #ff6b81);
+  font-weight: 800;
 }
 
 .edit-box label.has-error input,
@@ -730,4 +744,73 @@
   width: 1%;
   white-space: nowrap;
   vertical-align: middle;
+}
+
+.hr-people-card {
+  margin: 0 0 1.35rem;
+  padding: 1rem 1.1rem 1.05rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface, rgba(16, 22, 38, 0.78));
+}
+
+.hr-people-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.hr-people-head h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.hr-people-selected {
+  margin: 0 0 0.65rem;
+  color: var(--green, #3dff7a);
+  font-weight: 700;
+}
+
+.hr-people-card .admin-search {
+  max-width: 100%;
+  margin-bottom: 0.65rem;
+}
+
+.hr-people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.hr-people-list li label {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.45rem 0.5rem;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.hr-people-list li label:hover {
+  background: rgba(126, 203, 255, 0.08);
+}
+
+.hr-people-list li strong {
+  display: block;
+  color: var(--text-h);
+}
+
+.hr-people-list li em {
+  display: block;
+  font-style: normal;
+  font-size: 0.78rem;
+  color: var(--muted);
 }

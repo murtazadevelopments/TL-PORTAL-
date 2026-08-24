@@ -22,9 +22,22 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+function isSalaryMissing(value) {
+  if (isBlank(value)) return true;
+  const n = Number(value);
+  return !Number.isFinite(n) || n <= 0;
+}
+
 export function missingEmployeePortalFields(row) {
   if (!row) return [];
   return EMPLOYEE_PORTAL_FIELDS.filter((field) => isBlank(row[field.key]));
+}
+
+export function missingAdminAssignFields(row) {
+  if (!row) return [];
+  return ADMIN_ASSIGN_FIELDS.filter((field) =>
+    field.key === 'salary' ? isSalaryMissing(row[field.key]) : isBlank(row[field.key])
+  );
 }
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;

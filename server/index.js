@@ -5,11 +5,13 @@ require('dotenv').config({ path: path.join(__dirname, '.env'), override: true })
 
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const fs = require('fs');
 
 const app = express();
 // Hostinger / proxies: so req.ip and x-forwarded-for are correct for login emails
 app.set('trust proxy', 1);
+app.use(compression());
 
 // JWT is sent as Authorization: Bearer; credentials enabled for cookie-ready CORS.
 const defaultOrigins = [
@@ -218,6 +220,7 @@ try {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
   app.use('/api/admin', require('./routes/adminRoutes'));
+  app.use('/api/attendance', require('./routes/attendanceRoutes'));
   app.use('/api/roles', require('./routes/rolesRoutes'));
   app.use('/api/documents', require('./routes/documentsRoutes'));
   app.use('/api/tl-dashboard', require('./routes/tlDashboardRoutes'));
@@ -256,7 +259,10 @@ function setSpaCacheHeaders(res, filePath) {
     return;
   }
 
-  if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+  if (
+    filePath.includes(`${path.sep}assets${path.sep}`) ||
+    /\.(?:woff2|webp)$/i.test(base)
+  ) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
 }

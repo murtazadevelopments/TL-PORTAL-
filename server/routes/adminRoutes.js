@@ -19,6 +19,8 @@ const {
   getPermissionsCatalog,
   listEmployeesForRoleAssign,
   listRoleHolders,
+  listHrPeople,
+  saveHrPeople,
 } = require('../controllers/rolesController');
 const {
   getNotificationSettings,
@@ -37,6 +39,12 @@ const {
 } = require('../controllers/messagesController');
 const { uploadEmploymentForm } = require('../controllers/employmentFormController');
 const { employmentFormUpload } = require('../middleware/uploadMiddleware');
+const {
+  adminOverview,
+  adminManualMark,
+  adminSetHours,
+  adminEmployeeDays,
+} = require('../controllers/attendanceController');
 
 const router = express.Router();
 
@@ -110,6 +118,8 @@ router.delete(
 router.get('/employees-list', requireRole('ceo'), listEmployeesForRoleAssign);
 router.get('/permissions-catalog', requireRole('ceo'), getPermissionsCatalog);
 router.get('/role-holders', requireRole('ceo'), listRoleHolders);
+router.get('/hr-people', requireRole('ceo'), listHrPeople);
+router.put('/hr-people', requireRole('ceo'), saveHrPeople);
 
 // CEO login activity
 router.get('/login-logs', requireRole('ceo'), listLoginLogs);
@@ -170,6 +180,41 @@ router.post(
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
+
+router.get(
+  '/attendance',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit'
+  ),
+  adminOverview
+);
+router.get(
+  '/attendance/:userId/days',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit'
+  ),
+  adminEmployeeDays
+);
+router.put(
+  '/attendance/:userId/hours',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('attendance:edit', 'employees:edit'),
+  adminSetHours
+);
+router.post(
+  '/attendance/:userId/manual',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('attendance:edit', 'employees:edit'),
+  adminManualMark
+);
 
 // Admin → employee messaging
 router.get(

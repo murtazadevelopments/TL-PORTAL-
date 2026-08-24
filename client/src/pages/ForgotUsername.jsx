@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 function ForgotUsername() {
   const [email, setEmail] = useState('');
@@ -32,7 +32,7 @@ function ForgotUsername() {
       <Navbar />
       <main className="card">
         <div className="brand-hero">
-          <img src={logo} alt="Textured Lab Portal" />
+          <img src={logo} alt="Textured Lab Portal" width={200} height={200} />
           <p className="brand-name">Textured Lab Portal</p>
         </div>
         <h1>Forgot username</h1>

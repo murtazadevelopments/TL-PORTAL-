@@ -38,7 +38,7 @@ export default defineConfig({
         // App-shell caching for offline shell support (static only)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest,json}'],
         // Brand logo asset is huge (~3MB) — don't precache the full file
-        globIgnores: ['**/logo-*.png', '**/favicon.png'],
+        globIgnores: ['**/logo-*.png', '**/favicon.png', '**/models/**'],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         navigateFallback: '/index.html',
         // Never SPA-fallback API or reset routes
@@ -124,6 +124,17 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/face-api.js') || id.includes('node_modules/@tensorflow')) {
+            return 'face-api';
+          }
+        },
+      },
+    },
+  },
   server: {
     headers: {
       'Accept-CH':
