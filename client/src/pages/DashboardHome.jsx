@@ -126,6 +126,16 @@ export default function DashboardHome() {
                 <strong>{user.shift || '—'}</strong>
               </p>
               <p>
+                <span className="label">Work location</span>
+                <strong>
+                  {user.employment_type === 'remote'
+                    ? 'Remote'
+                    : user.employment_type === 'onsite'
+                      ? 'Onsite'
+                      : user.employment_type || '—'}
+                </strong>
+              </p>
+              <p>
                 <span className="label">Salary</span>
                 <strong>{user.salary ?? '—'}</strong>
               </p>
@@ -134,6 +144,12 @@ export default function DashboardHome() {
 
           <p className="muted" style={{ marginTop: '1.5rem' }}>
             <Link to="/account">Edit profile</Link>
+            {user.employment_type === 'remote' ? (
+              <>
+                {' · '}
+                <Link to="/attendance">Attendance</Link>
+              </>
+            ) : null}
             {' · '}
             <Link to="/account/documents">My documents</Link>
             {' · '}

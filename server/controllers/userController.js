@@ -196,6 +196,9 @@ async function getMe(req, res) {
       }
     }
 
+    const keys = Array.isArray(user.permissions) ? user.permissions : [];
+    user.is_hr = role !== 'ceo' && keys.includes('hr:followup');
+
     return res.json(user);
   } catch (err) {
     console.error('getMe error:', err);

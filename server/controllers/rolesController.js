@@ -342,10 +342,159 @@ async function listRoleHolders(req, res) {
   }
 }
 
+const HR_FOLLOWUP_KEY = 'hr:followup';
+const HR_SUPPORT_KEYS = ['employees:view', 'employees:edit'];
+
+async function grantPermission(client, userId, key, grantedBy) {
+  await client.query(
+    `
+      INSERT INTO admin_permissions (user_id, permission_key, granted_by, scope)
+      VALUES ($1, $2, $3, '{"type":"all"}'::jsonb)
+      ON CONFLICT (user_id, permission_key) DO NOTHING
+    `,
+    [userId, key, grantedBy]
+  );
+}
+
+async function revokePermission(client, userId, key) {
+  await client.query(
+    `DELETE FROM admin_permissions WHERE user_id = $1 AND permission_key = $2`,
+    [userId, key]
+  );
+}
+
+/**
+ * GET /api/admin/hr-people
+ * Active staff plus whether the CEO named them as HR.
+ */
+async function listHrPeople(req, res) {
+  try {
+    const { rows } = await pool.query(
+      `
+        SELECT
+          u.id,
+          u.employee_id,
+          u.name,
+          u.role,
+          u.department,
+          u.designation,
+          u.branch,
+          EXISTS (
+            SELECT 1
+            FROM admin_permissions ap
+            WHERE ap.user_id = u.id
+              AND ap.permission_key = $1
+          ) AS is_hr
+        FROM users u
+        WHERE u.is_active = true
+          AND LOWER(COALESCE(u.role, '')) <> 'ceo'
+        ORDER BY u.name ASC NULLS LAST, u.id ASC
+      `,
+      [HR_FOLLOWUP_KEY]
+    );
+    return res.json({
+      people: rows.map((r) => ({
+        ...r,
+        is_hr: Boolean(r.is_hr),
+      })),
+    });
+  } catch (err) {
+    console.error('listHrPeople error:', err);
+    return res.status(500).json({ message: 'Server error loading HR people.' });
+  }
+}
+
+/**
+ * PUT /api/admin/hr-people
+ * Body: { user_ids: number[] } — names the CEO selected as HR.
+ */
+async function saveHrPeople(req, res) {
+  const client = await pool.connect();
+  try {
+    const requested = Array.isArray(req.body?.user_ids) ? req.body.user_ids : [];
+    const ids = [...new Set(requested.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+
+    const { rows: staff } = await pool.query(
+      `
+        SELECT id, role, name
+        FROM users
+        WHERE is_active = true
+          AND LOWER(COALESCE(role, '')) <> 'ceo'
+      `
+    );
+    const allowed = new Set(staff.map((r) => Number(r.id)));
+    const selected = ids.filter((id) => allowed.has(id));
+
+    await client.query('BEGIN');
+
+    const { rows: currentRows } = await client.query(
+      `
+        SELECT user_id
+        FROM admin_permissions
+        WHERE permission_key = $1
+      `,
+      [HR_FOLLOWUP_KEY]
+    );
+    const current = new Set(currentRows.map((r) => Number(r.user_id)));
+    const next = new Set(selected);
+
+    for (const id of next) {
+      const person = staff.find((r) => Number(r.id) === id);
+      if (!person) continue;
+      if (String(person.role || '').toLowerCase() !== 'admin') {
+        await client.query(`UPDATE users SET role = 'admin', updated_at = NOW() WHERE id = $1`, [id]);
+      }
+      await grantPermission(client, id, HR_FOLLOWUP_KEY, req.user.id);
+      for (const key of HR_SUPPORT_KEYS) {
+        await grantPermission(client, id, key, req.user.id);
+      }
+    }
+
+    for (const id of current) {
+      if (!next.has(id)) {
+        await revokePermission(client, id, HR_FOLLOWUP_KEY);
+      }
+    }
+
+    await client.query('COMMIT');
+
+    const { rows: assigned } = await pool.query(
+      `
+        SELECT u.id, u.employee_id, u.name
+        FROM users u
+        INNER JOIN admin_permissions ap ON ap.user_id = u.id AND ap.permission_key = $1
+        WHERE u.is_active = true
+        ORDER BY u.name ASC NULLS LAST
+      `,
+      [HR_FOLLOWUP_KEY]
+    );
+
+    return res.json({
+      message:
+        assigned.length === 0
+          ? 'No HR people selected.'
+          : `HR assigned to ${assigned.length} ${assigned.length === 1 ? 'person' : 'people'}.`,
+      people: assigned,
+    });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    console.error('saveHrPeople error:', err);
+    return res.status(500).json({ message: 'Server error saving HR people.' });
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   assignRole,
   getPermissionsCatalog,
   listEmployeesForRoleAssign,
   listRoleHolders,
   getPermissionsForUser,
+  listHrPeople,
+  saveHrPeople,
 };

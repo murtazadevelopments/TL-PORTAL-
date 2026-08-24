@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
 import api from '../api/client';
+import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import './AppShell.css';
 
 function ShellInner() {
@@ -82,7 +83,7 @@ function ShellInner() {
           <span className="shell-menu-icon" aria-hidden />
         </button>
         <Link to="/dashboard" className="shell-brand shell-brand-mobile">
-          <img src={logo} alt="" className="shell-logo" />
+          <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
         <div className="shell-topbar-spacer" />
@@ -104,7 +105,7 @@ function ShellInner() {
 
       <aside className="app-sidebar" aria-label="Sidebar">
         <Link to="/dashboard" className="shell-brand shell-brand-desktop">
-          <img src={logo} alt="" className="shell-logo" />
+          <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
 
@@ -113,6 +114,7 @@ function ShellInner() {
           permissions={permissions}
           tlDashboardAccess={tlDashboardAccess}
           unreadMessages={unreadMessages}
+          employmentType={user?.employment_type || null}
           onNavigate={() => setDrawerOpen(false)}
         />
 
@@ -162,6 +164,7 @@ function ShellInner() {
         )}
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
+      <AdminIncompleteGate user={user} />
     </div>
   );
 }

@@ -24,7 +24,7 @@ function employeeLabel(row) {
 function defaultScopesFromUser(user) {
   const scopes = {};
   const incoming = user?.scopes && typeof user.scopes === 'object' ? user.scopes : {};
-  for (const key of ['employees:view', 'employees:edit']) {
+  for (const key of ['employees:view', 'employees:edit', 'attendance:view', 'attendance:edit']) {
     scopes[key] = normalizeEmployeeScope(incoming[key]);
   }
   return scopes;
@@ -49,6 +49,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [scopes, setScopes] = useState({
     'employees:view': { type: 'all' },
     'employees:edit': { type: 'all' },
+    'attendance:view': { type: 'all' },
+    'attendance:edit': { type: 'all' },
   });
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -118,6 +120,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setScopes({
         'employees:view': { type: 'all' },
         'employees:edit': { type: 'all' },
+        'attendance:view': { type: 'all' },
+        'attendance:edit': { type: 'all' },
       });
       setReason('');
       setSearch('');
@@ -211,7 +215,15 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
         const scope = normalizeEmployeeScope(scopes[key]);
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           setFormError(
-            `For ${key === 'employees:view' ? 'View employees' : 'Edit employees'}, choose All, or pick at least one branch/team.`
+            `For ${
+              key === 'employees:view'
+                ? 'View employees'
+                : key === 'employees:edit'
+                  ? 'Edit employees'
+                  : key === 'attendance:view'
+                    ? 'View attendance'
+                    : 'Edit attendance'
+            }, choose All, or pick at least one branch/team.`
           );
           return;
         }
@@ -452,7 +464,10 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                 <legend>4. Admin permissions</legend>
                 <div className="permission-list">
                   {catalog.map((perm) => (
-                    <div key={perm.key} className="permission-block">
+                    <div
+                      key={perm.key}
+                      className={`permission-block${perm.key === 'hr:followup' ? ' permission-block-hr' : ''}`}
+                    >
                       <label className="permission-item">
                         <input
                           type="checkbox"

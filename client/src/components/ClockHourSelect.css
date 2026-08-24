@@ -1,0 +1,60 @@
+.clock-hour-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.clock-hour-select-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.clock-hour-select-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.clock-hour-select-hour {
+  width: 5.2rem;
+  flex: 0 0 5.2rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem 0.65rem;
+  background: rgba(5, 8, 16, 0.88);
+  color: var(--text-h);
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-align: center;
+}
+
+.clock-hour-select-hour:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
+.clock-hour-period {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(5, 8, 16, 0.55);
+}
+
+.clock-hour-period button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 800;
+  padding: 0.7rem 0.4rem;
+  cursor: pointer;
+}
+
+.clock-hour-period button.active {
+  background: rgba(61, 255, 122, 0.16);
+  color: var(--text-h);
+}

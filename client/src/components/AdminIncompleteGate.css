@@ -1,0 +1,150 @@
+.hr-incomplete-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+  width: min(420px, calc(100vw - 1.5rem));
+  pointer-events: none;
+}
+
+.hr-incomplete-dock > * {
+  pointer-events: auto;
+}
+
+.hr-incomplete-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 107, 129, 0.55);
+  background: #1a1020;
+  color: #f4f8ff;
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem 0.55rem 0.55rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4);
+}
+
+.hr-incomplete-count {
+  min-width: 1.8rem;
+  height: 1.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #ff6b81;
+  color: #1a0810;
+  font-size: 0.85rem;
+}
+
+.hr-incomplete-hint {
+  color: #ffb4be;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.hr-incomplete-panel {
+  width: 100%;
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 107, 129, 0.45);
+  background: #121826;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.hr-incomplete-panel header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 0.7rem;
+}
+
+.hr-incomplete-kicker {
+  margin: 0 0 0.2rem;
+  color: #ff6b81;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hr-incomplete-panel h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1.05rem;
+  color: var(--text-h, #f4f8ff);
+}
+
+.hr-incomplete-panel header p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #8b97ad);
+}
+
+.hr-incomplete-panel input[type='search'] {
+  margin: 0 1rem 0.65rem;
+  width: calc(100% - 2rem);
+  border: 1px solid var(--border, rgba(126, 203, 255, 0.28));
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(5, 8, 16, 0.88);
+  color: var(--text-h, #f4f8ff);
+}
+
+.hr-incomplete-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.75rem 0.85rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+}
+
+.hr-incomplete-list li {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.65rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 107, 129, 0.22);
+  background: rgba(255, 107, 129, 0.07);
+}
+
+.hr-incomplete-list li strong {
+  display: block;
+  color: var(--text-h, #f4f8ff);
+}
+
+.hr-incomplete-list li em {
+  display: block;
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--muted, #8b97ad);
+  margin: 0.1rem 0 0.25rem;
+}
+
+.hr-incomplete-list li span {
+  display: block;
+  font-size: 0.78rem;
+  color: #ffb4be;
+  line-height: 1.35;
+}
+
+.hr-incomplete-list .btn {
+  flex-shrink: 0;
+}
+
+.hr-incomplete-empty {
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--muted, #8b97ad);
+  justify-content: center !important;
+}

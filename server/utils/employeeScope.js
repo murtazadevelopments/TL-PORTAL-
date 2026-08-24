@@ -95,7 +95,12 @@ function describeScope(scope) {
   return 'all employees';
 }
 
-const SCOPED_PERMISSION_KEYS = new Set(['employees:view', 'employees:edit']);
+const SCOPED_PERMISSION_KEYS = new Set([
+  'employees:view',
+  'employees:edit',
+  'attendance:view',
+  'attendance:edit',
+]);
 
 function isScopedPermissionKey(key) {
   return SCOPED_PERMISSION_KEYS.has(String(key || ''));

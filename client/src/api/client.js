@@ -46,9 +46,11 @@ api.interceptors.response.use(
     const code = error.response?.data?.code;
     const url = String(error.config?.url || '');
     const isPublicAuth = /\/api\/auth\//.test(url);
+    const isAttendanceCheckIn = /\/api\/attendance\/check-in/.test(url);
 
     if (
       !isPublicAuth &&
+      !isAttendanceCheckIn &&
       (status === 401 || (status === 403 && SESSION_ENDED_CODES.has(code)))
     ) {
       localStorage.removeItem('token');

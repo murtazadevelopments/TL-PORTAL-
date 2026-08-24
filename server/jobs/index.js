@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const { runBirthdayEmails } = require('./birthdayEmails');
 const { runLoginLogsPrune } = require('./loginLogsPrune');
+const { runAttendanceMissed } = require('./attendanceMissed');
 
 /**
  * Register scheduled jobs. Call once after the HTTP server starts.
@@ -42,6 +43,22 @@ function startScheduledJobs() {
     console.log(`[cron] Login logs prune scheduled: "${pruneExpression}" (${tz})`);
   } else {
     console.error(`[cron] Invalid LOGIN_LOGS_PRUNE_CRON expression: ${pruneExpression}`);
+  }
+
+  const attendanceExpression = process.env.ATTENDANCE_MISSED_CRON || '*/5 * * * *';
+  if (cron.validate(attendanceExpression)) {
+    cron.schedule(
+      attendanceExpression,
+      () => {
+        runAttendanceMissed().catch((err) => {
+          console.error('[attendance-missed] failed:', err.message || err);
+        });
+      },
+      { timezone: tz }
+    );
+    console.log(`[cron] Attendance missed scan scheduled: "${attendanceExpression}" (${tz})`);
+  } else {
+    console.error(`[cron] Invalid ATTENDANCE_MISSED_CRON expression: ${attendanceExpression}`);
   }
 }
 

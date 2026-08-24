@@ -22,9 +22,17 @@ function isBlank(value) {
   return value === undefined || value === null || String(value).trim() === '';
 }
 
+function isSalaryMissing(value) {
+  if (isBlank(value)) return true;
+  const n = Number(value);
+  return !Number.isFinite(n) || n <= 0;
+}
+
 function missingFromCatalog(row, catalog) {
   if (!row) return [];
-  return catalog.filter((field) => isBlank(row[field.key]));
+  return catalog.filter((field) =>
+    field.key === 'salary' ? isSalaryMissing(row[field.key]) : isBlank(row[field.key])
+  );
 }
 
 function missingEmployeePortalFields(row) {

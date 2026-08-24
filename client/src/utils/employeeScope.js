@@ -35,5 +35,10 @@ export function describeEmployeeScope(scope) {
 }
 
 export function isScopedEmployeePermission(key) {
-  return key === 'employees:view' || key === 'employees:edit';
+  return (
+    key === 'employees:view' ||
+    key === 'employees:edit' ||
+    key === 'attendance:view' ||
+    key === 'attendance:edit'
+  );
 }

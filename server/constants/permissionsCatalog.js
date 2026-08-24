@@ -13,7 +13,25 @@ const PERMISSIONS_CATALOG = [
     key: 'employees:edit',
     label: 'Edit employees',
     description:
-      'Update employee ID, status, department, designation, branch, shift, salary, date of joining (scope: all, branch, or team)',
+      'Update employee ID, status, department, designation, branch, shift, salary, date of joining (scope: all, a branch, or a team)',
+  },
+  {
+    key: 'hr:followup',
+    label: 'HR assignee',
+    description:
+      'Named HR person: see every incomplete employee profile and follow up until details are filled',
+  },
+  {
+    key: 'attendance:view',
+    label: 'View attendance',
+    description:
+      'See remote employee attendance records, hours, and daily history (scope: all, a branch, or a team)',
+  },
+  {
+    key: 'attendance:edit',
+    label: 'Edit attendance',
+    description:
+      'Set working hours, mark present/late/absent/leave, and override hourly check-ins (scope: all, branch, or team)',
   },
   {
     key: 'employees:deactivate',
