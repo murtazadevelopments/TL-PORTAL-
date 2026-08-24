@@ -41,7 +41,7 @@ const {
   sendAdminMessage,
 } = require('../controllers/messagesController');
 const { uploadEmploymentForm } = require('../controllers/employmentFormController');
-const { employmentFormUpload } = require('../middleware/uploadMiddleware');
+const { employmentFormUpload, lowerStaffUpload } = require('../middleware/uploadMiddleware');
 const {
   adminOverview,
   adminManualMark,
@@ -152,12 +152,14 @@ router.post(
   '/employees',
   requireRole('admin'),
   requirePermission('hr:add_employee'),
+  lowerStaffUpload,
   createEmployee
 );
 router.put(
   '/employees/:id/lower-staff',
   requireRole('admin'),
   requirePermission('hr:add_employee'),
+  lowerStaffUpload,
   updateLowerStaff
 );
 router.delete(

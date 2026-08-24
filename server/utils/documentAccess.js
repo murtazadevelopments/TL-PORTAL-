@@ -14,12 +14,28 @@ function isCnicDocType(docType) {
   return t === 'cnic' || t === 'cnic_front' || t === 'cnic_back';
 }
 
+async function hasHrAddEmployeePermission(requester) {
+  const role = String(requester?.role || '').toLowerCase();
+  if (role === 'ceo') return true;
+  if (role !== 'admin') return false;
+  let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
+  if (!perms.length && requester?.id) {
+    perms = await loadAdminPermissions(requester.id);
+  }
+  return perms.includes('hr:add_employee') || perms.includes('*');
+}
+
+function isStaffExtraDocType(docType) {
+  const t = String(docType || '').toLowerCase();
+  return t === 'staff_extra_1' || t === 'staff_extra_2';
+}
+
 async function hasDocumentsViewPermission(requester) {
   const role = String(requester?.role || '').toLowerCase();
   if (role === 'ceo') return true;
   if (role !== 'admin') return false;
   let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
-  if (!perms.length) {
+  if (!perms.length && requester?.id) {
     perms = await loadAdminPermissions(requester.id);
   }
   return perms.includes('documents:view') || perms.includes('*');
@@ -38,7 +54,11 @@ async function canDownloadDocument(documentType, user, context = {}) {
   const isSelf =
     targetUserId != null && String(user?.id) === String(targetUserId);
 
-  if (isCnicDocType(docType)) {
+  if (isCnicDocType(docType) || isStaffExtraDocType(docType)) {
+    if (context.staffKind === 'lower' && (await hasHrAddEmployeePermission(user))) {
+      return true;
+    }
+    if (isCnicDocType(docType)) return false;
     return false;
   }
 

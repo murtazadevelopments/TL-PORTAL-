@@ -33,6 +33,24 @@ async function ensureStaffKindColumn() {
   ensured = true;
 }
 
+let extraEnsured = false;
+
+async function ensureLowerStaffExtraColumns() {
+  await ensureStaffKindColumn();
+  if (extraEnsured) return;
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_1_kind TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_1_label TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_1_text TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_1_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_2_kind TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_2_label TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_2_text TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_extra_2_url TEXT;
+  `);
+  extraEnsured = true;
+}
+
 function normalizeStaffKind(value) {
   const key = String(value || '')
     .trim()
@@ -47,6 +65,7 @@ function isLowerStaff(row) {
 module.exports = {
   STAFF_KINDS,
   ensureStaffKindColumn,
+  ensureLowerStaffExtraColumns,
   normalizeStaffKind,
   isLowerStaff,
 };

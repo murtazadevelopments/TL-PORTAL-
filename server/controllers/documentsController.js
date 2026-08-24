@@ -10,6 +10,7 @@ const {
 } = require('../services/localStorage');
 const { canDownloadDocument } = require('../utils/documentAccess');
 const { rejectIfAccountDisabled } = require('../utils/accountStatus');
+const { ensureStaffKindColumn, ensureLowerStaffExtraColumns } = require('../utils/staffKind');
 
 const DOC_BUCKET = {
   profile: 'profile-pictures',
@@ -104,7 +105,7 @@ function documentAuth(req, res, next) {
 
 /**
  * GET /api/documents/:userId/:docType
- * docType: profile | cnic_front | cnic_back | cv | employment_form
+ * docType: profile | cnic_front | cnic_back | cv | employment_form | staff_extra_1 | staff_extra_2
  */
 async function streamDocument(req, res) {
   try {
@@ -116,18 +117,14 @@ async function streamDocument(req, res) {
       return res.status(400).json({ message: 'Invalid document request.' });
     }
 
-    const allowed = await canDownloadDocument(docType, req.user, {
-      targetUserId: userId,
-    });
-    if (!allowed) {
-      return res.status(403).json({
-        message: 'You do not have permission to view this document.',
-      });
+    await ensureStaffKindColumn();
+    if (docType.startsWith('staff_extra')) {
+      await ensureLowerStaffExtraColumns();
     }
 
     const { rows } = await pool.query(
       `
-        SELECT id, username, employee_id, ${meta.column} AS file_path
+        SELECT id, username, employee_id, staff_kind, ${meta.column} AS file_path
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -138,6 +135,17 @@ async function streamDocument(req, res) {
     const row = rows[0];
     if (!row) {
       return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const allowed = await canDownloadDocument(docType, req.user, {
+      targetUserId: userId,
+      staffKind: row.staff_kind,
+    });
+
+    if (!allowed) {
+      return res.status(403).json({
+        message: 'You do not have permission to view this document.',
+      });
     }
 
     // Legacy remote URL — redirect (pre-migration safety)

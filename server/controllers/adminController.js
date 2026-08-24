@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const { attachReadableUrls, withProfileApiUrl } = require('../utils/storageUrls');
-const { deleteRelativeFile } = require('../services/localStorage');
+const { deleteRelativeFile, saveUserFile } = require('../services/localStorage');
 const {
   notifyEmployeeAdminUpdated,
   notifyAccountApproved,
@@ -33,6 +33,7 @@ const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const { normalizeWorkHours } = require('../utils/workHours');
 const {
   ensureStaffKindColumn,
+  ensureLowerStaffExtraColumns,
   isLowerStaff,
 } = require('../utils/staffKind');
 
@@ -55,7 +56,10 @@ const LIST_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_sent_at
+  profile_alert_at, profile_alert_sent_at,
+  staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
+  staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url,
+  cnic_front_url, cnic_back_url
 `;
 
 const DETAIL_COLUMNS = `
@@ -69,7 +73,9 @@ const DETAIL_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason,
-  profile_alert_at, profile_alert_sent_at
+  profile_alert_at, profile_alert_sent_at,
+  staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
+  staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
 `;
 
 const ALLOWED_UPDATE_FIELDS = [
@@ -132,6 +138,37 @@ function slugLowerStaffUsername(name) {
   return `ls.${base || 'staff'}.${suffix}`;
 }
 
+function getMulterFile(req, field) {
+  return req.files?.[field]?.[0] || null;
+}
+
+function parseExtraKind(value) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase();
+  return key === 'text' || key === 'file' ? key : null;
+}
+
+function extraSlotFromBody(body, slot) {
+  const kind = parseExtraKind(body[`extra_${slot}_kind`]);
+  const label = String(body[`extra_${slot}_label`] || '').trim() || null;
+  const text = String(body[`extra_${slot}_text`] || '').trim() || null;
+  return { kind, label, text };
+}
+
+async function saveLowerStaffUploads(user, req) {
+  const patch = {};
+  const cnicFront = getMulterFile(req, 'cnic_front');
+  const cnicBack = getMulterFile(req, 'cnic_back');
+  const extra1 = getMulterFile(req, 'extra_1_file');
+  const extra2 = getMulterFile(req, 'extra_2_file');
+  if (cnicFront) patch.cnic_front_url = await saveUserFile(user, 'cnic_front', cnicFront);
+  if (cnicBack) patch.cnic_back_url = await saveUserFile(user, 'cnic_back', cnicBack);
+  if (extra1) patch.staff_extra_1_url = await saveUserFile(user, 'staff_extra_1', extra1);
+  if (extra2) patch.staff_extra_2_url = await saveUserFile(user, 'staff_extra_2', extra2);
+  return patch;
+}
+
 function redactSalary(row, canSee) {
   if (!row) return row;
   const salaryOnFile = !isSalaryMissing(row.salary);
@@ -181,6 +218,7 @@ async function listEmployees(req, res) {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
     await ensureStaffKindColumn();
+    await ensureLowerStaffExtraColumns();
     const scopes = await resolvePermissionScopes(req);
     const viewScope = scopeForPermission(scopes, 'employees:view');
     const filter = scopeWhereClause(viewScope, 1);
@@ -200,9 +238,22 @@ async function listEmployees(req, res) {
     );
 
     const employees = await Promise.all(
-      rows.map(async (row) =>
-        redactSalary(await withListUrls(row), viewerCanSeeSalary(req, row))
-      )
+      rows.map(async (row) => {
+        let withUrls =
+          isLowerStaff(row) && canSeeLower
+            ? await attachReadableUrls(row)
+            : await withListUrls(row);
+        if (!isLowerStaff(row)) {
+          withUrls = {
+            ...withUrls,
+            cnic_front_url: null,
+            cnic_back_url: null,
+            staff_extra_1_url: null,
+            staff_extra_2_url: null,
+          };
+        }
+        return redactSalary(withUrls, viewerCanSeeSalary(req, row));
+      })
     );
     return res.json(employees);
   } catch (err) {
@@ -215,6 +266,7 @@ async function getEmployeeById(req, res) {
   try {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
+    await ensureLowerStaffExtraColumns();
     const { id } = req.params;
 
     const { rows } = await pool.query(
@@ -258,13 +310,13 @@ async function getEmployeeById(req, res) {
           : await loadAdminPermissions(req.user.id);
       canViewDocs = perms.includes('documents:view') || perms.includes('*');
     }
-    if (!canViewDocs) {
+    if (!canViewDocs && !(isLowerStaff(rows[0]) && canManageLowerStaff(req))) {
       employee.cnic_front_url = null;
       employee.cnic_back_url = null;
       employee.cv_url = null;
       employee.employment_form_url = null;
       employee.documents_redacted = true;
-    } else {
+    } else if (!isLowerStaff(rows[0])) {
       // CNIC streaming is blocked for all roles; expose presence only for admin UI.
       employee.cnic_front_on_file = Boolean(employee.cnic_front_url);
       employee.cnic_back_on_file = Boolean(employee.cnic_back_url);
@@ -280,6 +332,7 @@ async function getEmployeeById(req, res) {
 }
 
 async function createLowerStaff(req, res, body) {
+  await ensureLowerStaffExtraColumns();
   if (!canManageLowerStaff(req)) {
     return res.status(403).json({
       message: 'Only HR with Add employees permission can add lower staff.',
@@ -288,13 +341,19 @@ async function createLowerStaff(req, res, body) {
 
   const name = String(body.name || '').trim();
   const salary = Number(body.salary);
+  const branch = String(body.branch || '').trim();
   if (!name) {
     return res.status(400).json({ message: 'Name is required.' });
   }
   if (!Number.isFinite(salary) || salary <= 0) {
     return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
   }
+  if (!branch) {
+    return res.status(400).json({ message: 'Branch is required.' });
+  }
 
+  const extra1 = extraSlotFromBody(body, 1);
+  const extra2 = extraSlotFromBody(body, 2);
   const username = slugLowerStaffUsername(name);
   const email = `${username}@lowerstaff.local`;
   const hashedPassword = await bcrypt.hash(crypto.randomBytes(18).toString('hex'), 10);
@@ -304,20 +363,64 @@ async function createLowerStaff(req, res, body) {
     `
       INSERT INTO users (
         employee_id, username, name, email, password, contact_number,
-        role, status, salary, staff_kind, employment_type,
+        role, status, salary, branch, staff_kind, employment_type,
+        staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text,
+        staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text,
         is_active, date_joined
       )
       VALUES (
         $1, $2, $3, $4, $5, '',
-        'employee', 'active', $6, 'lower', 'onsite',
+        'employee', 'active', $6, $7, 'lower', 'onsite',
+        $8, $9, $10,
+        $11, $12, $13,
         true, NOW()
       )
       RETURNING ${DETAIL_COLUMNS}
     `,
-    [employeeId, username, name, email, hashedPassword, salary]
+    [
+      employeeId,
+      username,
+      name,
+      email,
+      hashedPassword,
+      salary,
+      branch,
+      extra1.kind,
+      extra1.label,
+      extra1.kind === 'text' ? extra1.text : null,
+      extra2.kind,
+      extra2.label,
+      extra2.kind === 'text' ? extra2.text : null,
+    ]
   );
 
-  const employee = redactSalary(await attachReadableUrls(rows[0]), true);
+  let row = rows[0];
+  const filePatch = await saveLowerStaffUploads(row, req);
+  if (Object.keys(filePatch).length) {
+    const { rows: updated } = await pool.query(
+      `
+        UPDATE users
+        SET
+          cnic_front_url = COALESCE($2, cnic_front_url),
+          cnic_back_url = COALESCE($3, cnic_back_url),
+          staff_extra_1_url = COALESCE($4, staff_extra_1_url),
+          staff_extra_2_url = COALESCE($5, staff_extra_2_url),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING ${DETAIL_COLUMNS}
+      `,
+      [
+        row.id,
+        filePatch.cnic_front_url || null,
+        filePatch.cnic_back_url || null,
+        filePatch.staff_extra_1_url || null,
+        filePatch.staff_extra_2_url || null,
+      ]
+    );
+    row = updated[0];
+  }
+
+  const employee = redactSalary(await attachReadableUrls(row), true);
   try {
     await writeAuditLog({
       actorId: req.user.id,
@@ -337,6 +440,7 @@ async function createLowerStaff(req, res, body) {
 async function updateLowerStaff(req, res) {
   try {
     await ensureStaffKindColumn();
+    await ensureLowerStaffExtraColumns();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
         message: 'Only HR with Add employees permission can edit lower staff.',
@@ -347,12 +451,19 @@ async function updateLowerStaff(req, res) {
     const body = req.body || {};
     const name = String(body.name || '').trim();
     const salary = Number(body.salary);
+    const branch = String(body.branch || '').trim();
     if (!name) {
       return res.status(400).json({ message: 'Name is required.' });
     }
     if (!Number.isFinite(salary) || salary <= 0) {
       return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
     }
+    if (!branch) {
+      return res.status(400).json({ message: 'Branch is required.' });
+    }
+
+    const extra1 = extraSlotFromBody(body, 1);
+    const extra2 = extraSlotFromBody(body, 2);
 
     const { rows: existingRows } = await pool.query(
       `
@@ -368,14 +479,53 @@ async function updateLowerStaff(req, res) {
       return res.status(404).json({ message: 'Lower staff record not found.' });
     }
 
+    const filePatch = await saveLowerStaffUploads(existing, req);
+    const extra1Url =
+      extra1.kind === 'file'
+        ? filePatch.staff_extra_1_url || existing.staff_extra_1_url
+        : null;
+    const extra2Url =
+      extra2.kind === 'file'
+        ? filePatch.staff_extra_2_url || existing.staff_extra_2_url
+        : null;
+
     const { rows } = await pool.query(
       `
         UPDATE users
-        SET name = $1, salary = $2, updated_at = NOW()
-        WHERE id = $3 AND is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
+        SET
+          name = $1,
+          salary = $2,
+          branch = $3,
+          cnic_front_url = COALESCE($4, cnic_front_url),
+          cnic_back_url = COALESCE($5, cnic_back_url),
+          staff_extra_1_kind = $6,
+          staff_extra_1_label = $7,
+          staff_extra_1_text = $8,
+          staff_extra_1_url = $9,
+          staff_extra_2_kind = $10,
+          staff_extra_2_label = $11,
+          staff_extra_2_text = $12,
+          staff_extra_2_url = $13,
+          updated_at = NOW()
+        WHERE id = $14 AND is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
         RETURNING ${DETAIL_COLUMNS}
       `,
-      [name, salary, id]
+      [
+        name,
+        salary,
+        branch,
+        filePatch.cnic_front_url || null,
+        filePatch.cnic_back_url || null,
+        extra1.kind,
+        extra1.label,
+        extra1.kind === 'text' ? extra1.text : null,
+        extra1Url,
+        extra2.kind,
+        extra2.label,
+        extra2.kind === 'text' ? extra2.text : null,
+        extra2Url,
+        id,
+      ]
     );
     if (!rows[0]) {
       return res.status(404).json({ message: 'Lower staff record not found.' });
@@ -459,6 +609,7 @@ async function createEmployee(req, res) {
     await ensureEmploymentTypeColumn();
     await ensureAttendanceTables();
     await ensureStaffKindColumn();
+    await ensureLowerStaffExtraColumns();
     const body = req.body || {};
 
     if (String(body.staff_kind || '').trim().toLowerCase() === 'lower') {

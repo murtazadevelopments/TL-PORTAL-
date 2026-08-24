@@ -54,12 +54,26 @@ const DOC_TYPES = {
     defaultExt: '.pdf',
     fileStems: ['employment_form'],
   },
+  staff_extra_1: {
+    column: 'staff_extra_1_url',
+    image: false,
+    defaultExt: '.bin',
+    fileStems: ['staff_extra_1'],
+  },
+  staff_extra_2: {
+    column: 'staff_extra_2_url',
+    image: false,
+    defaultExt: '.bin',
+    fileStems: ['staff_extra_2'],
+  },
 };
 
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 const CV_EXTS = ['.pdf'];
 
 function extsForDocType(docType) {
+  const key = String(docType || '');
+  if (key.startsWith('staff_extra')) return [...IMAGE_EXTS, ...CV_EXTS];
   const meta = DOC_TYPES[docType];
   if (!meta) return IMAGE_EXTS;
   return meta.image ? IMAGE_EXTS : CV_EXTS;

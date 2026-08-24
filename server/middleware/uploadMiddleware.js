@@ -23,12 +23,19 @@ function fileFilter(req, file, cb) {
     return cb(null, true);
   }
 
+  if (field === 'extra_1_file' || field === 'extra_2_file') {
+    if (!IMAGE_TYPES.has(file.mimetype) && !PDF_TYPES.has(file.mimetype)) {
+      return cb(new Error('Extra files must be an image or PDF.'));
+    }
+    return cb(null, true);
+  }
+
   return cb(new Error(`Unexpected file field: ${field}`));
 }
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE, files: 4 },
+  limits: { fileSize: MAX_FILE_SIZE, files: 6 },
   fileFilter,
 });
 
@@ -145,11 +152,35 @@ function employmentFormUpload(req, res, next) {
   });
 }
 
+function lowerStaffUpload(req, res, next) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (!contentType.includes('multipart/form-data')) return next();
+
+  upload.fields([
+    { name: 'cnic_front', maxCount: 1 },
+    { name: 'cnic_back', maxCount: 1 },
+    { name: 'extra_1_file', maxCount: 1 },
+    { name: 'extra_2_file', maxCount: 1 },
+  ])(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+
+    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+  });
+}
+
 module.exports = {
   signupUpload,
   profilePictureUpload,
   documentUpload,
   employmentFormUpload,
+  lowerStaffUpload,
   extFromFile,
 };
 

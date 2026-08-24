@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
@@ -76,6 +76,134 @@ const EMPTY_FILTERS = {
   branch: 'all',
   shift: 'all',
 };
+
+const EMPTY_LOWER = {
+  name: '',
+  salary: '',
+  branch: '',
+  extra1Kind: 'text',
+  extra1Label: '',
+  extra1Text: '',
+  extra2Kind: 'text',
+  extra2Label: '',
+  extra2Text: '',
+};
+
+function lowerFormFromRow(row) {
+  return {
+    name: row?.name || '',
+    salary: row?.salary == null ? '' : String(row.salary),
+    branch: row?.branch || '',
+    extra1Kind: row?.staff_extra_1_kind === 'file' ? 'file' : 'text',
+    extra1Label: row?.staff_extra_1_label || '',
+    extra1Text: row?.staff_extra_1_text || '',
+    extra2Kind: row?.staff_extra_2_kind === 'file' ? 'file' : 'text',
+    extra2Label: row?.staff_extra_2_label || '',
+    extra2Text: row?.staff_extra_2_text || '',
+  };
+}
+
+function extraSlotSummary(row, slot) {
+  const kind = row?.[`staff_extra_${slot}_kind`];
+  const label = String(row?.[`staff_extra_${slot}_label`] || '').trim();
+  const text = String(row?.[`staff_extra_${slot}_text`] || '').trim();
+  const url = row?.[`staff_extra_${slot}_url`];
+  if (kind === 'file' && (url || label)) return label || 'Document on file';
+  if (kind === 'text' && (label || text)) return label || 'Note';
+  return null;
+}
+
+function useObjectUrl(file) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (!file) {
+      setUrl(null);
+      return undefined;
+    }
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
+}
+
+function LowerFilePick({
+  label,
+  hint,
+  accept,
+  file,
+  existingUrl,
+  cacheKey,
+  imagePreview,
+  onFile,
+}) {
+  const inputId = useId();
+  const [dragOver, setDragOver] = useState(false);
+  const objectUrl = useObjectUrl(file);
+  const existingHref = withAuthDocumentUrl(existingUrl, cacheKey);
+  const showImage =
+    Boolean(imagePreview) &&
+    ((file && file.type.startsWith('image/') && objectUrl) || (!file && existingHref));
+  const previewSrc = file ? objectUrl : existingHref;
+
+  function takeFile(next) {
+    if (next) onFile(next);
+  }
+
+  return (
+    <div className="lower-file-field">
+      <span className="lower-field-label">{label}</span>
+      <div
+        className={`lower-file-drop ${dragOver ? 'is-drag' : ''} ${
+          file || existingUrl ? 'is-filled' : ''
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          takeFile(e.dataTransfer.files?.[0]);
+        }}
+      >
+        {showImage && previewSrc ? (
+          <img className="lower-file-preview" src={previewSrc} alt="" />
+        ) : (
+          <div className="lower-file-icon" aria-hidden="true">
+            ↑
+          </div>
+        )}
+        <input
+          id={inputId}
+          className="lower-file-input"
+          type="file"
+          accept={accept}
+          onChange={(e) => takeFile(e.target.files?.[0])}
+        />
+        <label htmlFor={inputId} className="lower-file-cta">
+          {file || existingUrl ? 'Replace' : 'Choose file'}
+        </label>
+        <p className="lower-file-hint">
+          {file ? file.name : existingUrl ? 'On file — drop a new file to replace' : hint}
+        </p>
+        <div className="lower-file-links">
+          {existingHref && !file && (
+            <a href={existingHref} target="_blank" rel="noreferrer">
+              Open current
+            </a>
+          )}
+          {file && (
+            <button type="button" onClick={() => onFile(null)}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function fullName(row) {
   return row?.name || '—';
@@ -198,14 +326,16 @@ function EmployeesPage() {
   const [addForm, setAddForm] = useState(EMPTY_ADD);
   const [addError, setAddError] = useState('');
   const [adding, setAdding] = useState(false);
-  const [lowerName, setLowerName] = useState('');
-  const [lowerSalary, setLowerSalary] = useState('');
+  const [lowerForm, setLowerForm] = useState(EMPTY_LOWER);
+  const [lowerFormKey, setLowerFormKey] = useState(0);
+  const [lowerCnicFront, setLowerCnicFront] = useState(null);
+  const [lowerCnicBack, setLowerCnicBack] = useState(null);
+  const [lowerExtra1File, setLowerExtra1File] = useState(null);
+  const [lowerExtra2File, setLowerExtra2File] = useState(null);
+  const [lowerExisting, setLowerExisting] = useState(null);
   const [lowerError, setLowerError] = useState('');
   const [addingLower, setAddingLower] = useState(false);
   const [editingLowerId, setEditingLowerId] = useState(null);
-  const [editLowerName, setEditLowerName] = useState('');
-  const [editLowerSalary, setEditLowerSalary] = useState('');
-  const [savingLowerId, setSavingLowerId] = useState(null);
   const [deletingLowerId, setDeletingLowerId] = useState(null);
 
   useEffect(() => {
@@ -508,7 +638,7 @@ function EmployeesPage() {
       .map((e) => e.branch)
       .filter((d) => d != null && String(d).trim() !== '')
       .map((d) => String(d).trim());
-    return [...new Set([...fromCatalog, ...fromEmployees])].sort((a, b) =>
+    return [...new Set([...BRANCH_OPTIONS, ...fromCatalog, ...fromEmployees])].sort((a, b) =>
       a.localeCompare(b)
     );
   }, [employees, branches]);
@@ -527,7 +657,12 @@ function EmployeesPage() {
     return source.filter((e) => {
       if (statusTab === 'lower-staff') {
         if (!q) return true;
-        return fullName(e).toLowerCase().includes(q);
+        const extra = `${e.staff_extra_1_label || ''} ${e.staff_extra_1_text || ''} ${e.staff_extra_2_label || ''} ${e.staff_extra_2_text || ''}`;
+        return (
+          fullName(e).toLowerCase().includes(q) ||
+          String(e.branch || '').toLowerCase().includes(q) ||
+          extra.toLowerCase().includes(q)
+        );
       }
       if (statusTab === 'active' && e.status !== 'active') return false;
       if (statusTab === 'pending' && e.status === 'active') return false;
@@ -861,69 +996,98 @@ function EmployeesPage() {
       setLowerError('Only HR can add lower staff.');
       return;
     }
-    const name = lowerName.trim();
-    const salary = Number(lowerSalary);
+    const name = lowerForm.name.trim();
+    const salary = Number(lowerForm.salary);
+    const branch = lowerForm.branch.trim();
     if (!name) {
       setLowerError('Name is required.');
       return;
     }
     if (!Number.isFinite(salary) || salary <= 0) {
       setLowerError('Salary is required and must be greater than 0.');
+      return;
+    }
+    if (!branch) {
+      setLowerError('Branch is required.');
       return;
     }
     setAddingLower(true);
     setLowerError('');
     try {
-      await api.post('/api/admin/employees', {
-        staff_kind: 'lower',
-        name,
-        salary,
-      });
-      setLowerName('');
-      setLowerSalary('');
+      const fd = buildLowerStaffFormData();
+      if (editingLowerId) {
+        await api.put(`/api/admin/employees/${editingLowerId}/lower-staff`, fd);
+      } else {
+        await api.post('/api/admin/employees', fd);
+      }
+      resetLowerStaffForm();
       await loadEmployees();
     } catch (err) {
-      setLowerError(err.response?.data?.message || 'Failed to add lower staff.');
+      setLowerError(
+        err.response?.data?.message ||
+          (editingLowerId ? 'Failed to update lower staff.' : 'Failed to add lower staff.')
+      );
     } finally {
       setAddingLower(false);
     }
   }
 
-  function startEditLowerStaff(row) {
+  function buildLowerStaffFormData() {
+    const fd = new FormData();
+    fd.append('staff_kind', 'lower');
+    fd.append('name', lowerForm.name.trim());
+    fd.append('salary', String(lowerForm.salary).trim());
+    fd.append('branch', lowerForm.branch.trim());
+    fd.append('extra_1_kind', lowerForm.extra1Kind);
+    fd.append('extra_1_label', lowerForm.extra1Label.trim());
+    fd.append('extra_1_text', lowerForm.extra1Text);
+    fd.append('extra_2_kind', lowerForm.extra2Kind);
+    fd.append('extra_2_label', lowerForm.extra2Label.trim());
+    fd.append('extra_2_text', lowerForm.extra2Text);
+    if (lowerCnicFront) fd.append('cnic_front', lowerCnicFront);
+    if (lowerCnicBack) fd.append('cnic_back', lowerCnicBack);
+    if (lowerForm.extra1Kind === 'file' && lowerExtra1File) {
+      fd.append('extra_1_file', lowerExtra1File);
+    }
+    if (lowerForm.extra2Kind === 'file' && lowerExtra2File) {
+      fd.append('extra_2_file', lowerExtra2File);
+    }
+    return fd;
+  }
+
+  function resetLowerStaffForm() {
+    setLowerForm(EMPTY_LOWER);
+    setLowerCnicFront(null);
+    setLowerCnicBack(null);
+    setLowerExtra1File(null);
+    setLowerExtra2File(null);
+    setLowerExisting(null);
+    setEditingLowerId(null);
+    setLowerFormKey((n) => n + 1);
+  }
+
+  async function startEditLowerStaff(row) {
     setLowerError('');
     setEditingLowerId(row.id);
-    setEditLowerName(row.name || '');
-    setEditLowerSalary(row.salary == null ? '' : String(row.salary));
+    setLowerForm(lowerFormFromRow(row));
+    setLowerCnicFront(null);
+    setLowerCnicBack(null);
+    setLowerExtra1File(null);
+    setLowerExtra2File(null);
+    setLowerExisting(row);
+    setLowerFormKey((n) => n + 1);
+    try {
+      const { data } = await api.get(`/api/admin/employees/${row.id}`);
+      setLowerForm(lowerFormFromRow(data));
+      setLowerExisting(data);
+    } catch (err) {
+      setLowerError(err.response?.data?.message || 'Could not load this record for editing.');
+    }
   }
 
   function cancelEditLowerStaff() {
-    setEditingLowerId(null);
-    setEditLowerName('');
-    setEditLowerSalary('');
-  }
-
-  async function handleSaveLowerStaff(rowId) {
-    const name = editLowerName.trim();
-    const salary = Number(editLowerSalary);
-    if (!name) {
-      setLowerError('Name is required.');
-      return;
-    }
-    if (!Number.isFinite(salary) || salary <= 0) {
-      setLowerError('Salary is required and must be greater than 0.');
-      return;
-    }
-    setSavingLowerId(rowId);
+    resetLowerStaffForm();
     setLowerError('');
-    try {
-      await api.put(`/api/admin/employees/${rowId}/lower-staff`, { name, salary });
-      cancelEditLowerStaff();
-      await loadEmployees();
-    } catch (err) {
-      setLowerError(err.response?.data?.message || 'Failed to update lower staff.');
-    } finally {
-      setSavingLowerId(null);
-    }
   }
 
   async function handleDeleteLowerStaff(row) {
@@ -1132,33 +1296,217 @@ function EmployeesPage() {
         )}
 
         {statusTab === 'lower-staff' && canAddEmployees && (
-          <form className="lower-staff-form" onSubmit={handleAddLowerStaff}>
-            <label>
-              Name
-              <input
-                type="text"
-                value={lowerName}
-                onChange={(e) => setLowerName(e.target.value)}
-                placeholder="Full name"
-                required
-              />
-            </label>
-            <label>
-              Salary
-              <input
-                type="number"
-                value={lowerSalary}
-                onChange={(e) => setLowerSalary(e.target.value)}
-                placeholder="Amount"
-                min="1"
-                step="1"
-                required
-              />
-            </label>
-            <button type="submit" className="btn btn-primary" disabled={addingLower}>
-              {addingLower ? 'Adding…' : 'Add'}
-            </button>
-            {lowerError && <p className="error">{lowerError}</p>}
+          <form
+            key={lowerFormKey}
+            className="lower-staff-form"
+            onSubmit={handleAddLowerStaff}
+          >
+            <div className="lower-staff-form-head">
+              <div>
+                <p className="lower-staff-kicker">Payroll only</p>
+                <h2>
+                  {editingLowerId ? `Edit ${lowerForm.name || 'lower staff'}` : 'Add lower staff'}
+                </h2>
+                <p>
+                  Name, salary, and branch are required. CNIC and extra info are optional if you
+                  need more on file.
+                </p>
+              </div>
+              {editingLowerId && <span className="lower-staff-editing-pill">Editing</span>}
+            </div>
+
+            <section className="lower-staff-section">
+              <h3>Details</h3>
+              <div className="lower-staff-fields">
+                <label className="lower-field">
+                  <span className="lower-field-label">
+                    Name <span className="req-star">*</span>
+                  </span>
+                  <input
+                    type="text"
+                    value={lowerForm.name}
+                    onChange={(e) => setLowerForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Full name"
+                    required
+                  />
+                </label>
+                <label className="lower-field">
+                  <span className="lower-field-label">
+                    Salary <span className="req-star">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    value={lowerForm.salary}
+                    onChange={(e) => setLowerForm((f) => ({ ...f, salary: e.target.value }))}
+                    placeholder="Amount"
+                    min="1"
+                    step="1"
+                    required
+                  />
+                </label>
+                <label className="lower-field">
+                  <span className="lower-field-label">
+                    Branch <span className="req-star">*</span>
+                  </span>
+                  <select
+                    value={lowerForm.branch}
+                    onChange={(e) => setLowerForm((f) => ({ ...f, branch: e.target.value }))}
+                    required
+                  >
+                    <option value="">Select branch</option>
+                    {branchOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section className="lower-staff-section">
+              <h3>CNIC</h3>
+              <div className="lower-cnic-grid">
+                <LowerFilePick
+                  label="Front"
+                  hint="Drop an image or click to upload"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  file={lowerCnicFront}
+                  existingUrl={lowerExisting?.cnic_front_url}
+                  cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
+                  imagePreview
+                  onFile={setLowerCnicFront}
+                />
+                <LowerFilePick
+                  label="Back"
+                  hint="Drop an image or click to upload"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  file={lowerCnicBack}
+                  existingUrl={lowerExisting?.cnic_back_url}
+                  cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
+                  imagePreview
+                  onFile={setLowerCnicBack}
+                />
+              </div>
+            </section>
+
+            <section className="lower-staff-section">
+              <h3>Extra information</h3>
+              <p className="lower-staff-section-note">
+                Two optional slots. Use text for a labeled note, or upload a document.
+              </p>
+              <div className="lower-extra-slots">
+                {[
+                  {
+                    slot: 1,
+                    kind: lowerForm.extra1Kind,
+                    label: lowerForm.extra1Label,
+                    text: lowerForm.extra1Text,
+                    file: lowerExtra1File,
+                    setFile: setLowerExtra1File,
+                    existingUrl: lowerExisting?.staff_extra_1_url,
+                    kindKey: 'extra1Kind',
+                    labelKey: 'extra1Label',
+                    textKey: 'extra1Text',
+                  },
+                  {
+                    slot: 2,
+                    kind: lowerForm.extra2Kind,
+                    label: lowerForm.extra2Label,
+                    text: lowerForm.extra2Text,
+                    file: lowerExtra2File,
+                    setFile: setLowerExtra2File,
+                    existingUrl: lowerExisting?.staff_extra_2_url,
+                    kindKey: 'extra2Kind',
+                    labelKey: 'extra2Label',
+                    textKey: 'extra2Text',
+                  },
+                ].map((slot) => (
+                  <div className="lower-extra-card" key={slot.slot}>
+                    <div className="lower-extra-card-head">
+                      <span>Slot {slot.slot}</span>
+                      <div
+                        className="lower-extra-kinds"
+                        role="tablist"
+                        aria-label={`Extra info ${slot.slot} type`}
+                      >
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={slot.kind === 'text'}
+                          className={`lower-extra-kind ${slot.kind === 'text' ? 'active' : ''}`}
+                          onClick={() => setLowerForm((f) => ({ ...f, [slot.kindKey]: 'text' }))}
+                        >
+                          Text
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={slot.kind === 'file'}
+                          className={`lower-extra-kind ${slot.kind === 'file' ? 'active' : ''}`}
+                          onClick={() => setLowerForm((f) => ({ ...f, [slot.kindKey]: 'file' }))}
+                        >
+                          Document
+                        </button>
+                      </div>
+                    </div>
+                    <label className="lower-field">
+                      <span className="lower-field-label">Label</span>
+                      <input
+                        type="text"
+                        value={slot.label}
+                        onChange={(e) =>
+                          setLowerForm((f) => ({ ...f, [slot.labelKey]: e.target.value }))
+                        }
+                        placeholder="e.g. License, contract, notes"
+                      />
+                    </label>
+                    {slot.kind === 'text' ? (
+                      <label className="lower-field">
+                        <span className="lower-field-label">Text</span>
+                        <textarea
+                          rows={4}
+                          value={slot.text}
+                          onChange={(e) =>
+                            setLowerForm((f) => ({ ...f, [slot.textKey]: e.target.value }))
+                          }
+                          placeholder="Any other information to keep on this record"
+                        />
+                      </label>
+                    ) : (
+                      <LowerFilePick
+                        label="Document"
+                        hint="Image or PDF, up to 5MB"
+                        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                        file={slot.file}
+                        existingUrl={slot.existingUrl}
+                        cacheKey={lowerExisting?.updated_at || lowerExisting?.id}
+                        imagePreview
+                        onFile={slot.setFile}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <div className="lower-staff-actions">
+              <button type="submit" className="btn btn-primary" disabled={addingLower}>
+                {addingLower
+                  ? editingLowerId
+                    ? 'Saving…'
+                    : 'Adding…'
+                  : editingLowerId
+                    ? 'Save changes'
+                    : 'Add lower staff'}
+              </button>
+              {editingLowerId && (
+                <button type="button" className="btn btn-ghost" onClick={cancelEditLowerStaff}>
+                  Cancel
+                </button>
+              )}
+              {lowerError && <p className="error">{lowerError}</p>}
+            </div>
           </form>
         )}
 
@@ -1175,7 +1523,7 @@ function EmployeesPage() {
           {!loading && !listError && filtered.length === 0 && (
             <div className="admin-empty">
               {statusTab === 'lower-staff'
-                ? 'No lower staff yet. Add a name and salary above.'
+                ? 'No lower staff yet. Add a record above.'
                 : employees.length === 0
                   ? 'No employees found yet.'
                   : 'No employees match your search or filters.'}
@@ -1183,88 +1531,71 @@ function EmployeesPage() {
           )}
 
           {!loading && !listError && filtered.length > 0 && statusTab === 'lower-staff' && (
-            <table className="admin-table">
+            <table className="admin-table lower-staff-table">
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Branch</th>
                   <th>Salary</th>
+                  <th>CNIC</th>
+                  <th>Extra info</th>
                   <th className="col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((row) => {
-                  const isEditing = editingLowerId === row.id;
+                  const extraBits = [extraSlotSummary(row, 1), extraSlotSummary(row, 2)].filter(
+                    Boolean
+                  );
                   return (
-                    <tr key={row.id}>
-                      <td className="cell-name">
-                        {isEditing ? (
-                          <input
-                            className="inline-edit-input"
-                            type="text"
-                            value={editLowerName}
-                            onChange={(e) => setEditLowerName(e.target.value)}
-                            aria-label="Name"
-                          />
+                    <tr
+                      key={row.id}
+                      className={editingLowerId === row.id ? 'lower-staff-row-editing' : undefined}
+                    >
+                      <td className="cell-name">{fullName(row)}</td>
+                      <td>{row.branch || '—'}</td>
+                      <td>{formatSalaryAmount(row.salary)}</td>
+                      <td>
+                        {row.cnic_front_url || row.cnic_back_url ? (
+                          <span className="lower-pill-row">
+                            {row.cnic_front_url && <span className="lower-pill">Front</span>}
+                            {row.cnic_back_url && <span className="lower-pill">Back</span>}
+                          </span>
                         ) : (
-                          fullName(row)
+                          <span className="muted-cell">None</span>
                         )}
                       </td>
                       <td>
-                        {isEditing ? (
-                          <input
-                            className="inline-edit-input"
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={editLowerSalary}
-                            onChange={(e) => setEditLowerSalary(e.target.value)}
-                            aria-label="Salary"
-                          />
+                        {extraBits.length ? (
+                          <span className="lower-pill-row">
+                            {extraBits.map((bit, i) => (
+                              <span className="lower-pill lower-pill-cyan" key={`${i}-${bit}`}>
+                                {bit}
+                              </span>
+                            ))}
+                          </span>
                         ) : (
-                          formatSalaryAmount(row.salary)
+                          <span className="muted-cell">None</span>
                         )}
                       </td>
                       <td className="col-actions">
                         <div className="row-actions">
-                          {isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                className="btn btn-primary"
-                                disabled={savingLowerId === row.id}
-                                onClick={() => handleSaveLowerStaff(row.id)}
-                              >
-                                {savingLowerId === row.id ? 'Saving…' : 'Save'}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                disabled={savingLowerId === row.id}
-                                onClick={cancelEditLowerStaff}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                disabled={deletingLowerId === row.id || Boolean(editingLowerId)}
-                                onClick={() => startEditLowerStaff(row)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-danger"
-                                disabled={deletingLowerId === row.id || Boolean(editingLowerId)}
-                                onClick={() => handleDeleteLowerStaff(row)}
-                              >
-                                {deletingLowerId === row.id ? 'Deleting…' : 'Delete'}
-                              </button>
-                            </>
-                          )}
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={deletingLowerId === row.id}
+                            onClick={() => startEditLowerStaff(row)}
+                          >
+                            {editingLowerId === row.id ? 'Editing' : 'Edit'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger"
+                            disabled={deletingLowerId === row.id}
+                            onClick={() => handleDeleteLowerStaff(row)}
+                          >
+                            {deletingLowerId === row.id ? 'Deleting…' : 'Delete'}
+                          </button>
                         </div>
                       </td>
                     </tr>
