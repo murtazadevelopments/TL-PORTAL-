@@ -30,9 +30,11 @@ function isSalaryMissing(value) {
 
 function missingFromCatalog(row, catalog) {
   if (!row) return [];
-  return catalog.filter((field) =>
-    field.key === 'salary' ? isSalaryMissing(row[field.key]) : isBlank(row[field.key])
-  );
+  return catalog.filter((field) => {
+    if (field.key !== 'salary') return isBlank(row[field.key]);
+    if (row.salary_hidden) return row.salary_on_file === false;
+    return isSalaryMissing(row[field.key]);
+  });
 }
 
 function missingEmployeePortalFields(row) {
