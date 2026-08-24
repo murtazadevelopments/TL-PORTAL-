@@ -38,10 +38,12 @@ function missingFromCatalog(row, catalog) {
 }
 
 function missingEmployeePortalFields(row) {
+  if (String(row?.staff_kind || '').toLowerCase() === 'lower') return [];
   return missingFromCatalog(row, EMPLOYEE_PORTAL_FIELDS);
 }
 
 function missingAdminAssignFields(row) {
+  if (String(row?.staff_kind || '').toLowerCase() === 'lower') return [];
   return missingFromCatalog(row, ADMIN_ASSIGN_FIELDS);
 }
 

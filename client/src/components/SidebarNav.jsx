@@ -47,7 +47,7 @@ export function buildSidebarGroups(
 
   if (canAccessAdmin(role)) {
     const employeeItems = [];
-    if (hasPermission(permissions, 'employees:view', role) || isCeo(role)) {
+    if (hasPermission(permissions, 'employees:view', role) || hasPermission(permissions, 'hr:add_employee', role)) {
       employeeItems.push(
         { to: '/admin/employees', label: 'All Employees', end: true, match: 'employees-all' },
         {

@@ -343,7 +343,7 @@ async function listRoleHolders(req, res) {
 }
 
 const HR_FOLLOWUP_KEY = 'hr:followup';
-const HR_SUPPORT_KEYS = ['employees:view', 'employees:edit'];
+const HR_SUPPORT_KEYS = ['employees:view', 'employees:edit', 'hr:add_employee'];
 
 async function grantPermission(client, userId, key, grantedBy) {
   await client.query(

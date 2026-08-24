@@ -84,7 +84,7 @@ function HrPeoplePicker({ onSaved }) {
         <div>
           <h2>HR people</h2>
           <p className="muted" style={{ margin: 0 }}>
-            Tick names. Those people get the incomplete-employee list. Other admins will not.
+            Tick names. Those people can add new employees, fill details, and see the incomplete list. Other admins cannot add employees.
           </p>
         </div>
         <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={save}>

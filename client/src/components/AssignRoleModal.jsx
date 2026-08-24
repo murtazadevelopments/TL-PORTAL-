@@ -466,7 +466,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                   {catalog.map((perm) => (
                     <div
                       key={perm.key}
-                      className={`permission-block${perm.key === 'hr:followup' ? ' permission-block-hr' : ''}`}
+                      className={`permission-block${perm.key === 'hr:followup' || perm.key === 'hr:add_employee' ? ' permission-block-hr' : ''}`}
                     >
                       <label className="permission-item">
                         <input

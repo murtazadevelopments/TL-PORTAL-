@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const { attachReadableUrls, withProfileApiUrl } = require('../utils/storageUrls');
 const { deleteRelativeFile } = require('../services/localStorage');
@@ -29,11 +31,26 @@ const {
 } = require('../utils/employmentType');
 const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const { normalizeWorkHours } = require('../utils/workHours');
+const {
+  ensureStaffKindColumn,
+  isLowerStaff,
+} = require('../utils/staffKind');
+
+const USERNAME_REGEX = /^[a-z0-9._]+$/;
+const LAST_JOB_STATUSES = new Set([
+  'still_employed',
+  'still_employed',
+  'resigned',
+  'terminated',
+  'fresh_graduate',
+  'fresh_graduate',
+  'other',
+]);
 
 const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
-  education, last_job_status, employment_type, profile_picture_url, created_at, is_active,
+  education, last_job_status, employment_type, staff_kind, profile_picture_url, created_at, is_active,
   failed_login_attempts, locked_at, blocked_at, blocked_reason,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
@@ -45,7 +62,7 @@ const DETAIL_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   address, cnic_number, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url,
   role, department, designation, status, branch, shift, salary,
-  education, last_job_status, employment_type, date_of_birth,
+  education, last_job_status, employment_type, staff_kind, date_of_birth,
   date_of_joining, date_joined, created_at, updated_at, is_active,
   work_start_hour, work_end_hour,
   bank_name, account_title, iban, account_number,
@@ -89,11 +106,30 @@ function isSalaryMissing(value) {
   return !Number.isFinite(n) || n <= 0;
 }
 
-function viewerCanSeeSalary(req) {
+function viewerCanSeeSalary(req, row = null) {
   const role = String(req.user?.role || '').toLowerCase();
   if (role === 'ceo') return true;
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  return perms.includes('employees:salary') || perms.includes('*');
+  if (perms.includes('employees:salary') || perms.includes('*')) return true;
+  return isLowerStaff(row) && perms.includes('hr:add_employee');
+}
+
+function canManageLowerStaff(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'ceo') return true;
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  return perms.includes('hr:add_employee') || perms.includes('*');
+}
+
+function slugLowerStaffUsername(name) {
+  const base = String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 18);
+  const suffix = crypto.randomBytes(3).toString('hex');
+  return `ls.${base || 'staff'}.${suffix}`;
 }
 
 function redactSalary(row, canSee) {
@@ -144,9 +180,12 @@ async function listEmployees(req, res) {
     await ensureBlockedColumn();
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
+    await ensureStaffKindColumn();
     const scopes = await resolvePermissionScopes(req);
     const viewScope = scopeForPermission(scopes, 'employees:view');
     const filter = scopeWhereClause(viewScope, 1);
+    const nextIndex = filter.params.length + 1;
+    const canSeeLower = canManageLowerStaff(req);
 
     const { rows } = await pool.query(
       `
@@ -154,14 +193,16 @@ async function listEmployees(req, res) {
         FROM users
         WHERE is_active = true
         ${filter.sql}
+        AND (COALESCE(staff_kind, 'portal') <> 'lower' OR $${nextIndex}::boolean)
         ORDER BY created_at DESC NULLS LAST, id DESC
       `,
-      filter.params
+      [...filter.params, canSeeLower]
     );
 
-    const canSeeSalary = viewerCanSeeSalary(req);
     const employees = await Promise.all(
-      rows.map(async (row) => redactSalary(await withListUrls(row), canSeeSalary))
+      rows.map(async (row) =>
+        redactSalary(await withListUrls(row), viewerCanSeeSalary(req, row))
+      )
     );
     return res.json(employees);
   } catch (err) {
@@ -190,6 +231,10 @@ async function getEmployeeById(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
 
+    if (isLowerStaff(rows[0]) && !canManageLowerStaff(req)) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
     const scopes = await resolvePermissionScopes(req);
     const viewScope = scopeForPermission(scopes, 'employees:view');
     if (!employeeMatchesScope(rows[0], viewScope)) {
@@ -200,7 +245,7 @@ async function getEmployeeById(req, res) {
 
     const employee = redactSalary(
       await attachReadableUrls(rows[0]),
-      viewerCanSeeSalary(req)
+      viewerCanSeeSalary(req, rows[0])
     );
 
     // Redact CNIC/CV unless CEO or admin has documents:view
@@ -231,6 +276,357 @@ async function getEmployeeById(req, res) {
   } catch (err) {
     console.error('getEmployeeById error:', err);
     return res.status(500).json({ message: 'Server error fetching employee.' });
+  }
+}
+
+async function createLowerStaff(req, res, body) {
+  if (!canManageLowerStaff(req)) {
+    return res.status(403).json({
+      message: 'Only HR with Add employees permission can add lower staff.',
+    });
+  }
+
+  const name = String(body.name || '').trim();
+  const salary = Number(body.salary);
+  if (!name) {
+    return res.status(400).json({ message: 'Name is required.' });
+  }
+  if (!Number.isFinite(salary) || salary <= 0) {
+    return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
+  }
+
+  const username = slugLowerStaffUsername(name);
+  const email = `${username}@lowerstaff.local`;
+  const hashedPassword = await bcrypt.hash(crypto.randomBytes(18).toString('hex'), 10);
+  const employeeId = `LS-${Date.now().toString(36).toUpperCase()}`;
+
+  const { rows } = await pool.query(
+    `
+      INSERT INTO users (
+        employee_id, username, name, email, password, contact_number,
+        role, status, salary, staff_kind, employment_type,
+        is_active, date_joined
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, '',
+        'employee', 'active', $6, 'lower', 'onsite',
+        true, NOW()
+      )
+      RETURNING ${DETAIL_COLUMNS}
+    `,
+    [employeeId, username, name, email, hashedPassword, salary]
+  );
+
+  const employee = redactSalary(await attachReadableUrls(rows[0]), true);
+  try {
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'lower_staff_created',
+      targetTable: 'users',
+      targetId: employee.id,
+      reason: `HR added lower staff ${employee.name}`,
+    });
+  } catch (auditErr) {
+    console.warn('lower_staff_created audit failed:', auditErr.message || auditErr);
+  }
+
+  return res.status(201).json(employee);
+}
+
+async function updateLowerStaff(req, res) {
+  try {
+    await ensureStaffKindColumn();
+    if (!canManageLowerStaff(req)) {
+      return res.status(403).json({
+        message: 'Only HR with Add employees permission can edit lower staff.',
+      });
+    }
+
+    const { id } = req.params;
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const salary = Number(body.salary);
+    if (!name) {
+      return res.status(400).json({ message: 'Name is required.' });
+    }
+    if (!Number.isFinite(salary) || salary <= 0) {
+      return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT ${DETAIL_COLUMNS}
+        FROM users
+        WHERE id = $1 AND is_active = true
+        LIMIT 1
+      `,
+      [id]
+    );
+    const existing = existingRows[0];
+    if (!existing || !isLowerStaff(existing)) {
+      return res.status(404).json({ message: 'Lower staff record not found.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET name = $1, salary = $2, updated_at = NOW()
+        WHERE id = $3 AND is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
+        RETURNING ${DETAIL_COLUMNS}
+      `,
+      [name, salary, id]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Lower staff record not found.' });
+    }
+
+    const employee = redactSalary(await attachReadableUrls(rows[0]), true);
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username,
+        action: 'lower_staff_updated',
+        targetTable: 'users',
+        targetId: employee.id,
+        reason: `HR updated lower staff ${employee.name}`,
+      });
+    } catch (auditErr) {
+      console.warn('lower_staff_updated audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json(employee);
+  } catch (err) {
+    console.error('updateLowerStaff error:', err);
+    return res.status(500).json({ message: 'Server error updating lower staff.' });
+  }
+}
+
+async function deleteLowerStaff(req, res) {
+  try {
+    await ensureStaffKindColumn();
+    if (!canManageLowerStaff(req)) {
+      return res.status(403).json({
+        message: 'Only HR with Add employees permission can delete lower staff.',
+      });
+    }
+
+    const { id } = req.params;
+    if (String(id) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot delete your own account.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT id, name, staff_kind
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+    const existing = rows[0];
+    if (!existing || !isLowerStaff(existing)) {
+      return res.status(404).json({ message: 'Lower staff record not found.' });
+    }
+
+    await pool.query(`DELETE FROM users WHERE id = $1 AND COALESCE(staff_kind, 'portal') = 'lower'`, [
+      id,
+    ]);
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username,
+        action: 'lower_staff_deleted',
+        targetTable: 'users',
+        targetId: existing.id,
+        reason: `HR deleted lower staff ${existing.name}`,
+      });
+    } catch (auditErr) {
+      console.warn('lower_staff_deleted audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.json({ message: 'Lower staff record deleted.' });
+  } catch (err) {
+    console.error('deleteLowerStaff error:', err);
+    return res.status(500).json({ message: 'Server error deleting lower staff.' });
+  }
+}
+
+async function createEmployee(req, res) {
+  try {
+    await ensureEmploymentTypeColumn();
+    await ensureAttendanceTables();
+    await ensureStaffKindColumn();
+    const body = req.body || {};
+
+    if (String(body.staff_kind || '').trim().toLowerCase() === 'lower') {
+      return createLowerStaff(req, res, body);
+    }
+
+    const canSeeSalary = viewerCanSeeSalary(req);
+
+    const username = String(body.username || '')
+      .trim()
+      .toLowerCase();
+    const name = String(body.name || '').trim();
+    const email = String(body.email || '')
+      .trim()
+      .toLowerCase();
+    const password = String(body.password || '');
+    const contactNumber = String(body.contact_number || '').trim();
+    const employeeId = String(body.employee_id || '').trim();
+    const status = String(body.status || 'inactive')
+      .trim()
+      .toLowerCase();
+    const department = String(body.department || '').trim();
+    const designation = String(body.designation || '').trim();
+    const branch = String(body.branch || '').trim();
+    const shift = String(body.shift || '').trim();
+    const employmentType = normalizeEmploymentType(body.employment_type) || 'onsite';
+
+    if (!username || !name || !email || !password || !contactNumber) {
+      return res.status(400).json({
+        message: 'Username, name, email, password, and contact number are required.',
+      });
+    }
+    if (username.length < 3 || username.length > 30 || !USERNAME_REGEX.test(username)) {
+      return res.status(400).json({
+        message:
+          'Username must be 3–30 characters and use lowercase letters, numbers, dots, and underscores only.',
+      });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+    if (!employeeId || !department || !designation || !branch || !shift) {
+      return res.status(400).json({
+        message: 'Employee ID, department, designation, branch, and shift are required.',
+      });
+    }
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
+    }
+
+    let salary = null;
+    if (canSeeSalary && body.salary !== undefined && body.salary !== null && String(body.salary).trim() !== '') {
+      salary = Number(body.salary);
+      if (!Number.isFinite(salary) || salary <= 0) {
+        return res.status(400).json({ message: 'Salary must be greater than 0.' });
+      }
+    }
+
+    const lastJobStatus = body.last_job_status
+      ? String(body.last_job_status).trim()
+      : null;
+    if (lastJobStatus && !LAST_JOB_STATUSES.has(lastJobStatus)) {
+      return res.status(400).json({
+        message:
+          'last_job_status must be one of: still_employed, resigned, terminated, fresh_graduate, other.',
+      });
+    }
+
+    const hours = normalizeWorkHours(body.work_start_hour, body.work_end_hour);
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const dateOfJoining =
+      body.date_of_joining === undefined ||
+      body.date_of_joining === null ||
+      String(body.date_of_joining).trim() === ''
+        ? null
+        : String(body.date_of_joining).trim().slice(0, 10);
+
+    const { rows } = await pool.query(
+      `
+        INSERT INTO users (
+          employee_id, username, name, email, password,
+          contact_number, address, cnic_number,
+          role, department, designation, status, branch, shift, salary,
+          education, last_job_status, employment_type,
+          date_of_joining, work_start_hour, work_end_hour,
+          bank_name, account_title, iban, account_number,
+          emergency_contact_name, emergency_contact_number,
+          reference_person,
+          is_active, date_joined, staff_kind
+        )
+        VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8,
+          'employee', $9, $10, $11, $12, $13, $14,
+          $15, $16, $17,
+          $18, $19, $20,
+          $21, $22, $23, $24,
+          $25, $26,
+          $27,
+          true, NOW(), 'portal'
+        )
+        RETURNING ${DETAIL_COLUMNS}
+      `,
+      [
+        employeeId,
+        username,
+        name,
+        email,
+        hashedPassword,
+        contactNumber,
+        String(body.address || '').trim() || null,
+        String(body.cnic_number || '').trim() || null,
+        department,
+        designation,
+        status,
+        branch,
+        shift,
+        salary,
+        String(body.education || '').trim() || null,
+        lastJobStatus,
+        employmentType,
+        dateOfJoining,
+        hours.start,
+        hours.end,
+        String(body.bank_name || '').trim() || null,
+        String(body.account_title || '').trim() || null,
+        String(body.iban || '').trim() || null,
+        String(body.account_number || '').trim() || null,
+        String(body.emergency_contact_name || '').trim() || null,
+        String(body.emergency_contact_number || '').trim() || null,
+        String(body.reference_person_name || body.reference_person || '').trim() || null,
+      ]
+    );
+
+    const employee = redactSalary(await attachReadableUrls(rows[0]), canSeeSalary);
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username,
+        action: 'employee_created',
+        targetTable: 'users',
+        targetId: employee.id,
+        reason: `HR created employee ${employee.username} (${employee.employee_id})`,
+      });
+    } catch (auditErr) {
+      console.warn('employee_created audit failed:', auditErr.message || auditErr);
+    }
+
+    return res.status(201).json(employee);
+  } catch (err) {
+    if (err.code === '23505') {
+      const detail = String(err.detail || err.message || '').toLowerCase();
+      if (detail.includes('username')) {
+        return res.status(409).json({ message: 'This username is already taken.' });
+      }
+      if (detail.includes('email')) {
+        return res.status(409).json({ message: 'An account with this email already exists.' });
+      }
+      if (detail.includes('cnic')) {
+        return res.status(409).json({ message: 'An account with this CNIC number already exists.' });
+      }
+      if (detail.includes('employee_id')) {
+        return res.status(409).json({ message: 'This employee ID is already in use.' });
+      }
+      return res.status(409).json({ message: 'A user with these details already exists.' });
+    }
+    console.error('createEmployee error:', err);
+    return res.status(500).json({ message: 'Server error creating employee.' });
   }
 }
 
@@ -608,9 +1004,10 @@ async function listDeactivated(req, res) {
       `
     );
 
-    const canSeeSalary = viewerCanSeeSalary(req);
     const employees = await Promise.all(
-      rows.map(async (row) => redactSalary(await withListUrls(row), canSeeSalary))
+      rows.map(async (row) =>
+        redactSalary(await withListUrls(row), viewerCanSeeSalary(req, row))
+      )
     );
     return res.json({
       users: employees,
@@ -969,7 +1366,10 @@ async function sendProfileAlert(req, res) {
 module.exports = {
   listEmployees,
   getEmployeeById,
+  createEmployee,
   updateEmployee,
+  updateLowerStaff,
+  deleteLowerStaff,
   deactivateEmployee,
   restoreEmployee,
   purgeEmployee,

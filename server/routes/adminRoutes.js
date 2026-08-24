@@ -4,7 +4,10 @@ const { requireRole, requirePermission, requireCeoOrAnyPermission } = require('.
 const {
   listEmployees,
   getEmployeeById,
+  createEmployee,
   updateEmployee,
+  updateLowerStaff,
+  deleteLowerStaff,
   deactivateEmployee,
   restoreEmployee,
   purgeEmployee,
@@ -142,19 +145,37 @@ router.put(
 router.get(
   '/employees',
   requireRole('admin'),
-  requirePermission('employees:view'),
+  requireCeoOrAnyPermission('employees:view', 'hr:add_employee'),
   listEmployees
+);
+router.post(
+  '/employees',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  createEmployee
+);
+router.put(
+  '/employees/:id/lower-staff',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  updateLowerStaff
+);
+router.delete(
+  '/employees/:id/lower-staff',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  deleteLowerStaff
 );
 router.get(
   '/employees/:id',
   requireRole('admin'),
-  requirePermission('employees:view'),
+  requireCeoOrAnyPermission('employees:view', 'hr:add_employee'),
   getEmployeeById
 );
 router.put(
   '/employees/:id',
   requireRole('admin'),
-  requirePermission('employees:edit'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee'),
   updateEmployee
 );
 

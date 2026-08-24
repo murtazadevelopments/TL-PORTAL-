@@ -293,6 +293,13 @@ async function login(req, res) {
       return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
+    if (String(user.staff_kind || '').toLowerCase() === 'lower') {
+      return res.status(403).json({
+        message: 'This is a payroll record only. Lower staff cannot sign in to the portal.',
+        code: 'LOWER_STAFF_NO_LOGIN',
+      });
+    }
+
     if (user.is_active === false) {
       return res.status(403).json({
         message: 'This account has been deactivated. Contact an administrator.',

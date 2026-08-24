@@ -28,6 +28,12 @@ const PERMISSIONS_CATALOG = [
       'Named HR person: see every incomplete employee profile and follow up until details are filled',
   },
   {
+    key: 'hr:add_employee',
+    label: 'Add employees (HR)',
+    description:
+      'For HR / lower staff only: create new employee accounts and fill their details. Other admins cannot add employees.',
+  },
+  {
     key: 'attendance:view',
     label: 'View attendance',
     description:

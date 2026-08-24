@@ -13,6 +13,14 @@ import './AdminDashboard.css';
 
 const SHIFT_OPTIONS = ['Evening', 'Night'];
 
+const LAST_JOB_OPTIONS = [
+  { value: 'still_employed', label: 'Still employed elsewhere' },
+  { value: 'resigned', label: 'Resigned' },
+  { value: 'terminated', label: 'Terminated' },
+  { value: 'fresh_graduate', label: 'Fresh graduate' },
+  { value: 'other', label: 'Other' },
+];
+
 const ADMIN_FIELD_LABELS = {
   employee_id: 'Employee ID',
   status: 'Status',
@@ -36,6 +44,30 @@ const EMPTY_EDIT = {
   employment_type: 'onsite',
   work_start_hour: 9,
   work_end_hour: 18,
+};
+
+const EMPTY_ADD = {
+  username: '',
+  name: '',
+  email: '',
+  password: '',
+  contact_number: '',
+  address: '',
+  employee_id: '',
+  status: 'inactive',
+  department: '',
+  designation: '',
+  branch: '',
+  shift: '',
+  salary: '',
+  date_of_joining: '',
+  employment_type: 'onsite',
+  education: '',
+  last_job_status: '',
+  bank_name: '',
+  account_title: '',
+  account_number: '',
+  iban: '',
 };
 
 const EMPTY_FILTERS = {
@@ -77,6 +109,16 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+function isLowerStaffRow(row) {
+  return String(row?.staff_kind || '').toLowerCase() === 'lower';
+}
+
+function formatSalaryAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString();
+}
+
 function isSalaryMissing(value) {
   if (isBlank(value)) return true;
   const n = Number(value);
@@ -90,7 +132,7 @@ function isSalaryUnsetOnRow(row) {
 }
 
 function missingAdminFields(row, { includeSalary = true } = {}) {
-  if (!row) return [];
+  if (!row || isLowerStaffRow(row)) return [];
   return Object.keys(ADMIN_FIELD_LABELS)
     .filter((key) => key !== 'date_of_joining')
     .filter((key) => {
@@ -117,7 +159,9 @@ function EmployeesPage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [statusTab, setStatusTab] = useState(() => {
     const s = searchParams.get('status');
-    return s === 'pending' || s === 'active' || s === 'locked' ? s : 'all';
+    return s === 'pending' || s === 'active' || s === 'locked' || s === 'lower-staff'
+      ? s
+      : 'all';
   });
 
   const [selectedId, setSelectedId] = useState(null);
@@ -150,10 +194,24 @@ function EmployeesPage() {
   const [composeRecipient, setComposeRecipient] = useState(null);
   const [composeToast, setComposeToast] = useState('');
   const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD);
+  const [addError, setAddError] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [lowerName, setLowerName] = useState('');
+  const [lowerSalary, setLowerSalary] = useState('');
+  const [lowerError, setLowerError] = useState('');
+  const [addingLower, setAddingLower] = useState(false);
+  const [editingLowerId, setEditingLowerId] = useState(null);
+  const [editLowerName, setEditLowerName] = useState('');
+  const [editLowerSalary, setEditLowerSalary] = useState('');
+  const [savingLowerId, setSavingLowerId] = useState(null);
+  const [deletingLowerId, setDeletingLowerId] = useState(null);
 
   useEffect(() => {
     const s = searchParams.get('status');
-    const next = s === 'pending' || s === 'active' || s === 'locked' ? s : 'all';
+    const next =
+      s === 'pending' || s === 'active' || s === 'locked' || s === 'lower-staff' ? s : 'all';
     setStatusTab(next);
   }, [searchParams]);
 
@@ -179,11 +237,13 @@ function EmployeesPage() {
         // Load list in the same flow so CEO/admin never sit on an empty table
         setLoading(true);
         setListError('');
-        const canView = hasPermission(data.permissions, 'employees:view', data.role);
+        const canView =
+          hasPermission(data.permissions, 'employees:view', data.role) ||
+          hasPermission(data.permissions, 'hr:add_employee', data.role);
         if (!canView) {
           setEmployees([]);
           setListError(
-            'You do not have permission to view employees. Ask the CEO to grant employees:view (and other scopes) on your admin role.'
+            'You do not have permission to view employees. Ask the CEO to grant Add employees (HR) or View employees.'
           );
           setLoading(false);
         } else {
@@ -250,7 +310,9 @@ function EmployeesPage() {
     }
   }
 
-  const canEditEmployees = hasPermission(permissions, 'employees:edit', role);
+  const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
+  const canEditEmployees =
+    hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
   const canViewSalary = hasPermission(permissions, 'employees:salary', role);
   const canDeactivateEmployees = hasPermission(
     permissions,
@@ -289,7 +351,11 @@ function EmployeesPage() {
 
   useEffect(() => {
     if (!role) return;
-    if (canAccessAdmin(role) || hasPermission(permissions, 'employees:view', role)) {
+    if (
+      canAccessAdmin(role) ||
+      hasPermission(permissions, 'employees:view', role) ||
+      hasPermission(permissions, 'hr:add_employee', role)
+    ) {
       loadTeams();
       loadBranches();
     }
@@ -407,14 +473,23 @@ function EmployeesPage() {
     }
   }
 
+  const portalEmployees = useMemo(
+    () => employees.filter((e) => !isLowerStaffRow(e)),
+    [employees]
+  );
+  const lowerStaff = useMemo(
+    () => employees.filter((e) => isLowerStaffRow(e)),
+    [employees]
+  );
+
   const stats = useMemo(() => {
-    const total = employees.length;
-    const active = employees.filter((e) => e.status === 'active').length;
-    const inactive = employees.filter((e) => e.status !== 'active').length;
-    const pendingId = employees.filter((e) => isBlank(e.employee_id)).length;
-    const locked = employees.filter((e) => isSignInDisabled(e)).length;
+    const total = portalEmployees.length;
+    const active = portalEmployees.filter((e) => e.status === 'active').length;
+    const inactive = portalEmployees.filter((e) => e.status !== 'active').length;
+    const pendingId = portalEmployees.filter((e) => isBlank(e.employee_id)).length;
+    const locked = portalEmployees.filter((e) => isSignInDisabled(e)).length;
     return { total, active, inactive, pendingId, locked };
-  }, [employees]);
+  }, [portalEmployees]);
 
   const departmentOptions = useMemo(() => {
     const fromTeams = teams.map((t) => String(t.name).trim()).filter(Boolean);
@@ -439,16 +514,21 @@ function EmployeesPage() {
   }, [employees, branches]);
 
   const tabCounts = useMemo(() => {
-    const active = employees.filter((e) => e.status === 'active').length;
-    const pending = employees.filter((e) => e.status !== 'active').length;
-    const locked = employees.filter((e) => isSignInDisabled(e)).length;
-    return { active, pending, locked };
-  }, [employees]);
+    const active = portalEmployees.filter((e) => e.status === 'active').length;
+    const pending = portalEmployees.filter((e) => e.status !== 'active').length;
+    const locked = portalEmployees.filter((e) => isSignInDisabled(e)).length;
+    return { active, pending, locked, lower: lowerStaff.length };
+  }, [portalEmployees, lowerStaff]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const source = statusTab === 'lower-staff' ? lowerStaff : portalEmployees;
 
-    return employees.filter((e) => {
+    return source.filter((e) => {
+      if (statusTab === 'lower-staff') {
+        if (!q) return true;
+        return fullName(e).toLowerCase().includes(q);
+      }
       if (statusTab === 'active' && e.status !== 'active') return false;
       if (statusTab === 'pending' && e.status === 'active') return false;
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
@@ -470,7 +550,7 @@ function EmployeesPage() {
       const empId = String(e.employee_id || '').toLowerCase();
       return name.includes(q) || username.includes(q) || empId.includes(q);
     });
-  }, [employees, search, filters, statusTab]);
+  }, [portalEmployees, lowerStaff, search, filters, statusTab]);
 
   const detailMissingAdmin = useMemo(
     () =>
@@ -713,6 +793,156 @@ function EmployeesPage() {
     }
   }
 
+  function handleAddChange(e) {
+    const { name, value } = e.target;
+    setAddForm((prev) => ({
+      ...prev,
+      [name]: name === 'username' || name === 'email' ? value.toLowerCase() : value,
+    }));
+  }
+
+  function closeAddModal() {
+    if (adding) return;
+    setAddOpen(false);
+    setAddError('');
+    setAddForm(EMPTY_ADD);
+  }
+
+  async function handleAddSubmit(e) {
+    e.preventDefault();
+    if (!canAddEmployees) {
+      setAddError('Only HR with Add employees permission can create accounts.');
+      return;
+    }
+    setAdding(true);
+    setAddError('');
+    const payload = {
+      username: addForm.username.trim().toLowerCase(),
+      name: addForm.name.trim(),
+      email: addForm.email.trim().toLowerCase(),
+      password: addForm.password,
+      contact_number: addForm.contact_number.trim(),
+      address: addForm.address.trim() || undefined,
+      employee_id: addForm.employee_id.trim(),
+      status: addForm.status,
+      department: addForm.department.trim(),
+      designation: addForm.designation.trim(),
+      branch: addForm.branch,
+      shift: addForm.shift,
+      date_of_joining: addForm.date_of_joining || null,
+      employment_type: addForm.employment_type === 'remote' ? 'remote' : 'onsite',
+      education: addForm.education.trim() || undefined,
+      last_job_status: addForm.last_job_status || undefined,
+      bank_name: addForm.bank_name.trim() || undefined,
+      account_title: addForm.account_title.trim() || undefined,
+      account_number: addForm.account_number.trim() || undefined,
+      iban: addForm.iban.trim() || undefined,
+    };
+    if (canViewSalary && addForm.salary !== '') {
+      payload.salary = Number(addForm.salary);
+    }
+    try {
+      const { data } = await api.post('/api/admin/employees', payload);
+      setAddOpen(false);
+      setAddForm(EMPTY_ADD);
+      await loadEmployees();
+      window.dispatchEvent(new Event(ADMIN_INCOMPLETE_EVENT));
+      if (data?.id) await openDetail(data.id);
+    } catch (err) {
+      setAddError(err.response?.data?.message || 'Failed to create employee.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleAddLowerStaff(e) {
+    e.preventDefault();
+    if (!canAddEmployees) {
+      setLowerError('Only HR can add lower staff.');
+      return;
+    }
+    const name = lowerName.trim();
+    const salary = Number(lowerSalary);
+    if (!name) {
+      setLowerError('Name is required.');
+      return;
+    }
+    if (!Number.isFinite(salary) || salary <= 0) {
+      setLowerError('Salary is required and must be greater than 0.');
+      return;
+    }
+    setAddingLower(true);
+    setLowerError('');
+    try {
+      await api.post('/api/admin/employees', {
+        staff_kind: 'lower',
+        name,
+        salary,
+      });
+      setLowerName('');
+      setLowerSalary('');
+      await loadEmployees();
+    } catch (err) {
+      setLowerError(err.response?.data?.message || 'Failed to add lower staff.');
+    } finally {
+      setAddingLower(false);
+    }
+  }
+
+  function startEditLowerStaff(row) {
+    setLowerError('');
+    setEditingLowerId(row.id);
+    setEditLowerName(row.name || '');
+    setEditLowerSalary(row.salary == null ? '' : String(row.salary));
+  }
+
+  function cancelEditLowerStaff() {
+    setEditingLowerId(null);
+    setEditLowerName('');
+    setEditLowerSalary('');
+  }
+
+  async function handleSaveLowerStaff(rowId) {
+    const name = editLowerName.trim();
+    const salary = Number(editLowerSalary);
+    if (!name) {
+      setLowerError('Name is required.');
+      return;
+    }
+    if (!Number.isFinite(salary) || salary <= 0) {
+      setLowerError('Salary is required and must be greater than 0.');
+      return;
+    }
+    setSavingLowerId(rowId);
+    setLowerError('');
+    try {
+      await api.put(`/api/admin/employees/${rowId}/lower-staff`, { name, salary });
+      cancelEditLowerStaff();
+      await loadEmployees();
+    } catch (err) {
+      setLowerError(err.response?.data?.message || 'Failed to update lower staff.');
+    } finally {
+      setSavingLowerId(null);
+    }
+  }
+
+  async function handleDeleteLowerStaff(row) {
+    const label = fullName(row);
+    if (!window.confirm(`Delete ${label} from lower staff? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingLowerId(row.id);
+    setLowerError('');
+    try {
+      await api.delete(`/api/admin/employees/${row.id}/lower-staff`);
+      if (editingLowerId === row.id) cancelEditLowerStaff();
+      await loadEmployees();
+    } catch (err) {
+      setLowerError(err.response?.data?.message || 'Failed to delete lower staff.');
+    } finally {
+      setDeletingLowerId(null);
+    }
+  }
 
   if (checkingAuth) {
     return (
@@ -735,6 +965,19 @@ function EmployeesPage() {
               Directory, filters, and employee admin fields
             </p>
           </div>
+          {canAddEmployees && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setAddError('');
+                setAddForm(EMPTY_ADD);
+                setAddOpen(true);
+              }}
+            >
+              Add employee
+            </button>
+          )}
         </div>
 
         <section className="stat-grid">
@@ -769,7 +1012,7 @@ function EmployeesPage() {
               setSearchParams({});
             }}
           >
-            All <span className="tab-badge">{employees.length}</span>
+            All <span className="tab-badge">{portalEmployees.length}</span>
           </button>
           <button
             type="button"
@@ -801,8 +1044,21 @@ function EmployeesPage() {
           >
             Blocked <span className="tab-badge">{tabCounts.locked}</span>
           </button>
+          {canAddEmployees && (
+            <button
+              type="button"
+              className={`status-tab ${statusTab === 'lower-staff' ? 'active' : ''}`}
+              onClick={() => {
+                setStatusTab('lower-staff');
+                setSearchParams({ status: 'lower-staff' });
+              }}
+            >
+              Lower Staff <span className="tab-badge">{tabCounts.lower}</span>
+            </button>
+          )}
         </div>
 
+        {statusTab !== 'lower-staff' && (
         <div className="admin-toolbar filters-toolbar">
           <input
             className="admin-search"
@@ -873,6 +1129,38 @@ function EmployeesPage() {
             Clear filters
           </button>
         </div>
+        )}
+
+        {statusTab === 'lower-staff' && canAddEmployees && (
+          <form className="lower-staff-form" onSubmit={handleAddLowerStaff}>
+            <label>
+              Name
+              <input
+                type="text"
+                value={lowerName}
+                onChange={(e) => setLowerName(e.target.value)}
+                placeholder="Full name"
+                required
+              />
+            </label>
+            <label>
+              Salary
+              <input
+                type="number"
+                value={lowerSalary}
+                onChange={(e) => setLowerSalary(e.target.value)}
+                placeholder="Amount"
+                min="1"
+                step="1"
+                required
+              />
+            </label>
+            <button type="submit" className="btn btn-primary" disabled={addingLower}>
+              {addingLower ? 'Adding…' : 'Add'}
+            </button>
+            {lowerError && <p className="error">{lowerError}</p>}
+          </form>
+        )}
 
         <div className="table-shell">
           {loading && (
@@ -886,13 +1174,107 @@ function EmployeesPage() {
 
           {!loading && !listError && filtered.length === 0 && (
             <div className="admin-empty">
-              {employees.length === 0
-                ? 'No employees found yet.'
-                : 'No employees match your search or filters.'}
+              {statusTab === 'lower-staff'
+                ? 'No lower staff yet. Add a name and salary above.'
+                : employees.length === 0
+                  ? 'No employees found yet.'
+                  : 'No employees match your search or filters.'}
             </div>
           )}
 
-          {!loading && !listError && filtered.length > 0 && (
+          {!loading && !listError && filtered.length > 0 && statusTab === 'lower-staff' && (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Salary</th>
+                  <th className="col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row) => {
+                  const isEditing = editingLowerId === row.id;
+                  return (
+                    <tr key={row.id}>
+                      <td className="cell-name">
+                        {isEditing ? (
+                          <input
+                            className="inline-edit-input"
+                            type="text"
+                            value={editLowerName}
+                            onChange={(e) => setEditLowerName(e.target.value)}
+                            aria-label="Name"
+                          />
+                        ) : (
+                          fullName(row)
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            className="inline-edit-input"
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={editLowerSalary}
+                            onChange={(e) => setEditLowerSalary(e.target.value)}
+                            aria-label="Salary"
+                          />
+                        ) : (
+                          formatSalaryAmount(row.salary)
+                        )}
+                      </td>
+                      <td className="col-actions">
+                        <div className="row-actions">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={savingLowerId === row.id}
+                                onClick={() => handleSaveLowerStaff(row.id)}
+                              >
+                                {savingLowerId === row.id ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={savingLowerId === row.id}
+                                onClick={cancelEditLowerStaff}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                disabled={deletingLowerId === row.id || Boolean(editingLowerId)}
+                                onClick={() => startEditLowerStaff(row)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-danger"
+                                disabled={deletingLowerId === row.id || Boolean(editingLowerId)}
+                                onClick={() => handleDeleteLowerStaff(row)}
+                              >
+                                {deletingLowerId === row.id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {!loading && !listError && filtered.length > 0 && statusTab !== 'lower-staff' && (
             <table className="admin-table">
               <thead>
                 <tr>
@@ -1901,6 +2283,227 @@ function EmployeesPage() {
           if (detail?.id) openDetail(detail.id);
         }}
       />
+
+      {addOpen && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={closeAddModal} role="presentation">
+          <div
+            className="modal-panel modal-panel-center add-employee-panel"
+            role="dialog"
+            aria-labelledby="add-employee-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2 id="add-employee-title">Add employee</h2>
+              <button type="button" className="icon-btn" onClick={closeAddModal} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <p className="muted" style={{ margin: '0 1.25rem 0.5rem' }}>
+              HR only. Creates a login for lower staff and fills their job details.
+            </p>
+            <form className="edit-box add-employee-form" onSubmit={handleAddSubmit}>
+              <div className="add-employee-grid">
+                <label>
+                  Username <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    name="username"
+                    value={addForm.username}
+                    onChange={handleAddChange}
+                    required
+                    minLength={3}
+                    maxLength={30}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Full name <span className="req-star" aria-hidden="true">*</span>
+                  <input name="name" value={addForm.name} onChange={handleAddChange} required />
+                </label>
+                <label>
+                  Email <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    type="email"
+                    name="email"
+                    value={addForm.email}
+                    onChange={handleAddChange}
+                    required
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Temporary password <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    type="text"
+                    name="password"
+                    value={addForm.password}
+                    onChange={handleAddChange}
+                    required
+                    minLength={6}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label>
+                  Contact number <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    name="contact_number"
+                    value={addForm.contact_number}
+                    onChange={handleAddChange}
+                    required
+                  />
+                </label>
+                <label>
+                  Address
+                  <input name="address" value={addForm.address} onChange={handleAddChange} />
+                </label>
+                <label>
+                  Employee ID <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    name="employee_id"
+                    value={addForm.employee_id}
+                    onChange={handleAddChange}
+                    required
+                    placeholder="e.g. EMP-001"
+                  />
+                </label>
+                <label>
+                  Status
+                  <select name="status" value={addForm.status} onChange={handleAddChange}>
+                    <option value="inactive">Inactive / Pending</option>
+                    <option value="active">Active</option>
+                  </select>
+                </label>
+                <label>
+                  Department / Team <span className="req-star" aria-hidden="true">*</span>
+                  <select name="department" value={addForm.department} onChange={handleAddChange} required>
+                    <option value="">Select team</option>
+                    {departmentOptions.map((dep) => (
+                      <option key={dep} value={dep}>
+                        {dep}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Designation <span className="req-star" aria-hidden="true">*</span>
+                  <input
+                    name="designation"
+                    value={addForm.designation}
+                    onChange={handleAddChange}
+                    required
+                  />
+                </label>
+                <label>
+                  Branch <span className="req-star" aria-hidden="true">*</span>
+                  <select name="branch" value={addForm.branch} onChange={handleAddChange} required>
+                    <option value="">Select branch</option>
+                    {branchOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Shift <span className="req-star" aria-hidden="true">*</span>
+                  <select name="shift" value={addForm.shift} onChange={handleAddChange} required>
+                    <option value="">Select shift</option>
+                    {SHIFT_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Work location
+                  <select
+                    name="employment_type"
+                    value={addForm.employment_type}
+                    onChange={handleAddChange}
+                  >
+                    <option value="onsite">Onsite</option>
+                    <option value="remote">Remote</option>
+                  </select>
+                </label>
+                <label>
+                  Date of joining
+                  <input
+                    type="date"
+                    name="date_of_joining"
+                    value={addForm.date_of_joining}
+                    onChange={handleAddChange}
+                  />
+                </label>
+                {canViewSalary && (
+                  <label>
+                    Salary
+                    <input
+                      type="number"
+                      name="salary"
+                      value={addForm.salary}
+                      onChange={handleAddChange}
+                      min="1"
+                      step="1"
+                    />
+                  </label>
+                )}
+                <label>
+                  Education
+                  <input name="education" value={addForm.education} onChange={handleAddChange} />
+                </label>
+                <label>
+                  Last job status
+                  <select
+                    name="last_job_status"
+                    value={addForm.last_job_status}
+                    onChange={handleAddChange}
+                  >
+                    <option value="">Optional</option>
+                    {LAST_JOB_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Bank name
+                  <input name="bank_name" value={addForm.bank_name} onChange={handleAddChange} />
+                </label>
+                <label>
+                  Account title
+                  <input
+                    name="account_title"
+                    value={addForm.account_title}
+                    onChange={handleAddChange}
+                  />
+                </label>
+                <label>
+                  Account number
+                  <input
+                    name="account_number"
+                    value={addForm.account_number}
+                    onChange={handleAddChange}
+                  />
+                </label>
+                <label>
+                  IBAN
+                  <input name="iban" value={addForm.iban} onChange={handleAddChange} />
+                </label>
+              </div>
+              {addError && <p className="error">{addError}</p>}
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={closeAddModal} disabled={adding}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={adding}>
+                  {adding ? 'Creating…' : 'Create employee'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

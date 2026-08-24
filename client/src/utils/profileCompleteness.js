@@ -30,11 +30,13 @@ function isSalaryMissing(value) {
 
 export function missingEmployeePortalFields(row) {
   if (!row) return [];
+  if (String(row.staff_kind || '').toLowerCase() === 'lower') return [];
   return EMPLOYEE_PORTAL_FIELDS.filter((field) => isBlank(row[field.key]));
 }
 
 export function missingAdminAssignFields(row) {
   if (!row) return [];
+  if (String(row.staff_kind || '').toLowerCase() === 'lower') return [];
   return ADMIN_ASSIGN_FIELDS.filter((field) => {
     if (field.key !== 'salary') return isBlank(row[field.key]);
     if (row.salary_hidden) return row.salary_on_file === false;
