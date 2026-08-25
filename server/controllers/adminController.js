@@ -19,6 +19,7 @@ const {
   normalizeScope,
 } = require('../utils/employeeScope');
 const { ensureBlockedColumn } = require('../utils/accountStatus');
+const { ensureUsersBranchNotEnumLocked } = require('../utils/usersBranchConstraint');
 const {
   missingEmployeePortalFields,
   formatFieldList,
@@ -333,6 +334,7 @@ async function getEmployeeById(req, res) {
 
 async function createLowerStaff(req, res, body) {
   await ensureLowerStaffExtraColumns();
+  await ensureUsersBranchNotEnumLocked();
   if (!canManageLowerStaff(req)) {
     return res.status(403).json({
       message: 'Only HR with Add employees permission can add subordinate staff.',
@@ -441,6 +443,7 @@ async function updateLowerStaff(req, res) {
   try {
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
+    await ensureUsersBranchNotEnumLocked();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
         message: 'Only HR with Add employees permission can edit subordinate staff.',
@@ -610,6 +613,7 @@ async function createEmployee(req, res) {
     await ensureAttendanceTables();
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
+    await ensureUsersBranchNotEnumLocked();
     const body = req.body || {};
 
     if (String(body.staff_kind || '').trim().toLowerCase() === 'lower') {
@@ -784,6 +788,7 @@ async function createEmployee(req, res) {
 async function updateEmployee(req, res) {
   try {
     await ensureAttendanceTables();
+    await ensureUsersBranchNotEnumLocked();
     const { id } = req.params;
     const body = req.body || {};
     const keys = Object.keys(body);
@@ -953,6 +958,20 @@ async function updateEmployee(req, res) {
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Employee ID is already in use.' });
+    }
+    if (err.code === '23514') {
+      const constraint = String(err.constraint || err.message || '');
+      console.error('updateEmployee check constraint:', constraint, err.detail || err.message);
+      if (/branch/i.test(constraint)) {
+        return res.status(400).json({
+          message:
+            'This office is blocked by an old database rule. Save again — newer branches are now allowed.',
+        });
+      }
+      return res.status(400).json({
+        message:
+          'This save is blocked by a database rule. Check branch, shift, and work location, then try again.',
+      });
     }
     console.error('updateEmployee error:', err);
     return res.status(500).json({ message: 'Server error updating employee.' });
