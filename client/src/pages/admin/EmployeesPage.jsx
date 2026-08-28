@@ -28,7 +28,6 @@ const ADMIN_FIELD_LABELS = {
   designation: 'Designation',
   branch: 'Branch',
   shift: 'Shift',
-  salary: 'Salary',
   date_of_joining: 'Date of joining',
 };
 
@@ -39,7 +38,6 @@ const EMPTY_EDIT = {
   designation: '',
   branch: '',
   shift: '',
-  salary: '',
   date_of_joining: '',
   employment_type: 'onsite',
   work_start_hour: 9,
@@ -59,7 +57,6 @@ const EMPTY_ADD = {
   designation: '',
   branch: '',
   shift: '',
-  salary: '',
   date_of_joining: '',
   employment_type: 'onsite',
   education: '',
@@ -282,29 +279,11 @@ function formatSalaryAmount(value) {
   return n.toLocaleString();
 }
 
-function isSalaryMissing(value) {
-  if (isBlank(value)) return true;
-  const n = Number(value);
-  return !Number.isFinite(n) || n <= 0;
-}
-
-function isSalaryUnsetOnRow(row) {
-  if (!row) return true;
-  if (row.salary_hidden) return row.salary_on_file === false;
-  return isSalaryMissing(row.salary);
-}
-
-function missingAdminFields(row, { includeSalary = true } = {}) {
+function missingAdminFields(row) {
   if (!row || isLowerStaffRow(row)) return [];
   return Object.keys(ADMIN_FIELD_LABELS)
     .filter((key) => key !== 'date_of_joining')
-    .filter((key) => {
-      if (key === 'salary') {
-        if (!includeSalary) return false;
-        return isSalaryUnsetOnRow(row);
-      }
-      return isBlank(row[key]);
-    });
+    .filter((key) => isBlank(row[key]));
 }
 
 function EmployeesPage() {
@@ -472,7 +451,6 @@ function EmployeesPage() {
   const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
   const canEditEmployees =
     hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
-  const canViewSalary = hasPermission(permissions, 'employees:salary', role);
   const canDeactivateEmployees = hasPermission(
     permissions,
     'employees:deactivate',
@@ -717,11 +695,8 @@ function EmployeesPage() {
   }, [portalEmployees, lowerStaff, search, filters, statusTab]);
 
   const detailMissingAdmin = useMemo(
-    () =>
-      missingAdminFields(detail, { includeSalary: canViewSalary }).map(
-        (key) => ADMIN_FIELD_LABELS[key]
-      ),
-    [detail, canViewSalary]
+    () => missingAdminFields(detail).map((key) => ADMIN_FIELD_LABELS[key]),
+    [detail]
   );
   const detailMissingEmployee = useMemo(
     () => missingEmployeePortalFields(detail).map((f) => f.label),
@@ -746,7 +721,6 @@ function EmployeesPage() {
         designation: data.designation || '',
         branch: data.branch || '',
         shift: data.shift || '',
-        salary: data.salary ?? '',
         date_of_joining: data.date_of_joining
           ? String(data.date_of_joining).slice(0, 10)
           : '',
@@ -810,13 +784,9 @@ function EmployeesPage() {
     const errors = {};
     for (const key of Object.keys(ADMIN_FIELD_LABELS)) {
       if (key === 'date_of_joining') continue; // optional
-      if (key === 'salary' && !canViewSalary) continue;
       if (isBlank(editForm[key])) {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
-    }
-    if (canViewSalary && isSalaryMissing(editForm.salary)) {
-      errors.salary = 'Salary is required and must be greater than 0.';
     }
     return errors;
   }
@@ -921,9 +891,6 @@ function EmployeesPage() {
       work_start_hour: Number(editForm.work_start_hour),
       work_end_hour: Number(editForm.work_end_hour),
     };
-    if (canViewSalary) {
-      payload.salary = Number(editForm.salary);
-    }
 
     try {
       const { data } = await api.put(`/api/admin/employees/${selectedId}`, payload);
@@ -941,7 +908,6 @@ function EmployeesPage() {
                 designation: data.designation,
                 branch: data.branch,
                 shift: data.shift,
-                salary: data.salary,
                 date_of_joining: data.date_of_joining,
                 employment_type: data.employment_type,
                 profile_picture_url: data.profile_picture_url || row.profile_picture_url,
@@ -1002,9 +968,6 @@ function EmployeesPage() {
       account_number: addForm.account_number.trim() || undefined,
       iban: addForm.iban.trim() || undefined,
     };
-    if (canViewSalary && addForm.salary !== '') {
-      payload.salary = Number(addForm.salary);
-    }
     try {
       const { data } = await api.post('/api/admin/employees', payload);
       setAddOpen(false);
@@ -2501,25 +2464,6 @@ function EmployeesPage() {
                       <span className="field-error">{fieldErrors.shift}</span>
                     )}
                   </label>
-
-                  {canViewSalary && (
-                  <label className={fieldErrors.salary ? 'has-error' : ''}>
-                    Salary <span className="req-star" aria-hidden="true">*</span>
-                    <input
-                      type="number"
-                      name="salary"
-                      value={editForm.salary}
-                      onChange={handleEditChange}
-                      min="1"
-                      step="1"
-                      required
-                      aria-required="true"
-                    />
-                    {fieldErrors.salary && (
-                      <span className="field-error">{fieldErrors.salary}</span>
-                    )}
-                  </label>
-                  )}
                   </fieldset>
 
                   {saveError && <p className="error">{saveError}</p>}
@@ -2801,19 +2745,6 @@ function EmployeesPage() {
                     onChange={handleAddChange}
                   />
                 </label>
-                {canViewSalary && (
-                  <label>
-                    Salary
-                    <input
-                      type="number"
-                      name="salary"
-                      value={addForm.salary}
-                      onChange={handleAddChange}
-                      min="1"
-                      step="1"
-                    />
-                  </label>
-                )}
                 <label>
                   Education
                   <input name="education" value={addForm.education} onChange={handleAddChange} />

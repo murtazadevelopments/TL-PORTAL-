@@ -4,7 +4,9 @@ import './InstallAppButton.css';
 function isIosSafari() {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const iOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const webkit = /WebKit/.test(ua);
   const notOther = !/CriOS|FxiOS|EdgiOS|OPiOS|Chrome|Android/.test(ua);
   return iOS && webkit && (notOther || /Safari/.test(ua));
@@ -14,7 +16,6 @@ function isStandalone() {
   if (typeof window === 'undefined') return false;
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    // iOS Safari
     window.navigator.standalone === true
   );
 }
@@ -23,10 +24,12 @@ function isStandalone() {
  * Shows a native install prompt when available (Chrome/Edge/Android).
  * On iOS Safari, shows Add to Home Screen instructions instead.
  */
-function InstallAppButton({ compact = false }) {
+function InstallAppButton({ compact = false, alwaysShow = false }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installed, setInstalled] = useState(false);
   const [iosHint, setIosHint] = useState(false);
+  const [iosHelp, setIosHelp] = useState(false);
+  const [manualHint, setManualHint] = useState(false);
   const [dismissedIos, setDismissedIos] = useState(false);
 
   useEffect(() => {
@@ -61,13 +64,21 @@ function InstallAppButton({ compact = false }) {
   }, []);
 
   async function handleInstall() {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    if (choice?.outcome === 'accepted') {
-      setInstalled(true);
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      if (choice?.outcome === 'accepted') {
+        setInstalled(true);
+      }
+      return;
     }
+    if (isIosSafari()) {
+      setIosHelp(true);
+      setDismissedIos(false);
+      return;
+    }
+    setManualHint((v) => !v);
   }
 
   function dismissIos() {
@@ -77,9 +88,31 @@ function InstallAppButton({ compact = false }) {
 
   if (installed) return null;
 
+  const wrapClass = `install-app ${compact ? 'install-app-compact' : ''}`;
+
+  if (alwaysShow) {
+    return (
+      <div className={wrapClass}>
+        <button type="button" className="btn btn-primary install-app-btn" onClick={handleInstall}>
+          Install App
+        </button>
+        {iosHelp && (
+          <p className="install-app-ios" role="note">
+            iPhone: tap <strong>Share</strong> → <strong>Add to Home Screen</strong>
+          </p>
+        )}
+        {manualHint && !deferredPrompt && (
+          <p className="install-app-ios" role="note">
+            Use the browser menu → <strong>Install app</strong> or <strong>Add to Home Screen</strong>
+          </p>
+        )}
+      </div>
+    );
+  }
+
   if (iosHint && !dismissedIos) {
     return (
-      <div className={`install-app ${compact ? 'install-app-compact' : ''}`} role="note">
+      <div className={wrapClass} role="note">
         <p className="install-app-ios">
           On iPhone: tap <strong>Share</strong> → <strong>Add to Home Screen</strong>
         </p>
@@ -93,7 +126,7 @@ function InstallAppButton({ compact = false }) {
   if (!deferredPrompt) return null;
 
   return (
-    <div className={`install-app ${compact ? 'install-app-compact' : ''}`}>
+    <div className={wrapClass}>
       <button type="button" className="btn btn-primary install-app-btn" onClick={handleInstall}>
         Install App
       </button>

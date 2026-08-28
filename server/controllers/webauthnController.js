@@ -29,7 +29,8 @@ function signToken(user) {
 
 function omitPassword(row) {
   if (!row) return null;
-  const { password, ...safe } = row;
+  const { password, salary, ...safe } = row;
+  safe.salary_hidden = true;
   return safe;
 }
 
@@ -360,12 +361,25 @@ async function loginOptions(req, res) {
     const { rpID } = getWebAuthnConfig(req);
     const options = await generateAuthenticationOptions({
       rpID,
-      allowCredentials: creds.map((c) => ({
-        id: c.credential_id,
-        transports: c.transports ? JSON.parse(c.transports) : undefined,
-      })),
+      allowCredentials: creds.map((c) => {
+        let transports;
+        try {
+          transports = c.transports ? JSON.parse(c.transports) : undefined;
+        } catch {
+          transports = undefined;
+        }
+        const platformOnly = Array.isArray(transports)
+          ? transports.filter((t) => t === 'internal')
+          : [];
+        return {
+          id: c.credential_id,
+          transports: platformOnly.length ? platformOnly : ['internal'],
+        };
+      }),
       userVerification: 'preferred',
     });
+    // SimpleWebAuthn does not forward this yet; Chrome uses it to skip the phone QR.
+    options.hints = ['client-device'];
 
     await saveChallenge({
       userId: user.id,

@@ -14,7 +14,7 @@ try {
 // PostgreSQL pool (Supabase DATABASE_URL) — used for all DB queries
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    'Missing DATABASE_URL. Set it in the hosting platform environment variables (or server/.env locally).'
+    'Missing DATABASE_URL. Check your environment variables.'
   );
 }
 

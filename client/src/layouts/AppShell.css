@@ -345,6 +345,14 @@
   .app-shell-topbar {
     display: none;
   }
+
+  .app-shell-topbar:has(.shell-setup-actions) {
+    display: flex;
+  }
+
+  .app-shell-topbar:has(.shell-setup-actions) .shell-menu-btn {
+    display: none;
+  }
 }
 
 .portal-profile-alert {

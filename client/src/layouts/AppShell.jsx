@@ -6,6 +6,7 @@ import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
 import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
+import HeaderSetupActions from '../components/HeaderSetupActions';
 import './AppShell.css';
 
 function ShellInner() {
@@ -87,6 +88,7 @@ function ShellInner() {
           <span>Textured Lab Portal</span>
         </Link>
         <div className="shell-topbar-spacer" />
+        <HeaderSetupActions />
         {user && (
           <span className="shell-user-chip muted">
             {user.name || user.username}

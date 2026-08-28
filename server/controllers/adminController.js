@@ -86,7 +86,6 @@ const ALLOWED_UPDATE_FIELDS = [
   'designation',
   'branch',
   'shift',
-  'salary',
   'date_of_joining',
   'employment_type',
   'work_start_hour',
@@ -100,7 +99,6 @@ const REQUIRED_ADMIN_FIELDS = [
   'designation',
   'branch',
   'shift',
-  'salary',
 ];
 
 function isEmptyValue(value) {
@@ -111,14 +109,6 @@ function isSalaryMissing(value) {
   if (isEmptyValue(value)) return true;
   const n = Number(value);
   return !Number.isFinite(n) || n <= 0;
-}
-
-function viewerCanSeeSalary(req, row = null) {
-  const role = String(req.user?.role || '').toLowerCase();
-  if (role === 'ceo') return true;
-  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  if (perms.includes('employees:salary') || perms.includes('*')) return true;
-  return isLowerStaff(row) && perms.includes('hr:add_employee');
 }
 
 function canManageLowerStaff(req) {
@@ -253,7 +243,7 @@ async function listEmployees(req, res) {
             staff_extra_2_url: null,
           };
         }
-        return redactSalary(withUrls, viewerCanSeeSalary(req, row));
+        return redactSalary(withUrls, isLowerStaff(row) && canSeeLower);
       })
     );
     return res.json(employees);
@@ -298,7 +288,7 @@ async function getEmployeeById(req, res) {
 
     const employee = redactSalary(
       await attachReadableUrls(rows[0]),
-      viewerCanSeeSalary(req, rows[0])
+      isLowerStaff(rows[0]) && canManageLowerStaff(req)
     );
 
     // Redact CNIC/CV unless CEO or admin has documents:view
@@ -620,8 +610,6 @@ async function createEmployee(req, res) {
       return createLowerStaff(req, res, body);
     }
 
-    const canSeeSalary = viewerCanSeeSalary(req);
-
     const username = String(body.username || '')
       .trim()
       .toLowerCase();
@@ -662,14 +650,6 @@ async function createEmployee(req, res) {
     }
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
-    }
-
-    let salary = null;
-    if (canSeeSalary && body.salary !== undefined && body.salary !== null && String(body.salary).trim() !== '') {
-      salary = Number(body.salary);
-      if (!Number.isFinite(salary) || salary <= 0) {
-        return res.status(400).json({ message: 'Salary must be greater than 0.' });
-      }
     }
 
     const lastJobStatus = body.last_job_status
@@ -731,7 +711,7 @@ async function createEmployee(req, res) {
         status,
         branch,
         shift,
-        salary,
+        null,
         String(body.education || '').trim() || null,
         lastJobStatus,
         employmentType,
@@ -748,7 +728,7 @@ async function createEmployee(req, res) {
       ]
     );
 
-    const employee = redactSalary(await attachReadableUrls(rows[0]), canSeeSalary);
+    const employee = redactSalary(await attachReadableUrls(rows[0]), false);
     try {
       await writeAuditLog({
         actorId: req.user.id,
@@ -791,35 +771,24 @@ async function updateEmployee(req, res) {
     await ensureUsersBranchNotEnumLocked();
     const { id } = req.params;
     const body = req.body || {};
+    delete body.salary;
     const keys = Object.keys(body);
 
     if (keys.length === 0) {
       return res.status(400).json({
         message:
-          'Required fields: employee_id, status, department, designation, branch, shift, salary. Optional: date_of_joining, employment_type.',
+          'Required fields: employee_id, status, department, designation, branch, shift. Optional: date_of_joining, employment_type.',
       });
     }
 
     const rejected = keys.filter((key) => !ALLOWED_UPDATE_FIELDS.includes(key));
     if (rejected.length > 0) {
       return res.status(400).json({
-        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, salary, date_of_joining, employment_type, and working hours can be updated.`,
+        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, date_of_joining, employment_type, and working hours can be updated.`,
       });
     }
 
-    const canSeeSalary = viewerCanSeeSalary(req);
-    if (Object.prototype.hasOwnProperty.call(body, 'salary') && !canSeeSalary) {
-      return res.status(403).json({
-        message: 'You do not have permission to view or update employee salary.',
-      });
-    }
-
-    const requiredFields = canSeeSalary
-      ? REQUIRED_ADMIN_FIELDS
-      : REQUIRED_ADMIN_FIELDS.filter((key) => key !== 'salary');
-    const missing = requiredFields.filter((key) =>
-      key === 'salary' ? isSalaryMissing(body[key]) : isEmptyValue(body[key])
-    );
+    const missing = REQUIRED_ADMIN_FIELDS.filter((key) => isEmptyValue(body[key]));
     if (missing.length > 0) {
       return res.status(400).json({
         message: `All fields are required before saving. Missing: ${missing.join(', ')}.`,
@@ -853,7 +822,7 @@ async function updateEmployee(req, res) {
       designation: String(body.designation).trim(),
       branch: String(body.branch).trim(),
       shift: String(body.shift).trim(),
-      salary: canSeeSalary ? Number(body.salary) : before.salary,
+      salary: before.salary,
       date_of_joining:
         body.date_of_joining === undefined
           ? before.date_of_joining
@@ -874,10 +843,6 @@ async function updateEmployee(req, res) {
 
     if (!['active', 'inactive'].includes(next.status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
-    }
-
-    if (canSeeSalary && (Number.isNaN(next.salary) || next.salary <= 0)) {
-      return res.status(400).json({ message: 'Salary is required and must be greater than 0.' });
     }
 
     if (!next.employee_id) {
@@ -954,7 +919,7 @@ async function updateEmployee(req, res) {
       }
     }
 
-    return res.json(redactSalary(employee, canSeeSalary));
+    return res.json(redactSalary(employee, false));
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Employee ID is already in use.' });
@@ -1176,7 +1141,7 @@ async function listDeactivated(req, res) {
 
     const employees = await Promise.all(
       rows.map(async (row) =>
-        redactSalary(await withListUrls(row), viewerCanSeeSalary(req, row))
+        redactSalary(await withListUrls(row), isLowerStaff(row) && canManageLowerStaff(req))
       )
     );
     return res.json({

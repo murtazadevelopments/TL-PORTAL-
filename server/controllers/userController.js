@@ -66,6 +66,13 @@ const EMPLOYEE_IGNORED_FIELDS = new Set([
   'employment_type',
 ]);
 
+function hideSalary(user) {
+  if (!user) return user;
+  delete user.salary;
+  user.salary_hidden = true;
+  return user;
+}
+
 async function decorateProfileAlert(user) {
   if (!user) return user;
   user.profile_alert_fields = parseAlertFields(user.profile_alert_fields);
@@ -125,7 +132,7 @@ async function getMe(req, res) {
       });
     }
 
-    const user = await decorateProfileAlert(await attachReadableUrls(rows[0]));
+    const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
     const role = String(user.role || '')
       .trim()
       .toLowerCase();
@@ -334,7 +341,7 @@ async function updateMe(req, res) {
       ]
     );
 
-    const user = await decorateProfileAlert(await attachReadableUrls(rows[0]));
+    const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
 
     const changed = summarizeChanges(current, user, EMPLOYEE_UPDATE_WHITELIST);
     if (changed.length) {
@@ -399,7 +406,7 @@ async function updateProfilePicture(req, res) {
       [objectPath, req.user.id]
     );
 
-    const user = await attachReadableUrls(rows[0]);
+    const user = hideSalary(await attachReadableUrls(rows[0]));
     await notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)']);
 
     return res.json(user);
@@ -467,7 +474,7 @@ async function updateDocuments(req, res) {
       [nextFront, nextBack, nextCv, req.user.id]
     );
 
-    const user = await attachReadableUrls(rows[0]);
+    const user = hideSalary(await attachReadableUrls(rows[0]));
     const changed = [];
     if (cnicFront) changed.push('CNIC front (updated)');
     if (cnicBack) changed.push('CNIC back (updated)');

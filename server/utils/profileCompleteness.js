@@ -15,26 +15,15 @@ const ADMIN_ASSIGN_FIELDS = [
   { key: 'designation', label: 'Designation' },
   { key: 'branch', label: 'Branch' },
   { key: 'shift', label: 'Shift' },
-  { key: 'salary', label: 'Salary' },
 ];
 
 function isBlank(value) {
   return value === undefined || value === null || String(value).trim() === '';
 }
 
-function isSalaryMissing(value) {
-  if (isBlank(value)) return true;
-  const n = Number(value);
-  return !Number.isFinite(n) || n <= 0;
-}
-
 function missingFromCatalog(row, catalog) {
   if (!row) return [];
-  return catalog.filter((field) => {
-    if (field.key !== 'salary') return isBlank(row[field.key]);
-    if (row.salary_hidden) return row.salary_on_file === false;
-    return isSalaryMissing(row[field.key]);
-  });
+  return catalog.filter((field) => isBlank(row[field.key]));
 }
 
 function missingEmployeePortalFields(row) {

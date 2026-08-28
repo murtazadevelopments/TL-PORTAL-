@@ -135,10 +135,6 @@ export default function DashboardHome() {
                       : user.employment_type || '—'}
                 </strong>
               </p>
-              <p>
-                <span className="label">Salary</span>
-                <strong>{user.salary ?? '—'}</strong>
-              </p>
             </div>
           </section>
 

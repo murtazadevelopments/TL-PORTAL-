@@ -55,7 +55,8 @@ function signToken(user) {
 
 function omitPassword(row) {
   if (!row) return null;
-  const { password, ...safe } = row;
+  const { password, salary, ...safe } = row;
+  safe.salary_hidden = true;
   return safe;
 }
 

@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from 'react-router';
 import { startAuthentication } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
-import InstallAppButton from '../components/InstallAppButton';
 import PasswordInput from '../components/PasswordInput';
 import logo from '../assets/logo.webp';
 
@@ -107,7 +106,10 @@ function SignIn() {
       const { data: options } = await api.post('/api/auth/webauthn/login-options', {
         username,
       });
-      const assertion = await startAuthentication({ optionsJSON: options });
+      const assertion = await startAuthentication({
+        optionsJSON: options,
+        useBrowserAutofill: false,
+      });
       const { collectDeviceHints } = await import('../utils/deviceHints');
       const deviceHints = await collectDeviceHints();
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
@@ -136,7 +138,6 @@ function SignIn() {
     <div className="page">
       <Navbar />
       <main className="card">
-        <InstallAppButton />
         <div className="brand-hero">
           <img src={logo} alt="Textured Lab Portal" width={200} height={200} />
           <p className="brand-name">Textured Lab Portal</p>
