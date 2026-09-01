@@ -6,6 +6,7 @@ import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
+import CnicProtectedViewer from '../../components/CnicProtectedViewer';
 import { missingEmployeePortalFields, profileAlertCooldown } from '../../utils/profileCompleteness';
 import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
 import ClockHourSelect from '../../components/ClockHourSelect';
@@ -141,16 +142,19 @@ function LowerFilePick({
   imagePreview,
   allowCapture = false,
   onFile,
+  onViewCurrent,
 }) {
   const uploadId = useId();
   const captureId = useId();
   const [dragOver, setDragOver] = useState(false);
   const objectUrl = useObjectUrl(file);
-  const existingHref = withAuthDocumentUrl(existingUrl, cacheKey);
+  const existingHref = onViewCurrent ? null : withAuthDocumentUrl(existingUrl, cacheKey);
   const showImage =
     Boolean(imagePreview) &&
-    ((file && file.type.startsWith('image/') && objectUrl) || (!file && existingHref));
-  const previewSrc = file ? objectUrl : existingHref;
+    file &&
+    file.type.startsWith('image/') &&
+    objectUrl;
+  const previewSrc = objectUrl;
 
   function takeFile(next) {
     if (next) onFile(next);
@@ -221,6 +225,11 @@ function LowerFilePick({
               : hint}
         </p>
         <div className="lower-file-links">
+          {onViewCurrent && existingUrl && !file && (
+            <button type="button" onClick={onViewCurrent}>
+              View
+            </button>
+          )}
           {existingHref && !file && (
             <a href={existingHref} target="_blank" rel="noreferrer">
               Open current
@@ -292,6 +301,7 @@ function EmployeesPage() {
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserLabel, setCurrentUserLabel] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   const [employees, setEmployees] = useState([]);
@@ -333,6 +343,7 @@ function EmployeesPage() {
   const [composeRecipient, setComposeRecipient] = useState(null);
   const [composeToast, setComposeToast] = useState('');
   const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
+  const [cnicView, setCnicView] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_ADD);
   const [addError, setAddError] = useState('');
@@ -372,6 +383,7 @@ function EmployeesPage() {
         setRole(data.role);
         setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
         setCurrentUserId(data.id ?? null);
+        setCurrentUserLabel(data.name || data.username || 'admin');
         // Load list in the same flow so CEO/admin never sit on an empty table
         setLoading(true);
         setListError('');
@@ -748,6 +760,7 @@ function EmployeesPage() {
   function closeDetail() {
     setSelectedId(null);
     setDetail(null);
+    setCnicView(null);
     setSaveError('');
     setSaveSuccess('');
     setFieldErrors({});
@@ -1373,6 +1386,17 @@ function EmployeesPage() {
                   imagePreview
                   allowCapture
                   onFile={setLowerCnicFront}
+                  onViewCurrent={
+                    lowerExisting?.id && lowerExisting?.cnic_front_url
+                      ? () =>
+                          setCnicView({
+                            userId: lowerExisting.id,
+                            docType: 'cnic_front',
+                            title: 'CNIC front',
+                            subject: lowerExisting.name,
+                          })
+                      : undefined
+                  }
                 />
                 <LowerFilePick
                   label="Back"
@@ -1384,6 +1408,17 @@ function EmployeesPage() {
                   imagePreview
                   allowCapture
                   onFile={setLowerCnicBack}
+                  onViewCurrent={
+                    lowerExisting?.id && lowerExisting?.cnic_back_url
+                      ? () =>
+                          setCnicView({
+                            userId: lowerExisting.id,
+                            docType: 'cnic_back',
+                            title: 'CNIC back',
+                            subject: lowerExisting.name,
+                          })
+                      : undefined
+                  }
                 />
               </div>
             </section>
@@ -1818,6 +1853,16 @@ function EmployeesPage() {
 
       {composeToast && <p className="success">{composeToast}</p>}
 
+      <CnicProtectedViewer
+        open={Boolean(cnicView)}
+        userId={cnicView?.userId}
+        docType={cnicView?.docType}
+        title={cnicView?.title}
+        viewerLabel={currentUserLabel}
+        subjectLabel={cnicView?.subject}
+        onClose={() => setCnicView(null)}
+      />
+
       <ComposeMessageModal
         open={composeOpen}
         initialRecipient={composeRecipient}
@@ -2075,24 +2120,50 @@ function EmployeesPage() {
                 ) : (
                   <>
                 <div className="doc-row">
-                  <div className="doc-preview">
+                  <button
+                    type="button"
+                    className="doc-preview"
+                    disabled={!detail.cnic_front_on_file}
+                    onClick={() => {
+                      if (!detail.cnic_front_on_file) return;
+                      setCnicView({
+                        userId: detail.id,
+                        docType: 'cnic_front',
+                        title: 'CNIC front',
+                        subject: detail.name,
+                      });
+                    }}
+                  >
                     <span>
                       {detail.cnic_front_on_file ? 'On file' : 'No CNIC front'}
                     </span>
                     <span>CNIC front</span>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Not downloadable
+                      {detail.cnic_front_on_file ? 'Screenshots restricted' : 'Not uploaded'}
                     </span>
-                  </div>
-                  <div className="doc-preview">
+                  </button>
+                  <button
+                    type="button"
+                    className="doc-preview"
+                    disabled={!detail.cnic_back_on_file}
+                    onClick={() => {
+                      if (!detail.cnic_back_on_file) return;
+                      setCnicView({
+                        userId: detail.id,
+                        docType: 'cnic_back',
+                        title: 'CNIC back',
+                        subject: detail.name,
+                      });
+                    }}
+                  >
                     <span>
                       {detail.cnic_back_on_file ? 'On file' : 'No CNIC back'}
                     </span>
                     <span>CNIC back</span>
                     <span className="muted" style={{ fontSize: '0.8rem' }}>
-                      Not downloadable
+                      {detail.cnic_back_on_file ? 'Screenshots restricted' : 'Not uploaded'}
                     </span>
-                  </div>
+                  </button>
                 </div>
                 {detail.cv_url ? (
                   <a

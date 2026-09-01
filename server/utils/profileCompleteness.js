@@ -6,6 +6,10 @@ const EMPLOYEE_PORTAL_FIELDS = [
   { key: 'account_title', label: 'Account title' },
   { key: 'iban', label: 'IBAN' },
   { key: 'account_number', label: 'Account number' },
+  { key: 'profile_picture_url', presenceKey: 'profile_picture_on_file', label: 'Profile photo', document: true },
+  { key: 'cnic_front_url', presenceKey: 'cnic_front_on_file', label: 'CNIC front', document: true },
+  { key: 'cnic_back_url', presenceKey: 'cnic_back_on_file', label: 'CNIC back', document: true },
+  { key: 'cv_url', presenceKey: 'cv_on_file', label: 'CV', document: true },
 ];
 
 const ADMIN_ASSIGN_FIELDS = [
@@ -21,9 +25,27 @@ function isBlank(value) {
   return value === undefined || value === null || String(value).trim() === '';
 }
 
+function isPortalFieldMissing(row, field) {
+  if (field.presenceKey != null && typeof row[field.presenceKey] === 'boolean') {
+    return row[field.presenceKey] !== true;
+  }
+  return isBlank(row[field.key]);
+}
+
 function missingFromCatalog(row, catalog) {
   if (!row) return [];
-  return catalog.filter((field) => isBlank(row[field.key]));
+  return catalog.filter((field) => isPortalFieldMissing(row, field));
+}
+
+function withDocumentPresence(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    profile_picture_on_file: Boolean(row.profile_picture_url),
+    cnic_front_on_file: Boolean(row.cnic_front_url),
+    cnic_back_on_file: Boolean(row.cnic_back_url),
+    cv_on_file: Boolean(row.cv_url),
+  };
 }
 
 function missingEmployeePortalFields(row) {
@@ -114,6 +136,7 @@ module.exports = {
   isBlank,
   missingEmployeePortalFields,
   missingAdminAssignFields,
+  withDocumentPresence,
   formatFieldList,
   ensureProfileAlertColumns,
   parseAlertFields,

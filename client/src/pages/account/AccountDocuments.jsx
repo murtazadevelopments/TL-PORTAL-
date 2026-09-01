@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router';
 import api from '../../api/client';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
+import { missingEmployeePortalFields } from '../../utils/profileCompleteness';
 
 export default function AccountDocuments() {
   const navigate = useNavigate();
@@ -42,6 +43,15 @@ export default function AccountDocuments() {
     };
   }, [navigate]);
 
+  const missingDocFields = useMemo(
+    () => (profile ? missingEmployeePortalFields(profile).filter((field) => field.document) : []),
+    [profile]
+  );
+  const missingFileDocs = missingDocFields
+    .filter((field) => field.key !== 'profile_picture_url')
+    .map((field) => field.label);
+  const missingPhoto = missingDocFields.some((field) => field.key === 'profile_picture_url');
+
   async function handleDocumentUpload(field, file) {
     if (!file) return;
     setDocError('');
@@ -80,6 +90,27 @@ export default function AccountDocuments() {
       {error && <p className="error">{error}</p>}
       {docError && <p className="error">{docError}</p>}
       {docSuccess && <p className="success">{docSuccess}</p>}
+
+      {!loading && profile && (missingFileDocs.length > 0 || missingPhoto) && (
+        <div className="alert-banner" role="status">
+          <div>
+            <strong>Your profile is incomplete.</strong>
+            <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+              {missingFileDocs.length > 0 ? `Please upload: ${missingFileDocs.join(', ')}.` : ''}
+              {missingPhoto
+                ? `${missingFileDocs.length ? ' ' : ''}Add your profile photo on the Profile page.`
+                : ''}
+            </p>
+          </div>
+          {missingPhoto && (
+            <div className="alert-actions">
+              <Link to="/account" className="btn btn-ghost">
+                Profile photo
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {!loading && profile && (
         <section className="docs">

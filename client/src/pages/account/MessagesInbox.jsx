@@ -126,7 +126,7 @@ export default function MessagesInbox({ onUnreadChange }) {
                   <span className="msg-main">
                     <span className="msg-top">
                       <span className="msg-sender">
-                        {msg.sender_name || msg.sender_username || 'Admin'}
+                        {msg.sender_name || msg.sender_username || 'HR'}
                       </span>
                       <span className="msg-time">{relativeTime(msg.created_at)}</span>
                     </span>
@@ -158,7 +158,7 @@ export default function MessagesInbox({ onUnreadChange }) {
               <div>
                 <h2>{selected.subject || '(No subject)'}</h2>
                 <p className="muted" style={{ margin: 0 }}>
-                  From {selected.sender_name || selected.sender_username || 'Admin'} ·{' '}
+                  From {selected.sender_name || selected.sender_username || 'HR'} ·{' '}
                   {new Date(selected.created_at).toLocaleString()}
                   {marking ? ' · marking read…' : ''}
                 </p>

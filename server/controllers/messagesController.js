@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { sendEmailSafe } = require('../services/email');
 const { writeAuditLog } = require('../utils/auditLog');
 const { sendPushToUserSafe } = require('../services/pushNotifications');
+const { publicSenderLabel, redactMessageSender } = require('../utils/messageSender');
 
 const DELIVERY = new Set(['portal', 'email', 'both']);
 const AUDIENCE = new Set(['user', 'all', 'team', 'branch']);
@@ -149,18 +150,24 @@ async function deliverOneMessage({
     if (!recipient.email) {
       emailError = 'No email on file';
     } else {
-      const senderName = sender.name || sender.username || 'Portal Admin';
+      const senderLabel = publicSenderLabel(sender);
       const mailSubject =
-        subject || `Message from ${senderName} — Textured Lab Portal`;
+        subject || `Message from ${senderLabel} — Textured Lab Portal`;
       const safeBody = escapeHtml(messageBody).replace(/\n/g, '<br />');
+      const greeting = escapeHtml(recipient.name || recipient.username || 'there');
       const result = await sendEmailSafe({
         to: recipient.email,
         subject: mailSubject,
-        text: messageBody,
+        text:
+          `Hi ${recipient.name || recipient.username || 'there'},\n\n` +
+          `You have a new message from ${senderLabel} on the Textured Lab Portal:\n\n` +
+          (subject ? `${subject}\n\n` : '') +
+          `${messageBody}\n\n` +
+          'You can also read this in the portal under My Account → Messages.\n',
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
-            <p>Hi ${escapeHtml(recipient.name || recipient.username || 'there')},</p>
-            <p>You have a new message from <strong>${escapeHtml(senderName)}</strong>
+            <p>Hi ${greeting},</p>
+            <p>You have a new message from <strong>${escapeHtml(senderLabel)}</strong>
             on the Textured Lab Portal:</p>
             ${subject ? `<p><strong>${escapeHtml(subject)}</strong></p>` : ''}
             <div style="padding:12px 14px;border-left:3px solid #3dff7a;background:#f6f8fb">
@@ -328,10 +335,20 @@ async function sendAdminMessage(req, res) {
       });
     }
 
-    const sender = {
+    const { rows: senderRows } = await pool.query(
+      `
+        SELECT id, name, username, role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const sender = senderRows[0] || {
       id: req.user.id,
       name: req.user.name,
       username: req.user.username,
+      role: req.user.role,
     };
 
     const created = [];
@@ -419,7 +436,8 @@ async function listMyMessages(req, res) {
           m.id, m.sender_id, m.recipient_id, m.subject, m.body,
           m.delivery_method, m.email_sent_at, m.read_at, m.created_at,
           u.name AS sender_name,
-          u.username AS sender_username
+          u.username AS sender_username,
+          u.role AS sender_role
         FROM messages m
         LEFT JOIN users u ON u.id = m.sender_id
         WHERE m.recipient_id = $1
@@ -435,7 +453,7 @@ async function listMyMessages(req, res) {
     );
 
     return res.json({
-      messages: rows,
+      messages: rows.map(redactMessageSender),
       total: countRows[0]?.total || 0,
       limit,
       offset,

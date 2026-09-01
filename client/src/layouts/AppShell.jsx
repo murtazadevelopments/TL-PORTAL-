@@ -4,6 +4,7 @@ import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
+import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import HeaderSetupActions from '../components/HeaderSetupActions';
@@ -17,6 +18,9 @@ function ShellInner() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const location = useLocation();
+  const portalGaps = user ? missingEmployeePortalFields(user) : [];
+  const missingDocs = portalGaps.some((field) => field.document);
+  const missingText = portalGaps.some((field) => !field.document);
 
   const refreshUnread = useCallback(async () => {
     try {
@@ -143,13 +147,24 @@ function ShellInner() {
                   ? user.profile_alert_fields
                   : user.missing_portal_fields
                 ).join(', ')}
-                . Open Profile to save these details.
+                . {missingDocs && missingText
+                  ? 'Open Profile and Documents to finish these details.'
+                  : missingDocs
+                    ? 'Open Documents to upload the missing files.'
+                    : 'Open Profile to save these details.'}
               </p>
             </div>
             <div className="portal-profile-alert-actions">
-              <Link to="/account" className="btn btn-primary">
-                Complete profile
-              </Link>
+              {missingText && (
+                <Link to="/account" className="btn btn-primary">
+                  Complete profile
+                </Link>
+              )}
+              {missingDocs && (
+                <Link to="/account/documents" className={missingText ? 'btn btn-ghost' : 'btn btn-primary'}>
+                  Upload documents
+                </Link>
+              )}
               <Link to="/account/messages" className="btn btn-ghost">
                 View message
               </Link>

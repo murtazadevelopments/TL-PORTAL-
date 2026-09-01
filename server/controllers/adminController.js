@@ -25,6 +25,7 @@ const {
   formatFieldList,
   ensureProfileAlertColumns,
   profileAlertCooldown,
+  withDocumentPresence,
 } = require('../utils/profileCompleteness');
 const {
   ensureEmploymentTypeColumn,
@@ -37,6 +38,7 @@ const {
   ensureLowerStaffExtraColumns,
   isLowerStaff,
 } = require('../utils/staffKind');
+const { deliverOneMessage } = require('./messagesController');
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 const LAST_JOB_STATUSES = new Set([
@@ -60,7 +62,7 @@ const LIST_COLUMNS = `
   profile_alert_at, profile_alert_sent_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url,
-  cnic_front_url, cnic_back_url
+  cnic_front_url, cnic_back_url, cv_url
 `;
 
 const DETAIL_COLUMNS = `
@@ -234,11 +236,13 @@ async function listEmployees(req, res) {
           isLowerStaff(row) && canSeeLower
             ? await attachReadableUrls(row)
             : await withListUrls(row);
+        withUrls = withDocumentPresence(withUrls);
         if (!isLowerStaff(row)) {
           withUrls = {
             ...withUrls,
             cnic_front_url: null,
             cnic_back_url: null,
+            cv_url: null,
             staff_extra_1_url: null,
             staff_extra_2_url: null,
           };
@@ -287,7 +291,7 @@ async function getEmployeeById(req, res) {
     }
 
     const employee = redactSalary(
-      await attachReadableUrls(rows[0]),
+      withDocumentPresence(await attachReadableUrls(rows[0])),
       isLowerStaff(rows[0]) && canManageLowerStaff(req)
     );
 
@@ -1446,10 +1450,20 @@ async function sendProfileAlert(req, res) {
       '\n\nOpen My Account → Profile and save the missing details.\n\n' +
       '— Textured Lab Portal';
 
-    const sender = {
+    const { rows: senderRows } = await pool.query(
+      `
+        SELECT id, name, username, role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const sender = senderRows[0] || {
       id: req.user.id,
       name: req.user.name,
       username: req.user.username,
+      role: req.user.role,
     };
 
     const result = await deliverOneMessage({

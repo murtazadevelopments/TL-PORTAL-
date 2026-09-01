@@ -470,14 +470,27 @@
 
 .doc-preview {
   display: block;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   background: rgba(5, 8, 16, 0.65);
   text-decoration: none;
   color: var(--text-h);
+  font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
+  text-align: left;
+  padding: 0;
+  cursor: default;
+}
+
+button.doc-preview:not(:disabled) {
+  cursor: pointer;
+}
+
+button.doc-preview:not(:disabled):hover {
+  border-color: var(--green);
 }
 
 .doc-preview img {

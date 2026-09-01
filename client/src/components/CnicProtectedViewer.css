@@ -1,0 +1,111 @@
+.cnic-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 4, 12, 0.82);
+}
+
+.cnic-viewer-panel {
+  width: min(960px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #0b1220;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.cnic-viewer-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cnic-viewer-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.cnic-viewer-header p {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.cnic-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  padding: 0.85rem;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.cnic-viewer-canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+}
+
+.cnic-viewer-canvas.is-hidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cnic-viewer-shield {
+  position: absolute;
+  inset: 0.85rem;
+  border-radius: 10px;
+  pointer-events: auto;
+  background:
+    repeating-linear-gradient(
+      -18deg,
+      transparent 0 36px,
+      rgba(248, 250, 252, 0.08) 36px 38px
+    );
+}
+
+.cnic-viewer-shield::after {
+  content: attr(data-mark) '  ·  SCREENSHOT RESTRICTED';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(248, 250, 252, 0.2);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: clamp(0.9rem, 2.4vw, 1.35rem);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.cnic-viewer-paused {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #050814;
+  color: #e2e8f0;
+  font-weight: 700;
+  text-align: center;
+  padding: 1.5rem;
+}
+
+@media print {
+  .cnic-viewer-backdrop {
+    display: none !important;
+  }
+}

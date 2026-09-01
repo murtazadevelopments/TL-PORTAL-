@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import api from '../../api/client';
 import AvatarEditor from '../../components/AvatarEditor';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
+import { missingEmployeePortalFields } from '../../utils/profileCompleteness';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
@@ -23,31 +24,6 @@ const EMPLOYEE_EDIT_FIELDS = [
   'last_job_status',
   'cnic_number',
 ];
-
-const FIELD_LABELS = {
-  date_of_birth: 'Date of birth',
-  reference_person_name: 'Reference person',
-  emergency_contact_name: 'Emergency contact name',
-  emergency_contact_number: 'Emergency contact number',
-  bank_name: 'Bank name',
-  account_title: 'Account title',
-  iban: 'IBAN',
-  account_number: 'Account number',
-};
-
-const INCOMPLETE_CHECK_FIELDS = [
-  'reference_person_name',
-  'emergency_contact_name',
-  'emergency_contact_number',
-  'bank_name',
-  'account_title',
-  'iban',
-  'account_number',
-];
-
-function isBlank(value) {
-  return value === null || value === undefined || String(value).trim() === '';
-}
 
 const EMPTY_FORM = {
   name: '',
@@ -111,7 +87,7 @@ export default function AccountProfile() {
           cnic_number: data.cnic_number || '',
         });
         const dismissed = sessionStorage.getItem('profileIncompleteDismissed') === '1';
-        const missing = INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(data[key]));
+        const missing = missingEmployeePortalFields(data);
         setShowIncompleteBanner(!dismissed && missing.length > 0);
       } catch (err) {
         if (!active) return;
@@ -131,12 +107,13 @@ export default function AccountProfile() {
     };
   }, [navigate]);
 
-  const missingEmployeeFields = useMemo(() => {
-    if (!profile) return [];
-    return INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(profile[key])).map(
-      (key) => FIELD_LABELS[key]
-    );
-  }, [profile]);
+  const missingEmployeeFields = useMemo(
+    () => (profile ? missingEmployeePortalFields(profile) : []),
+    [profile]
+  );
+  const missingLabels = missingEmployeeFields.map((field) => field.label);
+  const missingDocs = missingEmployeeFields.some((field) => field.document);
+  const missingText = missingEmployeeFields.some((field) => !field.document);
 
   function handleChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -160,7 +137,7 @@ export default function AccountProfile() {
       }));
       setSuccess('Profile updated.');
       refreshUser();
-      const missing = INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(data[key]));
+      const missing = missingEmployeePortalFields(data);
       if (missing.length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
@@ -191,6 +168,10 @@ export default function AccountProfile() {
       setShowAvatarEditor(false);
       setSuccess('Profile photo updated.');
       refreshUser();
+      if (missingEmployeePortalFields(data).length === 0) {
+        setShowIncompleteBanner(false);
+        sessionStorage.removeItem('profileIncompleteDismissed');
+      }
     } catch (err) {
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
@@ -218,24 +199,31 @@ export default function AccountProfile() {
 
         {loading && <p className="muted">Loading profile…</p>}
 
-        {!loading && profile && showIncompleteBanner && missingEmployeeFields.length > 0 && (
+        {!loading && profile && showIncompleteBanner && missingLabels.length > 0 && (
           <div className="alert-banner" role="status">
             <div>
               <strong>Your profile is incomplete.</strong>
               <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-                Please fill in: {missingEmployeeFields.join(', ')}
+                Please fill in: {missingLabels.join(', ')}
               </p>
             </div>
             <div className="alert-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() =>
-                  editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
-              >
-                Complete profile
-              </button>
+              {missingText && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }
+                >
+                  Complete profile
+                </button>
+              )}
+              {missingDocs && (
+                <Link to="/account/documents" className={missingText ? 'btn btn-ghost' : 'btn btn-primary'}>
+                  Upload documents
+                </Link>
+              )}
               <button
                 type="button"
                 className="icon-btn"

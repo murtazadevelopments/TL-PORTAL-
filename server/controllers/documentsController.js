@@ -8,7 +8,7 @@ const {
   writeRelativeFile,
   absoluteFromRelative,
 } = require('../services/localStorage');
-const { canDownloadDocument } = require('../utils/documentAccess');
+const { canDownloadDocument, isCnicDocType } = require('../utils/documentAccess');
 const { rejectIfAccountDisabled } = require('../utils/accountStatus');
 const { ensureStaffKindColumn, ensureLowerStaffExtraColumns } = require('../utils/staffKind');
 
@@ -79,8 +79,10 @@ function documentAuth(req, res, next) {
   let token = null;
   if (header && header.startsWith('Bearer ')) {
     token = header.slice(7);
+    req.documentAuthVia = 'header';
   } else if (req.query?.token) {
     token = String(req.query.token);
+    req.documentAuthVia = 'query';
   }
 
   if (!token) {
@@ -148,8 +150,18 @@ async function streamDocument(req, res) {
       });
     }
 
-    // Legacy remote URL — redirect (pre-migration safety)
-    if (row.file_path && /^https?:\/\//i.test(String(row.file_path))) {
+    if (isCnicDocType(docType) && req.documentAuthVia !== 'header') {
+      return res.status(403).json({
+        message: 'CNIC can only be viewed inside the portal.',
+      });
+    }
+
+    // Legacy remote URL — redirect (pre-migration safety). Never redirect CNIC.
+    if (
+      row.file_path &&
+      /^https?:\/\//i.test(String(row.file_path)) &&
+      !isCnicDocType(docType)
+    ) {
       return res.redirect(row.file_path);
     }
 
@@ -201,10 +213,16 @@ async function streamDocument(req, res) {
 
     res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (isCnicDocType(docType)) {
+      res.setHeader('Permissions-Policy', 'display-capture=()');
+    }
     res.setHeader('Content-Type', type);
     res.setHeader(
       'Content-Disposition',
-      `inline; filename="${docType}${ext || ''}"`
+      isCnicDocType(docType)
+        ? 'inline'
+        : `inline; filename="${docType}${ext || ''}"`
     );
     return fs.createReadStream(abs).pipe(res);
   } catch (err) {

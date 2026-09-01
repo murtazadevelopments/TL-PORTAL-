@@ -6,6 +6,10 @@ export const EMPLOYEE_PORTAL_FIELDS = [
   { key: 'account_title', label: 'Account title' },
   { key: 'iban', label: 'IBAN' },
   { key: 'account_number', label: 'Account number' },
+  { key: 'profile_picture_url', presenceKey: 'profile_picture_on_file', label: 'Profile photo', document: true },
+  { key: 'cnic_front_url', presenceKey: 'cnic_front_on_file', label: 'CNIC front', document: true },
+  { key: 'cnic_back_url', presenceKey: 'cnic_back_on_file', label: 'CNIC back', document: true },
+  { key: 'cv_url', presenceKey: 'cv_on_file', label: 'CV', document: true },
 ];
 
 export const ADMIN_ASSIGN_FIELDS = [
@@ -21,10 +25,17 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+function isPortalFieldMissing(row, field) {
+  if (field.presenceKey != null && typeof row[field.presenceKey] === 'boolean') {
+    return row[field.presenceKey] !== true;
+  }
+  return isBlank(row[field.key]);
+}
+
 export function missingEmployeePortalFields(row) {
   if (!row) return [];
   if (String(row.staff_kind || '').toLowerCase() === 'lower') return [];
-  return EMPLOYEE_PORTAL_FIELDS.filter((field) => isBlank(row[field.key]));
+  return EMPLOYEE_PORTAL_FIELDS.filter((field) => isPortalFieldMissing(row, field));
 }
 
 export function missingAdminAssignFields(row) {

@@ -2,40 +2,23 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useAuthUser } from '../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../utils/documentUrls';
-
-const INCOMPLETE_CHECK_FIELDS = [
-  'reference_person_name',
-  'emergency_contact_name',
-  'emergency_contact_number',
-  'bank_name',
-  'account_title',
-  'iban',
-  'account_number',
-];
-
-const FIELD_LABELS = {
-  reference_person_name: 'Reference person',
-  emergency_contact_name: 'Emergency contact name',
-  emergency_contact_number: 'Emergency contact number',
-  bank_name: 'Bank name',
-  account_title: 'Account title',
-  iban: 'IBAN',
-  account_number: 'Account number',
-};
-
-function isBlank(value) {
-  return value === null || value === undefined || String(value).trim() === '';
-}
+import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 
 export default function DashboardHome() {
   const { user, loading, error } = useAuthUser();
   const [avatarBroken, setAvatarBroken] = useState(false);
 
-  const missing = user
+  const missingFields = user
     ? (Array.isArray(user.missing_portal_fields) && user.missing_portal_fields.length
         ? user.missing_portal_fields
-        : INCOMPLETE_CHECK_FIELDS.filter((key) => isBlank(user[key])).map((key) => FIELD_LABELS[key]))
+        : missingEmployeePortalFields(user).map((field) => field.label))
     : [];
+  const missingDocs = user
+    ? missingEmployeePortalFields(user).some((field) => field.document)
+    : false;
+  const missingText = user
+    ? missingEmployeePortalFields(user).some((field) => !field.document)
+    : false;
   const hrAsked = Boolean(user?.profile_alert_at);
 
   const avatarSrc = withAuthDocumentUrl(
@@ -52,18 +35,25 @@ export default function DashboardHome() {
       {loading && <p className="muted">Loading…</p>}
       {error && <p className="error">{error}</p>}
 
-      {user && missing.length > 0 && (
+      {user && missingFields.length > 0 && (
         <div className="alert-banner" role="status">
           <div>
             <strong>{hrAsked ? 'HR asked you to complete your profile.' : 'Your profile is incomplete.'}</strong>
             <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-              Please fill in: {missing.join(', ')}
+              Please fill in: {missingFields.join(', ')}
             </p>
           </div>
           <div className="alert-actions">
-            <Link to="/account" className="btn btn-primary">
-              Complete profile
-            </Link>
+            {missingText && (
+              <Link to="/account" className="btn btn-primary">
+                Complete profile
+              </Link>
+            )}
+            {missingDocs && (
+              <Link to="/account/documents" className={missingText ? 'btn btn-ghost' : 'btn btn-primary'}>
+                Upload documents
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -138,19 +128,94 @@ export default function DashboardHome() {
             </div>
           </section>
 
-          <p className="muted" style={{ marginTop: '1.5rem' }}>
-            <Link to="/account">Edit profile</Link>
+          <section className="dash-shortcuts-wrap">
+            <h2>Quick actions</h2>
+            <p className="muted">Jump to the pages you use most.</p>
+            <nav className="dash-shortcuts" aria-label="Quick actions">
+            <Link to="/account" className="dash-shortcut">
+              <span className="dash-shortcut-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                  <path
+                    d="M5 20.2c.8-3.3 3.6-5.2 7-5.2s6.2 1.9 7 5.2"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <span className="dash-shortcut-copy">
+                <strong>Edit profile</strong>
+                <em>Name, bank, contacts</em>
+              </span>
+            </Link>
             {user.employment_type === 'remote' ? (
-              <>
-                {' · '}
-                <Link to="/attendance">Attendance</Link>
-              </>
+              <Link to="/attendance" className="dash-shortcut">
+                <span className="dash-shortcut-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                    <path
+                      d="M12 8v4.2l2.6 1.6"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
+                <span className="dash-shortcut-copy">
+                  <strong>Attendance</strong>
+                  <em>Check in and hours</em>
+                </span>
+              </Link>
             ) : null}
-            {' · '}
-            <Link to="/account/documents">My documents</Link>
-            {' · '}
-            <Link to="/account/security">Security</Link>
-          </p>
+            <Link to="/account/documents" className="dash-shortcut">
+              <span className="dash-shortcut-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M7 4.5h7.2L18.5 9v10.5H7V4.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinejoin="round"
+                  />
+                  <path d="M14 4.5V9h4.5" stroke="currentColor" strokeWidth="1.7" />
+                </svg>
+              </span>
+              <span className="dash-shortcut-copy">
+                <strong>My documents</strong>
+                <em>CV and uploads</em>
+              </span>
+            </Link>
+            <Link to="/account/security" className="dash-shortcut">
+              <span className="dash-shortcut-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <rect
+                    x="6"
+                    y="10.5"
+                    width="12"
+                    height="9"
+                    rx="1.6"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                  <path
+                    d="M9 10.5V8.2a3 3 0 0 1 6 0v2.3"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              <span className="dash-shortcut-copy">
+                <strong>Security</strong>
+                <em>Password and passkeys</em>
+              </span>
+            </Link>
+            </nav>
+          </section>
         </>
       )}
     </div>
