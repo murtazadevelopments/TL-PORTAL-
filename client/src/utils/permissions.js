@@ -46,3 +46,31 @@ export function can(role, permissions, key) {
 export function isHrAssignee(user) {
   return Boolean(user?.is_hr);
 }
+
+/** CEO-assigned attendance permission (Assign Roles). */
+export function hasCeoAssignedAttendance(permissions, role) {
+  return (
+    hasPermission(permissions, 'attendance:view', role) ||
+    hasPermission(permissions, 'attendance:edit', role)
+  );
+}
+
+/** Remote team attendance: CEO, or an admin the CEO granted attendance view/edit. */
+export function canViewRemoteTeamAttendance(role, permissions) {
+  if (isCeo(role)) return true;
+  return hasCeoAssignedAttendance(permissions, role);
+}
+
+/** Onsite team attendance: CEO, HR (add employees), or CEO-assigned attendance. */
+export function canViewOnsiteTeamAttendance(role, permissions) {
+  if (isCeo(role)) return true;
+  if (hasPermission(permissions, 'hr:add_employee', role)) return true;
+  return hasCeoAssignedAttendance(permissions, role);
+}
+
+export function canViewTeamAttendance(role, permissions) {
+  return (
+    canViewRemoteTeamAttendance(role, permissions) ||
+    canViewOnsiteTeamAttendance(role, permissions)
+  );
+}

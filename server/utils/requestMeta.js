@@ -42,7 +42,7 @@ function ipsFromHeader(value) {
 /**
  * Real client IP behind Hostinger / nginx / Vite, skipping private hop addresses.
  */
-function clientIp(req) {
+function collectRequestIps(req) {
   const headerCandidates = [
     req.headers['cf-connecting-ip'],
     req.headers['true-client-ip'],
@@ -68,10 +68,44 @@ function clientIp(req) {
   }
 
   collected.push(stripIp(req.ip), stripIp(req.socket?.remoteAddress));
+  return [...new Set(collected.filter(Boolean))];
+}
 
-  const ips = collected.filter(Boolean);
+function clientIp(req) {
+  const ips = collectRequestIps(req);
   const publicIp = ips.find((ip) => !isPrivateOrLocalIp(ip));
   return publicIp || ips[0] || null;
+}
+
+function parseOfficeIps(value) {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || '').split(/[\n,;]+/);
+  const out = [];
+  const seen = new Set();
+  for (const part of parts) {
+    const ip = stripIp(part);
+    if (!ip) continue;
+    const key = ip.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ip);
+  }
+  return out;
+}
+
+function formatOfficeIps(ips) {
+  const list = parseOfficeIps(ips);
+  return list.length ? list.join(', ') : null;
+}
+
+function requestMatchesConfiguredIp(req, configuredIp) {
+  const wants = new Set(parseOfficeIps(configuredIp).map((ip) => ip.toLowerCase()));
+  if (!wants.size) return false;
+  return collectRequestIps(req).some((ip) => {
+    const got = stripIp(ip)?.toLowerCase();
+    return Boolean(got && wants.has(got));
+  });
 }
 
 function clientUserAgent(req) {
@@ -216,6 +250,10 @@ async function approxLocationFromIp(ip) {
 
 module.exports = {
   clientIp,
+  collectRequestIps,
+  parseOfficeIps,
+  formatOfficeIps,
+  requestMatchesConfiguredIp,
   clientUserAgent,
   parseUserAgent,
   approxLocationFromIp,

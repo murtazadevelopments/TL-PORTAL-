@@ -4,8 +4,29 @@
   gap: 1.15rem;
 }
 
+.attendance-admin .attendance-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .attendance-admin .attendance-hero h1 {
   margin: 0;
+}
+
+.attendance-mode-toggle {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  max-width: 28rem;
+}
+
+.attendance-mode-toggle .btn {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
 }
 
 .attendance-admin .attendance-hero p {

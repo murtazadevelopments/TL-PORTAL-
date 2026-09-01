@@ -2,12 +2,37 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
+import { useAuthUser } from '../../context/AuthUserContext';
+import {
+  canViewOnsiteTeamAttendance,
+  canViewRemoteTeamAttendance,
+  canViewTeamAttendance,
+} from '../../utils/permissions';
 import './AttendanceAdminPage.css';
 
 const EMPTY_MANUAL = { user: null, hour_key: '', status: 'verified', note: '' };
 const EMPTY_HOURS = { user: null, work_start_hour: 9, work_end_hour: 18 };
+const EMPTY_ONSITE_MANUAL = { user: null, checked_in_at: '', note: '' };
+
+function toDatetimeLocalValue(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function onsiteStatusLabel(status) {
+  if (status === 'on_time') return 'On time';
+  if (status === 'late') return 'Late';
+  if (status === 'absent') return 'Absent';
+  if (status === 'pending') return 'Pending';
+  return status || '—';
+}
 
 export default function AttendanceAdminPage() {
+  const { user, permissions, loading: authLoading } = useAuthUser();
+  const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
+  const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
+  const canAny = canViewTeamAttendance(user?.role, permissions);
+
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -18,15 +43,29 @@ export default function AttendanceAdminPage() {
   const [hoursEdit, setHoursEdit] = useState(EMPTY_HOURS);
   const [history, setHistory] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState('remote');
+  const [onsite, setOnsite] = useState(null);
+  const [onsiteManual, setOnsiteManual] = useState(EMPTY_ONSITE_MANUAL);
+  const [overrideRow, setOverrideRow] = useState(null);
+  const [overrideStatus, setOverrideStatus] = useState('on_time');
 
   async function load() {
     setLoading(true);
     setError('');
     try {
-      const { data: payload } = await api.get('/api/admin/attendance', {
-        params: { date, search, status },
-      });
-      setData(payload);
+      if (mode === 'onsite') {
+        const { data: payload } = await api.get('/api/admin/onsite-attendance', {
+          params: { date, search, status },
+        });
+        setOnsite(payload);
+        setData(null);
+      } else {
+        const { data: payload } = await api.get('/api/admin/attendance', {
+          params: { date, search, status },
+        });
+        setData(payload);
+        setOnsite(null);
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load attendance.');
     } finally {
@@ -35,9 +74,24 @@ export default function AttendanceAdminPage() {
   }
 
   useEffect(() => {
+    if (authLoading) return;
+    if (mode === 'remote' && canRemote) return;
+    if (mode === 'onsite' && canOnsite) return;
+    if (canRemote) setMode('remote');
+    else if (canOnsite) setMode('onsite');
+  }, [authLoading, canRemote, canOnsite, mode]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!canAny) {
+      setLoading(false);
+      return;
+    }
+    if (mode === 'remote' && !canRemote) return;
+    if (mode === 'onsite' && !canOnsite) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, status]);
+  }, [date, status, mode, authLoading, canRemote, canOnsite, canAny]);
 
   async function submitManual(e) {
     e.preventDefault();
@@ -95,22 +149,120 @@ export default function AttendanceAdminPage() {
     }
   }
 
-  const summary = data?.summary || { verified: 0, missed: 0, failed: 0, manual: 0, employees: 0 };
+  async function submitOnsiteManual(e) {
+    e.preventDefault();
+    if (!onsiteManual.user) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.post('/api/admin/onsite-attendance', {
+        user_id: onsiteManual.user.id,
+        checked_in_at: new Date(onsiteManual.checked_in_at).toISOString(),
+        note: onsiteManual.note,
+      });
+      setOnsiteManual(EMPTY_ONSITE_MANUAL);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save onsite attendance.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitOverride(e) {
+    e.preventDefault();
+    if (!overrideRow?.record?.id) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/api/admin/onsite-attendance/${overrideRow.record.id}`, {
+        status: overrideStatus,
+      });
+      setOverrideRow(null);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const summary =
+    mode === 'onsite'
+      ? onsite?.summary || { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 }
+      : data?.summary || { verified: 0, missed: 0, failed: 0, manual: 0, employees: 0 };
+
+  if (!authLoading && !canAny) {
+    return (
+      <div className="admin-page page-panel attendance-admin">
+        <h1>Team attendance</h1>
+        <p className="muted">
+          You do not have attendance access. Ask the CEO to assign attendance permissions, or use an HR
+          account for onsite employees attendance.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page page-panel attendance-admin">
       <div className="attendance-hero">
         <div>
           <h1>Team attendance</h1>
-          <p className="muted">Remote employees only. Manual marks require edit access and a reason.</p>
+          <p className="muted">
+            {mode === 'onsite'
+              ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
+              : 'Remote employees attendance — face check-in. Visible to CEO and people the CEO assigns attendance access.'}
+          </p>
+        </div>
+        <div className="attendance-mode-toggle" role="tablist" aria-label="Attendance type">
+          {canRemote && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'remote'}
+              className={mode === 'remote' ? 'btn btn-primary' : 'btn btn-ghost'}
+              onClick={() => {
+                setStatus('all');
+                setMode('remote');
+              }}
+            >
+              Remote employees attendance
+            </button>
+          )}
+          {canOnsite && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'onsite'}
+              className={mode === 'onsite' ? 'btn btn-primary' : 'btn btn-ghost'}
+              onClick={() => {
+                setStatus('all');
+                setMode('onsite');
+              }}
+            >
+              Onsite employees attendance
+            </button>
+          )}
         </div>
       </div>
 
       <div className="attendance-summary">
-        <div className="attendance-stat"><span>People</span><strong>{summary.employees}</strong></div>
-        <div className="attendance-stat"><span>Verified slots</span><strong>{summary.verified}</strong></div>
-        <div className="attendance-stat"><span>Missed</span><strong>{summary.missed}</strong></div>
-        <div className="attendance-stat"><span>Manual</span><strong>{summary.manual}</strong></div>
+        {mode === 'onsite' ? (
+          <>
+            <div className="attendance-stat"><span>People</span><strong>{summary.employees}</strong></div>
+            <div className="attendance-stat"><span>On time</span><strong>{summary.on_time}</strong></div>
+            <div className="attendance-stat"><span>Late</span><strong>{summary.late}</strong></div>
+            <div className="attendance-stat"><span>Absent / pending</span><strong>{(summary.absent || 0) + (summary.pending || 0)}</strong></div>
+          </>
+        ) : (
+          <>
+            <div className="attendance-stat"><span>People</span><strong>{summary.employees}</strong></div>
+            <div className="attendance-stat"><span>Verified slots</span><strong>{summary.verified}</strong></div>
+            <div className="attendance-stat"><span>Missed</span><strong>{summary.missed}</strong></div>
+            <div className="attendance-stat"><span>Manual</span><strong>{summary.manual}</strong></div>
+          </>
+        )}
       </div>
 
       <form
@@ -128,14 +280,25 @@ export default function AttendanceAdminPage() {
           Status
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="all">All</option>
-            <option value="verified">Verified</option>
-            <option value="missed">Missed</option>
-            <option value="failed">Failed</option>
-            <option value="pending">Pending</option>
-            <option value="present">Present</option>
-            <option value="late">Late</option>
-            <option value="absent">Absent</option>
-            <option value="leave">Leave</option>
+            {mode === 'onsite' ? (
+              <>
+                <option value="on_time">On time</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+                <option value="pending">Pending</option>
+              </>
+            ) : (
+              <>
+                <option value="verified">Verified</option>
+                <option value="missed">Missed</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+                <option value="leave">Leave</option>
+              </>
+            )}
           </select>
         </label>
         <label>
@@ -153,6 +316,82 @@ export default function AttendanceAdminPage() {
 
       {error && <p className="error">{error}</p>}
       {loading && <p className="muted">Loading…</p>}
+
+      {mode === 'onsite' ? (
+        <>
+          {!loading && (onsite?.employees || []).length === 0 && !error && (
+            <p className="muted">No onsite employees in your view yet.</p>
+          )}
+          <div className="attendance-admin-list">
+            {(onsite?.employees || []).map((row) => {
+              const avatar = withAuthDocumentUrl(row.profile_picture_url, row.id);
+              return (
+                <article key={row.id} className="attendance-admin-card">
+                  <header>
+                    {avatar ? (
+                      <img src={avatar} alt="" />
+                    ) : (
+                      <div className="avatar placeholder">{(row.name || '?')[0]}</div>
+                    )}
+                    <div>
+                      <strong>{row.name}</strong>
+                      <p className="muted">
+                        {row.employee_id || 'No ID'}
+                        {row.branch ? ` · ${row.branch}` : ''}
+                        {row.shift ? ` · ${row.shift}` : ''}
+                      </p>
+                    </div>
+                    <span className={`badge ${row.row_status}`}>{onsiteStatusLabel(row.row_status)}</span>
+                  </header>
+                  {row.record ? (
+                    <p className="muted">
+                      {new Date(row.record.checked_in_at).toLocaleTimeString()} ·{' '}
+                      {row.record.method === 'manual' ? 'manual' : 'office check-in'}
+                      {row.record.branch_name ? ` · ${row.record.branch_name}` : ''}
+                      {row.record.status_overridden ? ' · overridden' : ''}
+                    </p>
+                  ) : (
+                    <p className="muted">No check-in yet.</p>
+                  )}
+                  <div className="attendance-admin-actions">
+                    {row.can_manual && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() =>
+                          setOnsiteManual({
+                            user: row,
+                            checked_in_at: toDatetimeLocalValue(),
+                            note: '',
+                          })
+                        }
+                      >
+                        Add check-in
+                      </button>
+                    )}
+                    {row.can_override && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => {
+                          setOverrideRow(row);
+                          setOverrideStatus(row.record?.status || 'on_time');
+                        }}
+                      >
+                        Change status
+                      </button>
+                    )}
+                    {!row.can_manual && !row.can_override && (
+                      <p className="muted">Out of your edit scope</p>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
       {!loading && (data?.employees || []).length === 0 && !error && (
         <p className="muted">No remote employees in your view yet. Attendance is recorded for remote staff only.</p>
       )}
@@ -227,6 +466,8 @@ export default function AttendanceAdminPage() {
           );
         })}
       </div>
+        </>
+      )}
 
       {manual.user && (
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setManual(EMPTY_MANUAL)}>
@@ -333,6 +574,81 @@ export default function AttendanceAdminPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {onsiteManual.user && (
+        <div
+          className="modal-backdrop modal-backdrop-stack"
+          onClick={() => setOnsiteManual(EMPTY_ONSITE_MANUAL)}
+        >
+          <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitOnsiteManual}>
+            <h2>Manual onsite check-in</h2>
+            <p className="muted">
+              {onsiteManual.user.name} — status is calculated from their shift (late/absent thresholds).
+            </p>
+            <label>
+              Check-in time
+              <input
+                type="datetime-local"
+                required
+                value={onsiteManual.checked_in_at}
+                onChange={(e) => setOnsiteManual((m) => ({ ...m, checked_in_at: e.target.value }))}
+              />
+            </label>
+            <label>
+              Note (optional)
+              <textarea
+                rows={3}
+                value={onsiteManual.note}
+                onChange={(e) => setOnsiteManual((m) => ({ ...m, note: e.target.value }))}
+                placeholder="Why the portal check-in failed"
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setOnsiteManual(EMPTY_ONSITE_MANUAL)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save check-in'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {overrideRow && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={() => setOverrideRow(null)}>
+          <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitOverride}>
+            <h2>Change status</h2>
+            <p className="muted">
+              {overrideRow.name} — currently {onsiteStatusLabel(overrideRow.record?.status)}. This is
+              logged in the audit trail.
+            </p>
+            <label>
+              New status
+              <select
+                value={overrideStatus}
+                onChange={(e) => setOverrideStatus(e.target.value)}
+              >
+                <option value="on_time">On time</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+              </select>
+            </label>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setOverrideRow(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save status'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

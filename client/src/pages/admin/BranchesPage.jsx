@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
-import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo } from '../../utils/permissions';
 import './AdminDashboard.css';
+
+function ipsFromBranch(branch) {
+  if (Array.isArray(branch?.ip_addresses) && branch.ip_addresses.length) {
+    return branch.ip_addresses.map((s) => String(s).trim()).filter(Boolean);
+  }
+  return String(branch?.ip_address || '')
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export default function BranchesPage() {
   const navigate = useNavigate();
@@ -16,8 +26,19 @@ export default function BranchesPage() {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editIps, setEditIps] = useState(['']);
+  const [saving, setSaving] = useState(false);
 
   const canManage = hasPermission(permissions, 'branches:create', role);
+  const canEditAllIps =
+    isCeo(role) ||
+    hasPermission(permissions, 'branches:create', role) ||
+    hasPermission(permissions, 'hr:add_employee', role);
+
+  function canEditBranchIp(branch) {
+    return Boolean(canEditAllIps || branch?.can_edit_ip);
+  }
 
   const loadBranches = useCallback(async () => {
     setLoading(true);
@@ -77,12 +98,12 @@ export default function BranchesPage() {
     setError('');
     setSuccess('');
     try {
-      const { data } = await api.post('/api/admin/branches', { name });
+      const { data } = await api.post('/api/admin/branches', { name, ip_addresses: [] });
       setBranches((prev) =>
         [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name)))
       );
       setNewName('');
-      setSuccess(`Branch “${data.name}” created.`);
+      setSuccess(`Branch “${data.name}” created. Add office IPs with Edit IPs.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create branch.');
     } finally {
@@ -103,11 +124,51 @@ export default function BranchesPage() {
     try {
       const { data } = await api.delete(`/api/admin/branches/${branch.id}`);
       setBranches((prev) => prev.filter((b) => b.id !== branch.id));
+      if (editing?.id === branch.id) closeEditor();
       setSuccess(data.message || `Branch “${branch.name}” deleted.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete branch.');
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function openEditor(branch) {
+    if (!canEditBranchIp(branch)) return;
+    const ips = ipsFromBranch(branch);
+    setEditing(branch);
+    setEditIps(ips.length ? ips : ['']);
+    setError('');
+    setSuccess('');
+  }
+
+  function closeEditor() {
+    setEditing(null);
+    setEditIps(['']);
+  }
+
+  async function handleSaveIps(e) {
+    e.preventDefault();
+    if (!editing?.id || !canEditBranchIp(editing)) return;
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const ips = editIps.map((s) => String(s).trim()).filter(Boolean);
+      const { data } = await api.patch(`/api/admin/branches/${editing.id}`, {
+        ip_addresses: ips,
+      });
+      setBranches((prev) => prev.map((b) => (b.id === data.id ? { ...b, ...data } : b)));
+      closeEditor();
+      setSuccess(
+        ips.length
+          ? `Saved ${ips.length} office IP${ips.length === 1 ? '' : 's'} for “${data.name}”.`
+          : `Cleared office IPs for “${data.name}”.`
+      );
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save office IPs.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -123,12 +184,13 @@ export default function BranchesPage() {
   }
 
   return (
-    <div className="admin-page page-panel">
+    <div className="admin-page page-panel branches-page">
       <div className="admin-toolbar" style={{ marginTop: 0 }}>
         <div>
           <h1>Manage Branches</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Office / branch catalog used on employee records and admin role assignment
+            Offices used on employee records. For onsite check-in, add each office’s public IP
+            (whatismyip on that Wi‑Fi) — not 192.168… router addresses.
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBranches}>
@@ -137,7 +199,7 @@ export default function BranchesPage() {
       </div>
 
       {canManage && (
-        <form className="form" onSubmit={handleCreate} style={{ maxWidth: 420, marginBottom: '1.25rem' }}>
+        <form className="form branches-add-form" onSubmit={handleCreate}>
           <label>
             New branch name
             <input
@@ -155,7 +217,7 @@ export default function BranchesPage() {
       )}
 
       {!canManage && (
-        <p className="muted">You can view branches but need branches:create to add or delete them.</p>
+        <p className="muted">You can view branches. CEO / HR can add offices and set IPs.</p>
       )}
 
       {error && <p className="error">{error}</p>}
@@ -178,33 +240,126 @@ export default function BranchesPage() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Office IPs</th>
                 <th>Created</th>
-                {canManage && <th />}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {branches.map((b) => (
-                <tr key={b.id}>
-                  <td className="cell-name">{b.name}</td>
-                  <td>
-                    {b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}
-                  </td>
-                  {canManage && (
+              {branches.map((b) => {
+                const ips = ipsFromBranch(b);
+                return (
+                  <tr key={b.id}>
+                    <td className="cell-name">{b.name}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        disabled={deletingId === b.id || creating}
-                        onClick={() => handleDelete(b)}
-                      >
-                        {deletingId === b.id ? 'Deleting…' : 'Delete'}
-                      </button>
+                      {canEditBranchIp(b) ? (
+                        ips.length ? (
+                          <div className="branch-ip-chips">
+                            {ips.map((ip) => (
+                              <code key={ip} className="branch-ip-chip" title={ip}>
+                                {ip}
+                              </code>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="muted">Not set</span>
+                        )
+                      ) : b.ip_configured ? (
+                        <span className="muted">Configured</span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="branches-date">
+                      {b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}
+                    </td>
+                    <td className="branches-actions">
+                      {canEditBranchIp(b) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={saving || creating}
+                          onClick={() => openEditor(b)}
+                        >
+                          Edit IPs
+                        </button>
+                      )}
+                      {canManage && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={deletingId === b.id || creating}
+                          onClick={() => handleDelete(b)}
+                        >
+                          {deletingId === b.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editing && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={closeEditor}>
+          <form className="modal-card branches-ip-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSaveIps}>
+            <h2>Office IPs</h2>
+            <p className="muted">
+              {editing.name} — add every public IP this office uses. Check-in matches any of them.
+            </p>
+            <div className="branches-ip-list">
+              {(editIps.length ? editIps : ['']).map((ip, idx) => (
+                <div key={`${editing.id}-edit-${idx}`} className="branch-ip-row">
+                  <input
+                    type="text"
+                    value={ip}
+                    onChange={(e) =>
+                      setEditIps((prev) => {
+                        const next = [...prev];
+                        next[idx] = e.target.value;
+                        return next;
+                      })
+                    }
+                    placeholder="e.g. 203.0.113.10"
+                    autoComplete="off"
+                    disabled={saving}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={saving || editIps.length <= 1}
+                    onClick={() =>
+                      setEditIps((prev) => {
+                        const next = prev.filter((_, i) => i !== idx);
+                        return next.length ? next : [''];
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={saving || editIps.length >= 20}
+              onClick={() => setEditIps((prev) => [...prev, ''])}
+            >
+              Add another IP
+            </button>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" disabled={saving} onClick={closeEditor}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save IPs'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

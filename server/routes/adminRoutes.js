@@ -34,8 +34,20 @@ const { listTeams, createTeam, deleteTeam } = require('../controllers/teamsContr
 const {
   listBranches,
   createBranch,
+  updateBranch,
   deleteBranch,
 } = require('../controllers/branchesController');
+const {
+  listShifts,
+  createShift,
+  updateShift,
+  deleteShift,
+} = require('../controllers/shiftsController');
+const {
+  adminListOnsite,
+  adminManualOnsite,
+  adminOverrideOnsite,
+} = require('../controllers/onsiteAttendanceController');
 const {
   listMessageRecipients,
   sendAdminMessage,
@@ -115,6 +127,33 @@ router.delete(
   requireRole('admin'),
   requirePermission('branches:create'),
   deleteBranch
+);
+router.patch(
+  '/branches/:id',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('branches:create', 'hr:add_employee', 'attendance:edit'),
+  updateBranch
+);
+
+// Shift catalog (HR / CEO)
+router.get('/shifts', requireRole('admin'), listShifts);
+router.post(
+  '/shifts',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  createShift
+);
+router.put(
+  '/shifts/:id',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  updateShift
+);
+router.delete(
+  '/shifts/:id',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  deleteShift
 );
 
 // CEO role-assignment helpers (register before /employees/:id)
@@ -207,36 +246,49 @@ router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
 router.get(
   '/attendance',
   requireRole('admin'),
-  requireCeoOrAnyPermission(
-    'attendance:view',
-    'attendance:edit',
-    'employees:view',
-    'employees:edit'
-  ),
+  requireCeoOrAnyPermission('attendance:view', 'attendance:edit'),
   adminOverview
 );
 router.get(
   '/attendance/:userId/days',
   requireRole('admin'),
-  requireCeoOrAnyPermission(
-    'attendance:view',
-    'attendance:edit',
-    'employees:view',
-    'employees:edit'
-  ),
+  requireCeoOrAnyPermission('attendance:view', 'attendance:edit'),
   adminEmployeeDays
 );
 router.put(
   '/attendance/:userId/hours',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:edit', 'employees:edit'),
+  requirePermission('attendance:edit'),
   adminSetHours
 );
 router.post(
   '/attendance/:userId/manual',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:edit', 'employees:edit'),
+  requirePermission('attendance:edit'),
   adminManualMark
+);
+
+router.get(
+  '/onsite-attendance',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'hr:add_employee'
+  ),
+  adminListOnsite
+);
+router.post(
+  '/onsite-attendance',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('attendance:edit', 'hr:add_employee'),
+  adminManualOnsite
+);
+router.patch(
+  '/onsite-attendance/:id',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('attendance:edit', 'hr:add_employee'),
+  adminOverrideOnsite
 );
 
 // Admin → employee messaging

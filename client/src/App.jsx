@@ -21,6 +21,7 @@ const DeactivatedEmployeesPage = lazy(() => import('./pages/admin/DeactivatedEmp
 const RolesPage = lazy(() => import('./pages/admin/RolesPage'));
 const TeamsPage = lazy(() => import('./pages/admin/TeamsPage'));
 const BranchesPage = lazy(() => import('./pages/admin/BranchesPage'));
+const ShiftsPage = lazy(() => import('./pages/admin/ShiftsPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/admin/NotificationSettingsPage'));
 const LoginLogs = lazy(() => import('./pages/LoginLogs'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
@@ -65,6 +66,7 @@ function App() {
               <Route path="/admin/roles" element={<RolesPage />} />
               <Route path="/admin/teams" element={<TeamsPage />} />
               <Route path="/admin/branches" element={<BranchesPage />} />
+              <Route path="/admin/shifts" element={<ShiftsPage />} />
               <Route path="/admin/notifications" element={<NotificationSettingsPage />} />
               <Route path="/admin/login-logs" element={<LoginLogs />} />
               <Route path="/settings" element={<SettingsPage />} />

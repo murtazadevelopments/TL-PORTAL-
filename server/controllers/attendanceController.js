@@ -431,13 +431,12 @@ async function resolveAttendanceScope(req, permissionKey) {
   if (isCeoRole(req.user?.role)) return { type: 'all' };
   const access = await loadAdminPermissionAccess(req.user.id);
   const scopes = access.scopes || {};
-  const isEdit = permissionKey === 'attendance:edit' || permissionKey === 'employees:edit';
-  const picked = isEdit
-    ? scopes['attendance:edit'] || scopes['employees:edit']
-    : scopes['attendance:view'] ||
-      scopes['attendance:edit'] ||
-      scopes['employees:view'] ||
-      scopes['employees:edit'];
+  const keys = access.permissions || [];
+  if (permissionKey === 'attendance:edit') {
+    if (!keys.includes('attendance:edit')) return { type: 'branch', values: [] };
+    return normalizeScope(scopes['attendance:edit']);
+  }
+  const picked = scopes['attendance:view'] || scopes['attendance:edit'];
   return normalizeScope(picked);
 }
 

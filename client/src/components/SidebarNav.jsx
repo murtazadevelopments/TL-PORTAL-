@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
-import { canAccessAdmin, hasPermission, isCeo, isTeamLeader } from '../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance } from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
@@ -11,7 +11,7 @@ export function buildSidebarGroups(
   { tlDashboardAccess = false, unreadMessages = 0, employmentType = null } = {}
 ) {
   const dashboardItems = [{ to: '/dashboard', label: 'Overview', end: true }];
-  if (employmentType === 'remote') {
+  if (employmentType === 'remote' || employmentType === 'onsite') {
     dashboardItems.push({ to: '/attendance', label: 'My Attendance' });
   }
 
@@ -59,13 +59,7 @@ export function buildSidebarGroups(
         }
       );
     }
-    if (
-      isCeo(role) ||
-      hasPermission(permissions, 'employees:view', role) ||
-      hasPermission(permissions, 'employees:edit', role) ||
-      hasPermission(permissions, 'attendance:view', role) ||
-      hasPermission(permissions, 'attendance:edit', role)
-    ) {
+    if (canViewTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance' });
     }
     if (
@@ -87,6 +81,9 @@ export function buildSidebarGroups(
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
     adminItems.push({ to: '/admin/branches', label: 'Manage Branches' });
+    if (hasPermission(permissions, 'hr:add_employee', role)) {
+      adminItems.push({ to: '/admin/shifts', label: 'Manage Shifts' });
+    }
     if (hasPermission(permissions, 'messages:send', role)) {
       adminItems.push({ to: '/admin/messages', label: 'Compose Message' });
     }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
-import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import {
   loadFaceModels,
   trackFace,
@@ -20,7 +20,7 @@ import {
   LIVENESS_MS,
 } from '../../lib/faceAttendance';
 import { hoursRangeLabel, pickHourFromPayload } from '../../utils/clockHours';
-import './AttendancePage.css';
+import OnsiteAttendancePage from './OnsiteAttendancePage';
 
 function friendlyError(err) {
   const raw = err?.response?.data?.message || err?.message || '';
@@ -58,12 +58,9 @@ export default function AttendancePage() {
   const [canCheckIn, setCanCheckIn] = useState(false);
 
   const isRemote = user?.employment_type === 'remote';
+  const isOnsite = user?.employment_type === 'onsite';
   const canSeeAdmin =
-    canAccessAdmin(user?.role) &&
-    (hasPermission(permissions, 'employees:view', user?.role) ||
-      hasPermission(permissions, 'employees:edit', user?.role) ||
-      hasPermission(permissions, 'attendance:view', user?.role) ||
-      hasPermission(permissions, 'attendance:edit', user?.role));
+    canAccessAdmin(user?.role) && canViewTeamAttendance(user?.role, permissions);
 
   const load = useCallback(async () => {
     const [{ data: en }, { data: att }] = await Promise.all([
@@ -335,6 +332,10 @@ export default function AttendancePage() {
       setPhase('idle');
       setProgress(0);
     }
+  }
+
+  if (isOnsite) {
+    return <OnsiteAttendancePage />;
   }
 
   return (

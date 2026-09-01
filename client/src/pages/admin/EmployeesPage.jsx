@@ -12,7 +12,7 @@ import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import './AdminDashboard.css';
 
-const SHIFT_OPTIONS = ['Evening', 'Night'];
+const FALLBACK_SHIFT_OPTIONS = ['Evening', 'Night'];
 
 const LAST_JOB_OPTIONS = [
   { value: 'still_employed', label: 'Still employed elsewhere' },
@@ -330,6 +330,7 @@ function EmployeesPage() {
   const [teamError, setTeamError] = useState('');
 
   const [branches, setBranches] = useState([]);
+  const [shifts, setShifts] = useState([]);
   const [showAddBranch, setShowAddBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [creatingBranch, setCreatingBranch] = useState(false);
@@ -498,6 +499,15 @@ function EmployeesPage() {
     }
   }
 
+  async function loadShifts() {
+    try {
+      const { data } = await api.get('/api/admin/shifts');
+      setShifts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to load shifts:', err.response?.data?.message || err.message);
+    }
+  }
+
   useEffect(() => {
     if (!role) return;
     if (
@@ -507,6 +517,7 @@ function EmployeesPage() {
     ) {
       loadTeams();
       loadBranches();
+      loadShifts();
     }
   }, [role, permissions]);
 
@@ -661,6 +672,18 @@ function EmployeesPage() {
       a.localeCompare(b)
     );
   }, [employees, branches]);
+
+  const shiftOptions = useMemo(() => {
+    const fromCatalog = shifts.map((s) => String(s.name).trim()).filter(Boolean);
+    const fromEmployees = employees
+      .map((e) => e.shift)
+      .filter((d) => d != null && String(d).trim() !== '')
+      .map((d) => String(d).trim());
+    const fallback = fromCatalog.length ? [] : FALLBACK_SHIFT_OPTIONS;
+    return [...new Set([...fromCatalog, ...fromEmployees, ...fallback])].sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [employees, shifts]);
 
   const tabCounts = useMemo(() => {
     const active = portalEmployees.filter((e) => e.status === 'active').length;
@@ -1287,7 +1310,7 @@ function EmployeesPage() {
             aria-label="Filter by shift"
           >
             <option value="all">Shift: All</option>
-            {SHIFT_OPTIONS.map((opt) => (
+            {shiftOptions.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
               </option>
@@ -2525,7 +2548,7 @@ function EmployeesPage() {
                     Shift
                     <select name="shift" value={editForm.shift} onChange={handleEditChange}>
                       <option value="">Select shift</option>
-                      {SHIFT_OPTIONS.map((opt) => (
+                      {shiftOptions.map((opt) => (
                         <option key={opt} value={opt}>
                           {opt}
                         </option>
@@ -2789,7 +2812,7 @@ function EmployeesPage() {
                   Shift <span className="req-star" aria-hidden="true">*</span>
                   <select name="shift" value={addForm.shift} onChange={handleAddChange} required>
                     <option value="">Select shift</option>
-                    {SHIFT_OPTIONS.map((opt) => (
+                    {shiftOptions.map((opt) => (
                       <option key={opt} value={opt}>
                         {opt}
                       </option>

@@ -25,19 +25,19 @@ const PERMISSIONS_CATALOG = [
     key: 'hr:add_employee',
     label: 'Add employees (HR)',
     description:
-      'For HR: create portal employees and subordinate staff records. Other admins cannot add employees.',
+      'For HR: create portal employees and subordinate staff records, manage shifts, and see onsite employees attendance. Other admins cannot add employees.',
   },
   {
     key: 'attendance:view',
     label: 'View attendance',
     description:
-      'See remote employee attendance records, hours, and daily history (scope: all, a branch, or a team)',
+      'See remote and onsite attendance for the assigned scope (all, a branch, or a team). Remote attendance is CEO + this grant only; onsite is also visible to HR.',
   },
   {
     key: 'attendance:edit',
     label: 'Edit attendance',
     description:
-      'Set working hours, mark present/late/absent/leave, and override hourly check-ins (scope: all, branch, or team)',
+      'Mark and override attendance for the assigned scope. Remote records are CEO + this grant; onsite also includes HR.',
   },
   {
     key: 'employees:deactivate',
@@ -69,7 +69,8 @@ const PERMISSIONS_CATALOG = [
   {
     key: 'branches:create',
     label: 'Manage branches',
-    description: 'Add or delete offices/branches used in employee and admin assignment dropdowns',
+    description:
+      'Add or delete offices/branches and set one or more public office IPs used for onsite check-in (CEO always can; HR with this grant can too)',
   },
   {
     key: 'accounts:unlock',

@@ -238,6 +238,21 @@
   background: rgba(126, 203, 255, 0.1);
 }
 
+.attendance-day.on_time {
+  background: rgba(90, 210, 160, 0.1);
+}
+
+.onsite-checkin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+}
+
 .attendance-day-date {
   font-weight: 700;
 }

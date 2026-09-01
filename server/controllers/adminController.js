@@ -33,6 +33,7 @@ const {
 } = require('../utils/employmentType');
 const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const { normalizeWorkHours } = require('../utils/workHours');
+const { findShiftName } = require('./shiftsController');
 const {
   ensureStaffKindColumn,
   ensureLowerStaffExtraColumns,
@@ -652,6 +653,12 @@ async function createEmployee(req, res) {
         message: 'Employee ID, department, designation, branch, and shift are required.',
       });
     }
+    const catalogShift = await findShiftName(shift);
+    if (!catalogShift) {
+      return res.status(400).json({
+        message: 'Shift must match a shift in Manage Shifts.',
+      });
+    }
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
     }
@@ -714,7 +721,7 @@ async function createEmployee(req, res) {
         designation,
         status,
         branch,
-        shift,
+        catalogShift,
         null,
         String(body.education || '').trim() || null,
         lastJobStatus,
@@ -856,6 +863,14 @@ async function updateEmployee(req, res) {
     if (!next.employment_type) {
       return res.status(400).json({ message: 'employment_type must be "onsite" or "remote".' });
     }
+
+    const catalogShift = await findShiftName(next.shift);
+    if (!catalogShift) {
+      return res.status(400).json({
+        message: 'Shift must match a shift in Manage Shifts.',
+      });
+    }
+    next.shift = catalogShift;
 
     const { rows } = await pool.query(
       `

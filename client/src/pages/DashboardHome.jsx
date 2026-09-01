@@ -153,7 +153,7 @@ export default function DashboardHome() {
                 <em>Name, bank, contacts</em>
               </span>
             </Link>
-            {user.employment_type === 'remote' ? (
+            {user.employment_type === 'remote' || user.employment_type === 'onsite' ? (
               <Link to="/attendance" className="dash-shortcut">
                 <span className="dash-shortcut-icon" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -168,7 +168,11 @@ export default function DashboardHome() {
                 </span>
                 <span className="dash-shortcut-copy">
                   <strong>Attendance</strong>
-                  <em>Check in and hours</em>
+                  <em>
+                    {user.employment_type === 'onsite'
+                      ? 'Office check-in'
+                      : 'Check in and hours'}
+                  </em>
                 </span>
               </Link>
             ) : null}
