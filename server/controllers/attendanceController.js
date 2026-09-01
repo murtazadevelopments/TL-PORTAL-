@@ -436,7 +436,7 @@ async function resolveAttendanceScope(req, permissionKey) {
     if (!keys.includes('attendance:edit')) return { type: 'branch', values: [] };
     return normalizeScope(scopes['attendance:edit']);
   }
-  const picked = scopes['attendance:view'] || scopes['attendance:edit'];
+  const picked = scopes['attendance:view'] || scopes['attendance:edit'] || scopes['employees:view'] || scopes['employees:edit'];
   return normalizeScope(picked);
 }
 
@@ -487,8 +487,9 @@ async function adminOverview(req, res) {
 
     const logsByUser = new Map();
     for (const log of logs) {
-      if (!logsByUser.has(log.user_id)) logsByUser.set(log.user_id, []);
-      logsByUser.get(log.user_id).push(log);
+      const uid = String(log.user_id);
+      if (!logsByUser.has(uid)) logsByUser.set(uid, []);
+      logsByUser.get(uid).push(log);
     }
 
     const current = currentHourKey();
@@ -498,7 +499,7 @@ async function adminOverview(req, res) {
           [dateKey, ids]
         )
       : { rows: [] };
-    const dayByUser = new Map(dayRows.map((d) => [d.user_id, d.status]));
+    const dayByUser = new Map(dayRows.map((d) => [String(d.user_id), d.status]));
     let verified = 0;
     let missed = 0;
     let manual = 0;
@@ -506,7 +507,7 @@ async function adminOverview(req, res) {
 
     const employees = people
       .map((person) => {
-        const personLogs = logsByUser.get(person.id) || [];
+        const personLogs = logsByUser.get(String(person.id)) || [];
         const latest = personLogs[0] || null;
         const slots = slotsForUser(dateKey, person);
         const slotStates = slots.map((slot) => {
@@ -532,7 +533,7 @@ async function adminOverview(req, res) {
         failed += failedCount;
         manual += manualCount;
 
-        let rowStatus = dayByUser.get(person.id) || 'pending';
+        let rowStatus = dayByUser.get(String(person.id)) || 'pending';
         if (rowStatus === 'pending') {
           if (missedCount > 0 && verifiedCount === 0) rowStatus = 'missed';
           else if (failedCount > 0 && verifiedCount === 0) rowStatus = 'failed';
@@ -549,7 +550,9 @@ async function adminOverview(req, res) {
           department: person.department,
           shift: person.shift,
           employment_type: person.employment_type,
-          profile_picture_url: person.profile_picture_url,
+          profile_picture_url: person.profile_picture_url && !/^https?:\/\//i.test(String(person.profile_picture_url))
+            ? `/api/documents/${person.id}/profile`
+            : person.profile_picture_url,
           work_start_hour: hours.start,
           work_end_hour: hours.end,
           work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,

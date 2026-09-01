@@ -246,13 +246,23 @@ router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
 router.get(
   '/attendance',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:view', 'attendance:edit'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit'
+  ),
   adminOverview
 );
 router.get(
   '/attendance/:userId/days',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:view', 'attendance:edit'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit'
+  ),
   adminEmployeeDays
 );
 router.put(
@@ -274,6 +284,8 @@ router.get(
   requireCeoOrAnyPermission(
     'attendance:view',
     'attendance:edit',
+    'employees:view',
+    'employees:edit',
     'hr:add_employee'
   ),
   adminListOnsite
@@ -281,13 +293,13 @@ router.get(
 router.post(
   '/onsite-attendance',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:edit', 'hr:add_employee'),
+  requireCeoOrAnyPermission('attendance:edit', 'employees:edit', 'hr:add_employee'),
   adminManualOnsite
 );
 router.patch(
   '/onsite-attendance/:id',
   requireRole('admin'),
-  requireCeoOrAnyPermission('attendance:edit', 'hr:add_employee'),
+  requireCeoOrAnyPermission('attendance:edit', 'employees:edit', 'hr:add_employee'),
   adminOverrideOnsite
 );
 

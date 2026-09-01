@@ -12,6 +12,19 @@ function statusLabel(status) {
   return status || '—';
 }
 
+function formatKarachiTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(d);
+}
+
 export default function OnsiteAttendancePage() {
   const { user, permissions } = useAuthUser();
   const [data, setData] = useState(null);
@@ -127,7 +140,7 @@ export default function OnsiteAttendancePage() {
           <p>
             Checked in at{' '}
             <strong>
-              {today.checked_in_at ? new Date(today.checked_in_at).toLocaleTimeString() : '—'}
+              {formatKarachiTime(today.checked_in_at)}
             </strong>{' '}
             · {statusLabel(today.status)}
             {today.branch_name ? ` · ${today.branch_name}` : ''}

@@ -14,9 +14,40 @@ const EMPTY_MANUAL = { user: null, hour_key: '', status: 'verified', note: '' };
 const EMPTY_HOURS = { user: null, work_start_hour: 9, work_end_hour: 18 };
 const EMPTY_ONSITE_MANUAL = { user: null, checked_in_at: '', note: '' };
 
+function karachiDateKey(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Karachi',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 function toDatetimeLocalValue(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function datetimeLocalForDay(dateKey, source = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  if (source instanceof Date && Number.isFinite(source.getTime())) {
+    const existingDay = karachiDateKey(source);
+    if (existingDay === dateKey) return toDatetimeLocalValue(source);
+  }
+  return `${dateKey}T${pad(source.getHours())}:${pad(source.getMinutes())}`;
+}
+
+function formatKarachiTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(d);
 }
 
 function onsiteStatusLabel(status) {
@@ -27,13 +58,30 @@ function onsiteStatusLabel(status) {
   return status || '—';
 }
 
+function attendancePhotoUrl(row) {
+  if (!row?.profile_picture_url) return null;
+  return (
+    withAuthDocumentUrl(row.profile_picture_url, row.updated_at || row.id) ||
+    withAuthDocumentUrl(`/api/documents/${row.id}/profile`, row.updated_at || row.id)
+  );
+}
+
+function AttendancePhoto({ row }) {
+  const [failed, setFailed] = useState(false);
+  const src = attendancePhotoUrl(row);
+  if (!src || failed) {
+    return <div className="avatar placeholder">{(row.name || '?')[0]}</div>;
+  }
+  return <img src={src} alt="" onError={() => setFailed(true)} />;
+}
+
 export default function AttendanceAdminPage() {
   const { user, permissions, loading: authLoading } = useAuthUser();
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
 
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => karachiDateKey());
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [data, setData] = useState(null);
@@ -43,25 +91,26 @@ export default function AttendanceAdminPage() {
   const [hoursEdit, setHoursEdit] = useState(EMPTY_HOURS);
   const [history, setHistory] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState('remote');
+  const [mode, setMode] = useState('onsite');
   const [onsite, setOnsite] = useState(null);
   const [onsiteManual, setOnsiteManual] = useState(EMPTY_ONSITE_MANUAL);
   const [overrideRow, setOverrideRow] = useState(null);
   const [overrideStatus, setOverrideStatus] = useState('on_time');
 
-  async function load() {
+  async function load(dateOverride) {
     setLoading(true);
     setError('');
+    const dateKey = dateOverride || date;
     try {
       if (mode === 'onsite') {
         const { data: payload } = await api.get('/api/admin/onsite-attendance', {
-          params: { date, search, status },
+          params: { date: dateKey, search, status },
         });
         setOnsite(payload);
         setData(null);
       } else {
         const { data: payload } = await api.get('/api/admin/attendance', {
-          params: { date, search, status },
+          params: { date: dateKey, search, status },
         });
         setData(payload);
         setOnsite(null);
@@ -75,10 +124,10 @@ export default function AttendanceAdminPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (mode === 'remote' && canRemote) return;
     if (mode === 'onsite' && canOnsite) return;
-    if (canRemote) setMode('remote');
-    else if (canOnsite) setMode('onsite');
+    if (mode === 'remote' && canRemote) return;
+    if (canOnsite) setMode('onsite');
+    else if (canRemote) setMode('remote');
   }, [authLoading, canRemote, canOnsite, mode]);
 
   useEffect(() => {
@@ -152,16 +201,23 @@ export default function AttendanceAdminPage() {
   async function submitOnsiteManual(e) {
     e.preventDefault();
     if (!onsiteManual.user) return;
+    const when = new Date(onsiteManual.checked_in_at);
+    if (!Number.isFinite(when.getTime())) {
+      setError('Enter a valid check-in time.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      await api.post('/api/admin/onsite-attendance', {
+      const { data: payload } = await api.post('/api/admin/onsite-attendance', {
         user_id: onsiteManual.user.id,
-        checked_in_at: new Date(onsiteManual.checked_in_at).toISOString(),
+        checked_in_at: when.toISOString(),
         note: onsiteManual.note,
       });
       setOnsiteManual(EMPTY_ONSITE_MANUAL);
-      await load();
+      const savedDate = String(payload?.record?.work_date || '').slice(0, 10);
+      if (savedDate) setDate(savedDate);
+      await load(savedDate || date);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save onsite attendance.');
     } finally {
@@ -324,15 +380,10 @@ export default function AttendanceAdminPage() {
           )}
           <div className="attendance-admin-list">
             {(onsite?.employees || []).map((row) => {
-              const avatar = withAuthDocumentUrl(row.profile_picture_url, row.id);
               return (
                 <article key={row.id} className="attendance-admin-card">
                   <header>
-                    {avatar ? (
-                      <img src={avatar} alt="" />
-                    ) : (
-                      <div className="avatar placeholder">{(row.name || '?')[0]}</div>
-                    )}
+                    <AttendancePhoto row={row} />
                     <div>
                       <strong>{row.name}</strong>
                       <p className="muted">
@@ -345,7 +396,7 @@ export default function AttendanceAdminPage() {
                   </header>
                   {row.record ? (
                     <p className="muted">
-                      {new Date(row.record.checked_in_at).toLocaleTimeString()} ·{' '}
+                      {formatKarachiTime(row.record.checked_in_at)} ·{' '}
                       {row.record.method === 'manual' ? 'manual' : 'office check-in'}
                       {row.record.branch_name ? ` · ${row.record.branch_name}` : ''}
                       {row.record.status_overridden ? ' · overridden' : ''}
@@ -361,12 +412,14 @@ export default function AttendanceAdminPage() {
                         onClick={() =>
                           setOnsiteManual({
                             user: row,
-                            checked_in_at: toDatetimeLocalValue(),
-                            note: '',
+                            checked_in_at: row.record?.checked_in_at
+                              ? toDatetimeLocalValue(new Date(row.record.checked_in_at))
+                              : datetimeLocalForDay(date),
+                            note: row.record?.note || '',
                           })
                         }
                       >
-                        Add check-in
+                        Add / update check-in
                       </button>
                     )}
                     {row.can_override && (
@@ -398,11 +451,10 @@ export default function AttendanceAdminPage() {
 
       <div className="attendance-admin-list">
         {(data?.employees || []).map((row) => {
-          const avatar = withAuthDocumentUrl(row.profile_picture_url, row.id);
           return (
             <article key={row.id} className="attendance-admin-card">
               <header>
-                {avatar ? <img src={avatar} alt="" /> : <div className="avatar placeholder">{(row.name || '?')[0]}</div>}
+                <AttendancePhoto row={row} />
                 <div>
                   <strong>{row.name}</strong>
                   <p className="muted">
@@ -587,6 +639,7 @@ export default function AttendanceAdminPage() {
             <p className="muted">
               {onsiteManual.user.name} — status is calculated from their shift (late/absent thresholds).
             </p>
+            {error && <p className="error">{error}</p>}
             <label>
               Check-in time
               <input

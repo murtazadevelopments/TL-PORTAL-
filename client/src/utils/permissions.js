@@ -55,17 +55,25 @@ export function hasCeoAssignedAttendance(permissions, role) {
   );
 }
 
-/** Remote team attendance: CEO, or an admin the CEO granted attendance view/edit. */
+/** Remote team attendance: CEO, assigned attendance, or employee directory access. */
 export function canViewRemoteTeamAttendance(role, permissions) {
   if (isCeo(role)) return true;
-  return hasCeoAssignedAttendance(permissions, role);
+  if (hasCeoAssignedAttendance(permissions, role)) return true;
+  return (
+    hasPermission(permissions, 'employees:view', role) ||
+    hasPermission(permissions, 'employees:edit', role)
+  );
 }
 
-/** Onsite team attendance: CEO, HR (add employees), or CEO-assigned attendance. */
+/** Onsite team attendance: CEO, HR, assigned attendance, or employee directory access. */
 export function canViewOnsiteTeamAttendance(role, permissions) {
   if (isCeo(role)) return true;
   if (hasPermission(permissions, 'hr:add_employee', role)) return true;
-  return hasCeoAssignedAttendance(permissions, role);
+  if (hasCeoAssignedAttendance(permissions, role)) return true;
+  return (
+    hasPermission(permissions, 'employees:view', role) ||
+    hasPermission(permissions, 'employees:edit', role)
+  );
 }
 
 export function canViewTeamAttendance(role, permissions) {

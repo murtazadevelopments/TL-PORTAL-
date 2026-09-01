@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
-const { statusForCheckIn, parseCheckInAt } = require('../utils/onsiteShiftStatus');
+const { statusForCheckIn, parseCheckInAt, pgDateKey } = require('../utils/onsiteShiftStatus');
 const { requestMatchesConfiguredIp, parseOfficeIps } = require('../utils/requestMeta');
 const { writeAuditLog } = require('../utils/auditLog');
 const { zonedParts } = require('../utils/attendanceWindows');
@@ -11,6 +11,7 @@ const {
 } = require('../utils/employeeScope');
 const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
 const { getShiftByName } = require('./shiftsController');
+const { withProfileApiUrl } = require('../utils/storageUrls');
 
 const ONSITE_SELECT = `
   id, user_id, work_date, checked_in_at, status, method,
@@ -20,14 +21,10 @@ const ONSITE_SELECT = `
 
 function publicRow(row) {
   if (!row) return null;
-  const workDate =
-    row.work_date instanceof Date
-      ? row.work_date.toISOString().slice(0, 10)
-      : String(row.work_date).slice(0, 10);
   return {
     id: row.id,
     user_id: row.user_id,
-    work_date: workDate,
+    work_date: pgDateKey(row.work_date),
     checked_in_at: row.checked_in_at,
     status: row.status,
     method: row.method,
@@ -42,14 +39,47 @@ function publicRow(row) {
   };
 }
 
+function liveStatus(row, shift) {
+  if (!row || row.status_overridden || !shift) return row;
+  try {
+    const calc = statusForCheckIn(new Date(row.checked_in_at), shift);
+    return { ...row, status: calc.status };
+  } catch {
+    return row;
+  }
+}
+
+async function persistLiveStatus(row, shift) {
+  try {
+    const next = liveStatus(row, shift);
+    if (next && row && next.status !== row.status && row.id) {
+      await pool.query(
+        `
+          UPDATE onsite_attendance
+          SET status = $2, updated_at = NOW()
+          WHERE id = $1 AND COALESCE(status_overridden, false) = false
+        `,
+        [row.id, next.status]
+      );
+    }
+    return next;
+  } catch (err) {
+    console.error('persistLiveStatus error:', err);
+    return liveStatus(row, shift);
+  }
+}
+
 async function resolveOnsiteEditScope(req) {
   if (isCeoRole(req.user?.role)) return { type: 'all' };
   const access = await loadAdminPermissionAccess(req.user.id);
   if ((access.permissions || []).includes('hr:add_employee')) return { type: 'all' };
-  if (!(access.permissions || []).includes('attendance:edit')) {
-    return { type: 'branch', values: [] };
+  if ((access.permissions || []).includes('attendance:edit')) {
+    return normalizeScope(access.scopes['attendance:edit']);
   }
-  return normalizeScope(access.scopes['attendance:edit']);
+  if ((access.permissions || []).includes('employees:edit')) {
+    return normalizeScope(access.scopes['employees:edit']);
+  }
+  return { type: 'branch', values: [] };
 }
 
 async function resolveOnsiteViewScope(req) {
@@ -57,7 +87,12 @@ async function resolveOnsiteViewScope(req) {
   const access = await loadAdminPermissionAccess(req.user.id);
   if ((access.permissions || []).includes('hr:add_employee')) return { type: 'all' };
   const scopes = access.scopes || {};
-  return normalizeScope(scopes['attendance:view'] || scopes['attendance:edit']);
+  return normalizeScope(
+    scopes['attendance:view'] ||
+      scopes['attendance:edit'] ||
+      scopes['employees:view'] ||
+      scopes['employees:edit']
+  );
 }
 
 async function loadOnsiteEmployee(userId) {
@@ -89,6 +124,7 @@ async function insertOnsiteRecord({
   method,
   markedBy,
   note,
+  upsert = false,
 }) {
   const shift = await getShiftByName(user.shift);
   if (!shift) {
@@ -109,6 +145,58 @@ async function insertOnsiteRecord({
   }
 
   const calc = statusForCheckIn(checkedInAt, shift);
+  const params = [
+    user.id,
+    calc.workDate,
+    checkedInAt,
+    calc.status,
+    method,
+    branch,
+    shift.name,
+    markedBy ?? null,
+    note || null,
+  ];
+
+  if (upsert) {
+    const { rows: existing } = await pool.query(
+      `
+        SELECT id FROM onsite_attendance
+        WHERE user_id = $1 AND work_date = $2::date
+        LIMIT 1
+      `,
+      [user.id, calc.workDate]
+    );
+    if (existing[0]) {
+      const { rows } = await pool.query(
+        `
+          UPDATE onsite_attendance
+          SET checked_in_at = $2,
+              status = $3,
+              method = $4,
+              branch_name = $5,
+              shift_name = $6,
+              marked_by = $7,
+              note = COALESCE($8, note),
+              status_overridden = false,
+              previous_status = status,
+              updated_at = NOW()
+          WHERE id = $1
+          RETURNING ${ONSITE_SELECT}
+        `,
+        [
+          existing[0].id,
+          checkedInAt,
+          calc.status,
+          method,
+          branch,
+          shift.name,
+          markedBy ?? null,
+          note || null,
+        ]
+      );
+      return { row: rows[0], shift, calc };
+    }
+  }
 
   const { rows } = await pool.query(
     `
@@ -119,17 +207,7 @@ async function insertOnsiteRecord({
       VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9)
       RETURNING ${ONSITE_SELECT}
     `,
-    [
-      user.id,
-      calc.workDate,
-      checkedInAt,
-      calc.status,
-      method,
-      branch,
-      shift.name,
-      markedBy ?? null,
-      note || null,
-    ]
+    params
   );
   return { row: rows[0], shift, calc };
 }
@@ -144,7 +222,7 @@ async function onsiteCheckIn(req, res) {
     if (!user || user.is_active === false) {
       return res.status(403).json({ message: 'Account is not active.' });
     }
-    if (String(user.employment_type || '').toLowerCase() !== 'onsite') {
+    if (String(user.employment_type || 'onsite').trim().toLowerCase() !== 'onsite') {
       return res.status(403).json({
         message: 'Office check-in is only for onsite employees.',
       });
@@ -217,16 +295,27 @@ async function getMyOnsiteAttendance(req, res) {
       [req.user.id, month]
     );
 
-    const today = rows.find((r) => String(r.work_date).slice(0, 10) === parts.dateKey) || null;
-    const totals = { on_time: 0, late: 0, absent: 0 };
-    for (const row of rows) {
-      if (totals[row.status] != null) totals[row.status] += 1;
-    }
-
     const user = await loadOnsiteEmployee(req.user.id);
     const shift = user?.shift ? await getShiftByName(user.shift) : null;
     const branchRow = await loadBranchIp(user?.branch);
     const networkConfigured = parseOfficeIps(branchRow?.ip_address).length > 0;
+
+    const todayRaw =
+      rows.find((r) => pgDateKey(r.work_date) === parts.dateKey) ||
+      rows.find((r) => {
+        const at = r.checked_in_at ? zonedParts(new Date(r.checked_in_at)).dateKey : '';
+        return at === parts.dateKey;
+      }) ||
+      null;
+    const today = todayRaw ? await persistLiveStatus(todayRaw, shift) : null;
+    const totals = { on_time: 0, late: 0, absent: 0 };
+    const days = [];
+    for (const row of rows) {
+      const live = row.id === todayRaw?.id ? today : await persistLiveStatus(row, shift);
+      const pub = publicRow(live);
+      days.push(pub);
+      if (pub && totals[pub.status] != null) totals[pub.status] += 1;
+    }
 
     return res.json({
       date: parts.dateKey,
@@ -245,7 +334,7 @@ async function getMyOnsiteAttendance(req, res) {
         : user?.shift
           ? { name: user.shift }
           : null,
-      days: rows.map(publicRow),
+      days,
       totals,
     });
   } catch (err) {
@@ -276,7 +365,7 @@ async function adminListOnsite(req, res) {
         FROM users
         WHERE is_active = true
           AND status = 'active'
-          AND employment_type = 'onsite'
+          AND COALESCE(NULLIF(TRIM(employment_type), ''), 'onsite') = 'onsite'
           ${filter.sql}
         ORDER BY name ASC NULLS LAST, id ASC
       `,
@@ -297,16 +386,23 @@ async function adminListOnsite(req, res) {
       );
       records = rows;
     }
-    const byUser = new Map(records.map((r) => [r.user_id, r]));
+    const byUser = new Map(records.map((r) => [String(r.user_id), r]));
 
     const employees = [];
     const summary = { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 };
+    const shiftCache = new Map();
     for (const person of people) {
       if (search) {
         const hay = `${person.name} ${person.employee_id} ${person.username} ${person.branch}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
-      const rec = byUser.get(person.id);
+      let rec = byUser.get(String(person.id)) || null;
+      if (rec && person.shift) {
+        if (!shiftCache.has(person.shift)) {
+          shiftCache.set(person.shift, await getShiftByName(person.shift));
+        }
+        rec = await persistLiveStatus(rec, shiftCache.get(person.shift));
+      }
       const rowStatus = rec?.status || 'pending';
       if (statusFilter !== 'all' && rowStatus !== statusFilter) continue;
       const canEdit = employeeMatchesScope(person, editScope);
@@ -324,9 +420,9 @@ async function adminListOnsite(req, res) {
         branch: person.branch,
         department: person.department,
         shift: person.shift,
-        profile_picture_url: person.profile_picture_url,
+        profile_picture_url: withProfileApiUrl(person).profile_picture_url,
         row_status: rowStatus,
-        can_manual: canEdit && !rec,
+        can_manual: canEdit,
         can_override: Boolean(canEdit && rec),
         record: publicRow(rec),
       });
@@ -358,7 +454,7 @@ async function adminManualOnsite(req, res) {
     if (!user || user.is_active === false) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
-    if (String(user.employment_type || '').toLowerCase() !== 'onsite') {
+    if (String(user.employment_type || 'onsite').trim().toLowerCase() !== 'onsite') {
       return res.status(400).json({ message: 'Manual office check-in is only for onsite employees.' });
     }
 
@@ -374,6 +470,7 @@ async function adminManualOnsite(req, res) {
         method: 'manual',
         markedBy: req.user.id,
         note: String(req.body?.note || '').trim() || null,
+        upsert: true,
       });
 
       await writeAuditLog({

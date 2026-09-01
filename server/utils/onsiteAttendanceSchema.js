@@ -87,6 +87,11 @@ async function ensureOnsiteAttendanceSchema() {
       ON onsite_attendance (user_id, work_date DESC)
   `);
 
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS onsite_attendance_user_work_date_uidx
+      ON onsite_attendance (user_id, work_date)
+  `);
+
   await denyAnon('shifts');
   await denyAnon('onsite_attendance');
 

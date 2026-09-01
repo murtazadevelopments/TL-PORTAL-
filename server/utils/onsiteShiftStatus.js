@@ -2,16 +2,28 @@ const { zonedParts } = require('./attendanceWindows');
 
 function timeToMinutes(value) {
   if (value == null) return null;
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return value.getUTCHours() * 60 + value.getUTCMinutes();
+  if (typeof value === 'string') {
+    const m = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
+    return h * 60 + min;
   }
-  const s = String(value).trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
-  return h * 60 + min;
+  if (typeof value === 'object' && Number.isFinite(Number(value.hours))) {
+    const h = Number(value.hours);
+    const min = Number(value.minutes || 0);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+  }
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    const iso = value.toISOString();
+    if (/^1970-01-01T/.test(iso) || /^1899-12-3/.test(iso)) {
+      return value.getUTCHours() * 60 + value.getUTCMinutes();
+    }
+    return value.getHours() * 60 + value.getMinutes();
+  }
+  return null;
 }
 
 function formatTime(value) {
@@ -22,8 +34,19 @@ function formatTime(value) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function minutesSinceStart(clockMinutes, startMinutes) {
-  return (clockMinutes - startMinutes + 24 * 60) % (24 * 60);
+function pgDateKey(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') {
+    const m = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+  }
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    const iso = value.toISOString();
+    if (/T00:00:00(?:\.000)?Z$/.test(iso)) return iso.slice(0, 10);
+    return zonedParts(value).dateKey;
+  }
+  const m = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
 }
 
 function addDaysToDateKey(dateKey, delta) {
@@ -35,9 +58,10 @@ function addDaysToDateKey(dateKey, delta) {
 }
 
 /**
- * Status vs the assigned shift, using Asia/Karachi clock of checkedInAt.
- * Offsets are measured from shift start so overnight (absent after midnight) works.
- * Arrivals more than 12 hours after start (i.e. early, before the next start) are on time.
+ * On time: from shift start until late threshold (and up to 3 hours early).
+ * Late: from late threshold until absent threshold.
+ * Absent: at/after absent threshold, or so early that it is the previous day's miss
+ * (e.g. 02:03 for a 09:00 start).
  */
 function statusForCheckIn(checkedInAt, shift) {
   const parts = zonedParts(checkedInAt);
@@ -50,17 +74,23 @@ function statusForCheckIn(checkedInAt, shift) {
     throw new Error('Shift times are not configured.');
   }
 
-  const lateOff = minutesSinceStart(late, start);
-  const absentOff = minutesSinceStart(absent, start);
-  const checkOff = minutesSinceStart(clock, start);
+  const EARLY_ON_TIME_MIN = 3 * 60;
+  let status;
 
-  let status = 'on_time';
-  if (checkOff <= 12 * 60) {
-    if (checkOff >= absentOff) status = 'absent';
-    else if (checkOff >= lateOff) status = 'late';
+  if (absent >= late) {
+    if (clock >= start && clock < late) status = 'on_time';
+    else if (clock >= late && clock < absent) status = 'late';
+    else if (clock >= absent) status = 'absent';
+    else if (start >= 18 * 60 && clock < 12 * 60) status = 'absent';
+    else status = start - clock <= EARLY_ON_TIME_MIN ? 'on_time' : 'absent';
+  } else if (clock >= start && clock < late) {
+    status = 'on_time';
+  } else if (clock >= late || clock < absent) {
+    status = 'late';
+  } else {
+    status = 'absent';
   }
 
-  // Evening/night shift continuing after midnight still belongs to the previous calendar date.
   let workDate = parts.dateKey;
   if (start >= 18 * 60 && clock < 12 * 60) {
     workDate = addDaysToDateKey(parts.dateKey, -1);
@@ -85,4 +115,5 @@ module.exports = {
   formatTime,
   statusForCheckIn,
   parseCheckInAt,
+  pgDateKey,
 };
