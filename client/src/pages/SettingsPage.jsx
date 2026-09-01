@@ -73,7 +73,15 @@ export default function SettingsPage() {
         <p className="muted">
           Add Textured Lab Portal to your home screen for faster access (PWA).
         </p>
-        <InstallAppButton />
+        {isInstalledPwa() ? (
+          <p className="success" style={{ marginTop: '0.65rem' }}>
+            App is installed on this device.
+          </p>
+        ) : (
+          <div style={{ marginTop: '0.75rem' }}>
+            <InstallAppButton alwaysShow />
+          </div>
+        )}
       </section>
 
       {showPush && (

@@ -47,6 +47,11 @@
   margin: 0;
 }
 
+.page-panel .install-app {
+  justify-content: flex-start;
+  margin: 0.15rem 0 0;
+}
+
 @media (max-width: 720px) {
   .navbar .install-app-ios {
     max-width: 11rem;
