@@ -28,9 +28,10 @@ function InstallAppButton() {
   }, []);
 
   async function handleInstall() {
+    const pending = promptInstallApp();
     setBusy(true);
     try {
-      const choice = await promptInstallApp();
+      const choice = await pending;
       if (choice?.outcome === 'accepted') {
         setInstalled(true);
         await enablePushNotificationsSafe();

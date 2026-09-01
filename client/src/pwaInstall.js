@@ -1,6 +1,6 @@
 /**
- * Capture the browser install prompt as soon as the app boots so Install
- * can open the native dialog on click (the event only fires once).
+ * Capture the browser install prompt as soon as possible.
+ * Chrome can fire beforeinstallprompt before the React bundle loads.
  */
 
 let deferredPrompt = null;
@@ -8,6 +8,18 @@ const listeners = new Set();
 
 function notify() {
   listeners.forEach((fn) => fn(deferredPrompt));
+}
+
+function storePrompt(event) {
+  if (!event) return;
+  try {
+    event.preventDefault();
+  } catch {
+    /* already canceled */
+  }
+  deferredPrompt = event;
+  if (typeof window !== 'undefined') window.__tlPwaPrompt = event;
+  notify();
 }
 
 export function isStandalonePwa() {
@@ -32,34 +44,49 @@ export function isIosDevice() {
 export function startPwaInstallCapture() {
   if (typeof window === 'undefined') return;
 
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    deferredPrompt = event;
-    notify();
-  });
+  if (window.__tlPwaPrompt) storePrompt(window.__tlPwaPrompt);
+
+  window.addEventListener(
+    'beforeinstallprompt',
+    (event) => {
+      storePrompt(event);
+    },
+    true
+  );
 
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    window.__tlPwaPrompt = null;
     notify();
   });
 }
 
 export function getDeferredInstallPrompt() {
-  return deferredPrompt;
+  return deferredPrompt || (typeof window !== 'undefined' ? window.__tlPwaPrompt : null);
 }
 
 export function subscribeInstallPrompt(listener) {
   listeners.add(listener);
-  listener(deferredPrompt);
+  listener(getDeferredInstallPrompt());
   return () => listeners.delete(listener);
 }
 
-export async function promptInstallApp() {
-  const event = deferredPrompt;
-  if (!event?.prompt) return { outcome: 'unavailable' };
-  event.prompt();
-  const choice = await event.userChoice;
+/**
+ * Must be called directly from a tap/click so Chrome keeps user activation.
+ */
+export function promptInstallApp() {
+  const event = getDeferredInstallPrompt();
+  if (!event?.prompt) return Promise.resolve({ outcome: 'unavailable' });
   deferredPrompt = null;
+  if (typeof window !== 'undefined') window.__tlPwaPrompt = null;
   notify();
-  return choice || { outcome: 'dismissed' };
+  try {
+    event.prompt();
+  } catch {
+    return Promise.resolve({ outcome: 'unavailable' });
+  }
+  if (!event.userChoice) return Promise.resolve({ outcome: 'unavailable' });
+  return event.userChoice
+    .then((choice) => choice || { outcome: 'dismissed' })
+    .catch(() => ({ outcome: 'unavailable' }));
 }

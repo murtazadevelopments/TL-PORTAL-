@@ -17,7 +17,7 @@ const DISMISS_KEY = 'tl-install-dismissed';
 export default function InstallAppModal() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [iosHint, setIosHint] = useState(false);
+  const [help, setHelp] = useState('');
 
   useEffect(() => {
     if (isStandalonePwa() || !isMobileDevice()) return undefined;
@@ -46,22 +46,22 @@ export default function InstallAppModal() {
     setOpen(false);
   }
 
-  async function handleInstall() {
+  function handleInstall() {
+    setHelp('');
+    const pending = promptInstallApp();
     setBusy(true);
-    setIosHint(false);
-    try {
-      const choice = await promptInstallApp();
-      if (choice?.outcome === 'accepted') {
-        setOpen(false);
-        await enablePushNotificationsSafe();
-        return;
-      }
-      if (choice?.outcome === 'unavailable' && isIosDevice()) {
-        setIosHint(true);
-      }
-    } finally {
-      setBusy(false);
-    }
+    pending
+      .then(async (choice) => {
+        if (choice?.outcome === 'accepted') {
+          setOpen(false);
+          await enablePushNotificationsSafe();
+          return;
+        }
+        if (choice?.outcome === 'unavailable') {
+          setHelp(isIosDevice() ? 'ios' : 'android');
+        }
+      })
+      .finally(() => setBusy(false));
   }
 
   if (!open) return null;
@@ -78,18 +78,18 @@ export default function InstallAppModal() {
         <img src={logo} alt="" className="install-modal-logo" width={56} height={56} />
         <h2 id="install-modal-title">Install Textured Lab Portal</h2>
         <p>Open it like an app on your phone for faster access and alerts.</p>
-        {iosHint && (
-          <p className="install-modal-ios">
-            On iPhone, tap the Share icon, then <strong>Add to Home Screen</strong>.
+        {help === 'ios' && (
+          <p className="install-modal-help">
+            Tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>.
+          </p>
+        )}
+        {help === 'android' && (
+          <p className="install-modal-help">
+            Tap the browser menu <strong>⋮</strong>, then <strong>Install app</strong>.
           </p>
         )}
         <div className="install-modal-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={handleInstall}
-          >
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={handleInstall}>
             {busy ? 'Opening…' : 'Install'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={dismiss}>

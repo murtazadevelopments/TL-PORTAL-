@@ -43,6 +43,11 @@
   color: var(--cyan-soft) !important;
 }
 
+.install-modal-help {
+  margin-top: 0.75rem !important;
+  color: var(--cyan-soft) !important;
+}
+
 .install-modal-actions {
   display: flex;
   flex-direction: column;
