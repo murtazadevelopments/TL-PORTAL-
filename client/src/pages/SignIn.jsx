@@ -80,6 +80,8 @@ function SignIn() {
         deviceHints,
       });
       localStorage.setItem('token', data.token);
+      const { enablePushNotificationsSafe } = await import('../utils/pushNotifications');
+      enablePushNotificationsSafe();
       navigate('/dashboard');
     } catch (err) {
       const status = err.response?.status;
@@ -118,6 +120,8 @@ function SignIn() {
         deviceHints,
       });
       localStorage.setItem('token', data.token);
+      const { enablePushNotificationsSafe } = await import('../utils/pushNotifications');
+      enablePushNotificationsSafe();
       navigate('/dashboard');
     } catch (err) {
       if (err?.name === 'NotAllowedError') {

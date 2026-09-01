@@ -89,13 +89,14 @@ export default function SettingsPage() {
           <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Mobile notifications</h2>
           <p className="muted">
             Get a phone alert for new portal messages and when someone signs in to your account
-            (backup if login email does not arrive). Only works after you install the app on your
-            phone (Add to Home Screen) and enable notifications.
+            (backup if login email does not arrive). Notifications turn on automatically when you
+            open the installed app. You can turn them off here if you do not want alerts.
           </p>
 
           {!isInstalledPwa() && (
             <p className="muted" style={{ marginTop: '0.5rem' }}>
-              Tip: install the app first, open it from your home screen, then enable notifications.
+              Tip: install the app, then open it from your home screen. Notifications turn on
+              automatically.
             </p>
           )}
 

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { promptInstallApp, subscribeInstallPrompt } from '../pwaInstall';
+import { enablePushNotificationsSafe, requestPushPermission } from '../utils/pushNotifications';
 import './InstallAppButton.css';
 
 function isIosSafari() {
@@ -21,109 +23,71 @@ function isStandalone() {
 }
 
 /**
- * Shows a native install prompt when available (Chrome/Edge/Android).
- * On iOS Safari, shows Add to Home Screen instructions instead.
+ * Opens the native install prompt on click (Chrome/Edge/Android).
+ * iOS has no install API, so those devices still need Share → Add to Home Screen.
  */
 function InstallAppButton({ compact = false, alwaysShow = false }) {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [installed, setInstalled] = useState(false);
-  const [iosHint, setIosHint] = useState(false);
-  const [iosHelp, setIosHelp] = useState(false);
-  const [manualHint, setManualHint] = useState(false);
-  const [dismissedIos, setDismissedIos] = useState(false);
+  const [canPrompt, setCanPrompt] = useState(false);
+  const [installed, setInstalled] = useState(() => isStandalone());
+  const [ios, setIos] = useState(false);
+  const [iosDismissed, setIosDismissed] = useState(false);
 
   useEffect(() => {
     if (isStandalone()) {
       setInstalled(true);
       return undefined;
     }
-
-    if (isIosSafari()) {
-      const dismissed = sessionStorage.getItem('pwaIosHintDismissed') === '1';
-      setDismissedIos(dismissed);
-      setIosHint(true);
-      return undefined;
-    }
-
-    function onBeforeInstall(e) {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    }
-
+    setIos(isIosSafari());
+    setIosDismissed(sessionStorage.getItem('pwaIosHintDismissed') === '1');
+    const unsub = subscribeInstallPrompt((event) => setCanPrompt(Boolean(event)));
     function onInstalled() {
       setInstalled(true);
-      setDeferredPrompt(null);
     }
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
     window.addEventListener('appinstalled', onInstalled);
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      unsub();
       window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
 
   async function handleInstall() {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      setDeferredPrompt(null);
-      if (choice?.outcome === 'accepted') {
-        setInstalled(true);
-      }
-      return;
+    await requestPushPermission();
+    const choice = await promptInstallApp();
+    if (choice?.outcome === 'accepted') {
+      setInstalled(true);
+      await enablePushNotificationsSafe();
     }
-    if (isIosSafari()) {
-      setIosHelp(true);
-      setDismissedIos(false);
-      return;
-    }
-    setManualHint((v) => !v);
-  }
-
-  function dismissIos() {
-    sessionStorage.setItem('pwaIosHintDismissed', '1');
-    setDismissedIos(true);
   }
 
   if (installed) return null;
 
   const wrapClass = `install-app ${compact ? 'install-app-compact' : ''}`;
 
-  if (alwaysShow) {
-    return (
-      <div className={wrapClass}>
-        <button type="button" className="btn btn-primary install-app-btn" onClick={handleInstall}>
-          Install App
-        </button>
-        {iosHelp && (
-          <p className="install-app-ios" role="note">
-            iPhone: tap <strong>Share</strong> → <strong>Add to Home Screen</strong>
-          </p>
-        )}
-        {manualHint && !deferredPrompt && (
-          <p className="install-app-ios" role="note">
-            Use the browser menu → <strong>Install app</strong> or <strong>Add to Home Screen</strong>
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  if (iosHint && !dismissedIos) {
+  if (ios) {
+    if (!alwaysShow && iosDismissed) return null;
     return (
       <div className={wrapClass} role="note">
         <p className="install-app-ios">
           On iPhone: tap <strong>Share</strong> → <strong>Add to Home Screen</strong>
         </p>
-        <button type="button" className="install-app-dismiss" onClick={dismissIos} aria-label="Dismiss">
-          ×
-        </button>
+        {!alwaysShow && (
+          <button
+            type="button"
+            className="install-app-dismiss"
+            onClick={() => {
+              sessionStorage.setItem('pwaIosHintDismissed', '1');
+              setIosDismissed(true);
+            }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        )}
       </div>
     );
   }
 
-  if (!deferredPrompt) return null;
+  if (!alwaysShow && !canPrompt) return null;
 
   return (
     <div className={wrapClass}>
