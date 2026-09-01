@@ -69,17 +69,15 @@ export default function SettingsPage() {
       <p className="muted">App preferences for this device</p>
 
       <section style={{ marginTop: '1.25rem' }}>
-        <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Install App</h2>
-        <p className="muted">
-          Add Textured Lab Portal to your home screen for faster access (PWA).
-        </p>
+        <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Install</h2>
+        <p className="muted">Install Textured Lab Portal on this device.</p>
         {isInstalledPwa() ? (
           <p className="success" style={{ marginTop: '0.65rem' }}>
             App is installed on this device.
           </p>
         ) : (
           <div style={{ marginTop: '0.75rem' }}>
-            <InstallAppButton alwaysShow />
+            <InstallAppButton />
           </div>
         )}
       </section>
@@ -95,8 +93,7 @@ export default function SettingsPage() {
 
           {!isInstalledPwa() && (
             <p className="muted" style={{ marginTop: '0.5rem' }}>
-              Tip: install the app, then open it from your home screen. Notifications turn on
-              automatically.
+              Install the app first. Notifications turn on when you open it.
             </p>
           )}
 

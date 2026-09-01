@@ -7,7 +7,7 @@ import { isCeo, isTeamLeader } from '../utils/permissions';
 import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
-import HeaderSetupActions from '../components/HeaderSetupActions';
+import InstallAppModal from '../components/InstallAppModal';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import './AppShell.css';
 
@@ -108,7 +108,6 @@ function ShellInner() {
           <span>Textured Lab Portal</span>
         </Link>
         <div className="shell-topbar-spacer" />
-        <HeaderSetupActions />
         {user && (
           <span className="shell-user-chip muted">
             {user.name || user.username}
@@ -197,6 +196,7 @@ function ShellInner() {
         )}
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
+      <InstallAppModal />
       <AdminIncompleteGate user={user} />
     </div>
   );

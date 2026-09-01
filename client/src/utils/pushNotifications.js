@@ -1,4 +1,5 @@
 import api from '../api/client';
+import { isStandalonePwa } from '../pwaInstall';
 
 const PUSH_OPT_OUT_KEY = 'tl-push-opt-out';
 
@@ -6,11 +7,7 @@ let enableInflight = null;
 
 /** True when running as an installed PWA (home screen / standalone). */
 export function isInstalledPwa() {
-  if (typeof window === 'undefined') return false;
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true
-  );
+  return isStandalonePwa();
 }
 
 export function isMobileDevice() {
