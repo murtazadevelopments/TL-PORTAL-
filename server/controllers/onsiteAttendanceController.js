@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
-const { statusForCheckIn, parseCheckInAt, pgDateKey } = require('../utils/onsiteShiftStatus');
+const { statusForCheckIn, parseCheckInAt, pgDateKey, addDaysToDateKey } = require('../utils/onsiteShiftStatus');
 const { requestMatchesConfiguredIp, parseOfficeIps } = require('../utils/requestMeta');
 const { writeAuditLog } = require('../utils/auditLog');
 const { zonedParts } = require('../utils/attendanceWindows');
@@ -18,6 +18,18 @@ const ONSITE_SELECT = `
   branch_name, shift_name, marked_by, note, status_overridden, previous_status,
   created_at, updated_at
 `;
+
+function assertManualWorkDate(dateKey) {
+  const today = zonedParts().dateKey;
+  const yesterday = addDaysToDateKey(today, -1);
+  const key = String(dateKey || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key > today || key < yesterday) {
+    const err = new Error('Manual attendance can only be saved for today or yesterday.');
+    err.statusCode = 400;
+    throw err;
+  }
+  return key;
+}
 
 function publicRow(row) {
   if (!row) return null;
@@ -125,6 +137,7 @@ async function insertOnsiteRecord({
   markedBy,
   note,
   upsert = false,
+  workDateOverride = null,
 }) {
   const shift = await getShiftByName(user.shift);
   if (!shift) {
@@ -145,9 +158,13 @@ async function insertOnsiteRecord({
   }
 
   const calc = statusForCheckIn(checkedInAt, shift);
+  const override = String(workDateOverride || '').slice(0, 10);
+  let workDate = /^\d{4}-\d{2}-\d{2}$/.test(override) ? override : calc.workDate;
+  if (method === 'manual') workDate = assertManualWorkDate(workDate);
+  calc.workDate = workDate;
   const params = [
     user.id,
-    calc.workDate,
+    workDate,
     checkedInAt,
     calc.status,
     method,
@@ -449,6 +466,8 @@ async function adminManualOnsite(req, res) {
     if (!checkedInAt) {
       return res.status(400).json({ message: 'Enter a valid check-in time.' });
     }
+    const workDateOverride = String(req.body?.work_date || req.body?.workDate || '').slice(0, 10);
+    if (workDateOverride) assertManualWorkDate(workDateOverride);
 
     const user = await loadOnsiteEmployee(userId);
     if (!user || user.is_active === false) {
@@ -471,6 +490,7 @@ async function adminManualOnsite(req, res) {
         markedBy: req.user.id,
         note: String(req.body?.note || '').trim() || null,
         upsert: true,
+        workDateOverride,
       });
 
       await writeAuditLog({

@@ -145,9 +145,11 @@ function tallyDays(days) {
 }
 
 async function monthHistory(user, monthKey, now = new Date()) {
-  const until = zonedParts(now).dateKey;
-  const dateKeys = monthDateKeys(monthKey, until);
-  if (!dateKeys.length) return { month: monthKey, days: [], totals: tallyDays([]) };
+  const today = zonedParts(now).dateKey;
+  const pastOrToday = monthDateKeys(monthKey, today);
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ''))) {
+    return { month: monthKey, days: [], totals: tallyDays([]) };
+  }
 
   const { rows } = await pool.query(
     `
@@ -181,6 +183,13 @@ async function monthHistory(user, monthKey, now = new Date()) {
     if (!logsByDate.has(dateKey)) logsByDate.set(dateKey, []);
     logsByDate.get(dateKey).push(row);
   }
+
+  const dateKeys = [...pastOrToday];
+  const extra = new Set([...logsByDate.keys(), ...leaveByDate.keys()]);
+  for (const key of extra) {
+    if (String(key).startsWith(monthKey) && !dateKeys.includes(key)) dateKeys.push(key);
+  }
+  dateKeys.sort();
 
   const days = dateKeys.map((dateKey) => {
     const logs = logsByDate.get(dateKey) || [];

@@ -90,7 +90,8 @@ export default function OnsiteAttendancePage() {
         <div>
           <h1>My attendance</h1>
           <p className="muted">
-            Check in once per day from your branch network. Your office is recorded as{' '}
+            Check in from your branch network any time. Status follows your shift (on time / late / absent).
+            Your office is recorded as{' '}
             {data?.branch_name || user?.branch || 'your assigned branch'} — never as a raw IP.
           </p>
         </div>

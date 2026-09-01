@@ -40,7 +40,6 @@ const hoursBetween = pick(workHours, 'hoursbetween');
 const formatHourLabel = pick(workHours, 'formathourlabel');
 const workHoursFromUser = pick(attendanceDays, 'workhoursfromuser');
 const slotsForUser = pick(attendanceDays, 'slotsforuser');
-const isWithinWorkHours = pick(attendanceDays, 'iswithinworkhours');
 const isLateCheckIn = pick(attendanceDays, 'islatecheckin');
 const refreshAttendanceDay = pick(attendanceDays, 'refreshattendanceday');
 const monthHistory = pick(attendanceDays, 'monthhistory');
@@ -215,6 +214,17 @@ async function getMyAttendance(req, res) {
         }
       }
     }
+    const current = currentHourKey();
+    if (!slotMap.has(current) && current.startsWith(`${dateKey}-`)) {
+      const hour = Number(String(current).slice(-2));
+      if (Number.isFinite(hour)) {
+        slotMap.set(current, {
+          hour,
+          hour_key: current,
+          label: `${String(hour).padStart(2, '0')}:00`,
+        });
+      }
+    }
     const slots = [...slotMap.values()].sort((a, b) => a.hour - b.hour);
 
     const byHour = {};
@@ -228,7 +238,6 @@ async function getMyAttendance(req, res) {
       if (better) byHour[row.hour_key] = row;
     }
 
-    const current = currentHourKey();
     const currentLog = byHour[current];
     const slotLocked =
       currentLog &&
@@ -262,8 +271,7 @@ async function getMyAttendance(req, res) {
       };
     });
 
-    const canCheckIn =
-      canCheckInHourKey(current) && !slotLocked && isWithinWorkHours(user, parts.hour);
+    const canCheckIn = canCheckInHourKey(current) && !slotLocked;
     const month = await monthHistory(user, dateKey.slice(0, 7));
     return res.json({
       date: dateKey,
@@ -298,14 +306,10 @@ async function checkIn(req, res) {
     }
 
     const hourKey = currentHourKey();
-    const parts = zonedParts();
-    if (!isWithinWorkHours(user, parts.hour) || !canCheckInHourKey(hourKey)) {
-      const hours = workHoursFromUser(user);
+    if (!canCheckInHourKey(hourKey)) {
       return res.status(400).json({
-        message: `Check-in is only allowed during your working hours (${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}).`,
+        message: 'Check-in is only for the current hour.',
         hour_key: hourKey,
-        work_start_hour: hours.start,
-        work_end_hour: hours.end,
       });
     }
 
@@ -607,6 +611,15 @@ async function adminManualMark(req, res) {
     }
     if (status === 'leave' && !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
       return res.status(400).json({ message: 'date_key must look like YYYY-MM-DD.' });
+    }
+    const stampDay = status === 'leave' ? dateKey : hourKey.slice(0, 10);
+    const today = zonedParts().dateKey;
+    const yesterday = (() => {
+      const [y, mo, d] = today.split('-').map(Number);
+      return new Date(Date.UTC(y, mo - 1, d - 1)).toISOString().slice(0, 10);
+    })();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay) || stampDay > today || stampDay < yesterday) {
+      return res.status(400).json({ message: 'Manual attendance can only be saved for today or yesterday.' });
     }
     if (note.length < 8) {
       return res.status(400).json({ message: 'A reason of at least 8 characters is required.' });

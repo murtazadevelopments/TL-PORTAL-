@@ -116,4 +116,5 @@ module.exports = {
   statusForCheckIn,
   parseCheckInAt,
   pgDateKey,
+  addDaysToDateKey,
 };

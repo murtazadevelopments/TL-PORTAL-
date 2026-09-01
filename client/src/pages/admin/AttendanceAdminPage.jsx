@@ -28,13 +28,34 @@ function toDatetimeLocalValue(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function shiftKarachiDateKey(dateKey, delta) {
+  const [y, mo, d] = String(dateKey)
+    .split('-')
+    .map((n) => Number(n));
+  return new Date(Date.UTC(y, mo - 1, d + delta)).toISOString().slice(0, 10);
+}
+
+function attendanceDateWindow() {
+  const today = karachiDateKey();
+  return { today, yesterday: shiftKarachiDateKey(today, -1) };
+}
+
+function clampAttendanceDate(value) {
+  const { today, yesterday } = attendanceDateWindow();
+  const key = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return today;
+  if (key > today) return today;
+  if (key < yesterday) return yesterday;
+  return key;
+}
+
 function datetimeLocalForDay(dateKey, source = new Date()) {
-  const pad = (n) => String(n).padStart(2, '0');
+  const day = clampAttendanceDate(dateKey);
   if (source instanceof Date && Number.isFinite(source.getTime())) {
     const existingDay = karachiDateKey(source);
-    if (existingDay === dateKey) return toDatetimeLocalValue(source);
+    if (existingDay === day) return toDatetimeLocalValue(source);
   }
-  return `${dateKey}T${pad(source.getHours())}:${pad(source.getMinutes())}`;
+  return `${day}T09:00`;
 }
 
 function formatKarachiTime(iso) {
@@ -81,7 +102,7 @@ export default function AttendanceAdminPage() {
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
 
-  const [date, setDate] = useState(() => karachiDateKey());
+  const [date, setDate] = useState(() => clampAttendanceDate(karachiDateKey()));
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [data, setData] = useState(null);
@@ -96,11 +117,12 @@ export default function AttendanceAdminPage() {
   const [onsiteManual, setOnsiteManual] = useState(EMPTY_ONSITE_MANUAL);
   const [overrideRow, setOverrideRow] = useState(null);
   const [overrideStatus, setOverrideStatus] = useState('on_time');
+  const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
     setLoading(true);
     setError('');
-    const dateKey = dateOverride || date;
+    const dateKey = clampAttendanceDate(dateOverride || date);
     try {
       if (mode === 'onsite') {
         const { data: payload } = await api.get('/api/admin/onsite-attendance', {
@@ -212,12 +234,13 @@ export default function AttendanceAdminPage() {
       const { data: payload } = await api.post('/api/admin/onsite-attendance', {
         user_id: onsiteManual.user.id,
         checked_in_at: when.toISOString(),
+        work_date: clampAttendanceDate(String(onsiteManual.checked_in_at).slice(0, 10) || date),
         note: onsiteManual.note,
       });
       setOnsiteManual(EMPTY_ONSITE_MANUAL);
-      const savedDate = String(payload?.record?.work_date || '').slice(0, 10);
-      if (savedDate) setDate(savedDate);
-      await load(savedDate || date);
+      const savedDate = clampAttendanceDate(payload?.record?.work_date || date);
+      setDate(savedDate);
+      await load(savedDate);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save onsite attendance.');
     } finally {
@@ -330,7 +353,13 @@ export default function AttendanceAdminPage() {
       >
         <label>
           Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input
+            type="date"
+            min={yesterdayKey}
+            max={todayKey}
+            value={date}
+            onChange={(e) => setDate(clampAttendanceDate(e.target.value))}
+          />
         </label>
         <label>
           Status
@@ -637,7 +666,7 @@ export default function AttendanceAdminPage() {
           <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitOnsiteManual}>
             <h2>Manual onsite check-in</h2>
             <p className="muted">
-              {onsiteManual.user.name} — status is calculated from their shift (late/absent thresholds).
+              {onsiteManual.user.name} — only today or yesterday. Status follows their shift.
             </p>
             {error && <p className="error">{error}</p>}
             <label>
@@ -645,8 +674,15 @@ export default function AttendanceAdminPage() {
               <input
                 type="datetime-local"
                 required
+                min={`${yesterdayKey}T00:00`}
+                max={`${todayKey}T23:59`}
                 value={onsiteManual.checked_in_at}
-                onChange={(e) => setOnsiteManual((m) => ({ ...m, checked_in_at: e.target.value }))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const day = clampAttendanceDate(raw.slice(0, 10));
+                  const time = raw.includes('T') ? raw.slice(raw.indexOf('T') + 1) : '09:00';
+                  setOnsiteManual((m) => ({ ...m, checked_in_at: `${day}T${time}` }));
+                }}
               />
             </label>
             <label>

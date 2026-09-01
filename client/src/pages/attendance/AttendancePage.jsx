@@ -58,7 +58,7 @@ export default function AttendancePage() {
   const [canCheckIn, setCanCheckIn] = useState(false);
 
   const isRemote = user?.employment_type === 'remote';
-  const isOnsite = user?.employment_type === 'onsite';
+  const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
   const canSeeAdmin =
     canAccessAdmin(user?.role) && canViewTeamAttendance(user?.role, permissions);
 
@@ -375,7 +375,7 @@ export default function AttendancePage() {
         </div>
       </div>
       {workHoursLabel ? (
-        <p className="muted">Your working hours: {workHoursLabel}. Check-in is only allowed in these hours.</p>
+        <p className="muted">Your working hours: {workHoursLabel}. You can still check in outside these hours for the current hour.</p>
       ) : null}
 
       {error && <p className="error">{error}</p>}
