@@ -949,12 +949,12 @@ async function updateEmployee(req, res) {
       if (/branch/i.test(constraint)) {
         return res.status(400).json({
           message:
-            'This office is blocked by an old database rule. Save again — newer branches are now allowed.',
+            'This office cannot be saved yet. Save again — newer branches are now allowed.',
         });
       }
       return res.status(400).json({
         message:
-          'This save is blocked by a database rule. Check branch, shift, and work location, then try again.',
+          'This save is not allowed. Check office, shift, and work location, then try again.',
       });
     }
     console.error('updateEmployee error:', err);
@@ -1486,7 +1486,16 @@ async function sendProfileAlert(req, res) {
       recipient: target,
       subject,
       messageBody,
-      deliveryMethod: 'both',
+      deliveryMethod: 'portal',
+      emailIfPushUndelivered: true,
+      pushPayload: {
+        title: 'Complete your portal profile',
+        body: `HR asked you to fill: ${labels.slice(0, 4).join(', ')}${labels.length > 4 ? '…' : ''}`,
+        url: '/account',
+        tag: 'profile-alert',
+        urgency: 'high',
+        pushOpts: { requireEnabled: false, urgency: 'high' },
+      },
     });
 
     await pool.query(
@@ -1514,10 +1523,19 @@ async function sendProfileAlert(req, res) {
       console.warn('profile_alert_sent audit failed:', auditErr.message || auditErr);
     }
 
+    const viaPush = Number(result?.pushSent) > 0;
+    const viaEmail = Boolean(result?.emailSent);
+    const channel = viaPush
+      ? 'They got a phone notification.'
+      : viaEmail
+        ? 'They do not have the app, so the alert was emailed.'
+        : 'They will see a banner in the portal. Email could not be sent.';
+
     return res.json({
-      message: 'Alert sent. They will get a portal message, email, and a banner on next login. Next alert is available after 24 hours.',
+      message: `Alert sent. ${channel} Next alert is available after 24 hours.`,
       missingFields: labels,
-      emailSent: Boolean(result?.emailSent),
+      emailSent: viaEmail,
+      pushSent: viaPush,
       emailError: result?.emailError || null,
       profileAlertSentAt: new Date().toISOString(),
     });

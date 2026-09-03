@@ -123,7 +123,7 @@ function SignUp() {
       const apiMsg = err.response?.data?.message;
       if (apiMsg) setError(apiMsg);
       else if (status === 503 || !err.response)
-        setError('Server unavailable. The API is not running — check Hostinger Node deploy and env vars.');
+        setError('Server unavailable. Please contact your admin.');
       else setError('Unable to create account.');
     } finally {
       setLoading(false);

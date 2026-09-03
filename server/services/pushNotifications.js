@@ -57,9 +57,10 @@ function isPushConfigured() {
  * Send a Web Push notification to all subscriptions for a user.
  * No-ops if push is not configured or user has notifications disabled.
  */
-async function sendPushToUser(userId, payload) {
+async function sendPushToUser(userId, payload, opts = {}) {
   if (!isPushConfigured()) return { sent: 0, skipped: true };
 
+  const requireEnabled = opts.requireEnabled !== false;
   const { rows: prefs } = await pool.query(
     `
       SELECT push_notifications_enabled
@@ -69,7 +70,7 @@ async function sendPushToUser(userId, payload) {
     `,
     [userId]
   );
-  if (!prefs[0]?.push_notifications_enabled) {
+  if (requireEnabled && !prefs[0]?.push_notifications_enabled) {
     return { sent: 0, disabled: true };
   }
 
@@ -103,7 +104,10 @@ async function sendPushToUser(userId, payload) {
           keys: { p256dh: sub.p256dh, auth: sub.auth },
         },
         body,
-        { TTL: 60 * 60 * 12, urgency: 'normal' }
+        {
+          TTL: Number.isFinite(opts.ttl) ? opts.ttl : 60 * 60 * 12,
+          urgency: opts.urgency || 'normal',
+        }
       );
       sent += 1;
     } catch (err) {
@@ -112,7 +116,6 @@ async function sendPushToUser(userId, payload) {
         `[push] fail user=${userId} sub=${sub.id} status=${status}:`,
         err.message || err
       );
-      // Gone / expired subscription — drop it
       if (status === 404 || status === 410) {
         try {
           await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
@@ -129,9 +132,9 @@ async function sendPushToUser(userId, payload) {
 /**
  * Best-effort; never throws to callers.
  */
-async function sendPushToUserSafe(userId, payload) {
+async function sendPushToUserSafe(userId, payload, opts) {
   try {
-    return await sendPushToUser(userId, payload);
+    return await sendPushToUser(userId, payload, opts);
   } catch (err) {
     console.error('[push] unexpected error:', err.message || err);
     return { sent: 0, error: err.message };

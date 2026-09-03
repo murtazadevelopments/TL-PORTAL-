@@ -269,7 +269,7 @@ async function signup(req, res) {
 
     console.error('signup error:', err);
     return res.status(err.status || 500).json({
-      message: err.message || 'Server error during signup.',
+      message: 'Unable to create account. Please try again or contact your admin.',
     });
   }
 }

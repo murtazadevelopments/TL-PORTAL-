@@ -490,7 +490,7 @@ async function updateDocuments(req, res) {
   } catch (err) {
     console.error('updateDocuments error:', err);
     return res.status(err.status || 500).json({
-      message: err.message || 'Server error updating documents.',
+      message: 'Unable to update documents. Please try again or contact your admin.',
     });
   }
 }

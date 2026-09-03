@@ -65,9 +65,25 @@ function ShellInner() {
   useEffect(() => {
     if (!user) return undefined;
     refreshUnread();
-    const id = setInterval(refreshUnread, 60_000);
+    refreshUser?.();
+    const id = setInterval(() => {
+      refreshUnread();
+      refreshUser?.();
+    }, 45_000);
     return () => clearInterval(id);
-  }, [user, refreshUnread, location.pathname]);
+  }, [user, refreshUnread, refreshUser, location.pathname]);
+
+  useEffect(() => {
+    if (!user || typeof navigator === 'undefined' || !navigator.serviceWorker) return undefined;
+    const onMessage = (event) => {
+      if (event.data?.type === 'PORTAL_PUSH') {
+        refreshUser?.();
+        refreshUnread();
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [user, refreshUser, refreshUnread]);
 
   useEffect(() => {
     document.body.classList.toggle('drawer-lock', drawerOpen);

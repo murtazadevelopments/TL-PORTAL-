@@ -1,8 +1,7 @@
 const pool = require('../config/db');
 const { BRANCH_OPTIONS } = require('../constants/branches');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
-const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
-const { employeeMatchesScope, isAllScope } = require('../utils/employeeScope');
+const { isCeoRole } = require('../middleware/permissions');
 const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
 
 const BRANCH_SELECT = `id, name, ip_address, latitude, longitude, radius_meters, created_by, created_at`;
@@ -24,7 +23,7 @@ function serializeBranch(row, canEditIp) {
     name: row.name,
     ip_address: canEditIp ? formatOfficeIps(ips) || '' : null,
     ip_addresses: canEditIp ? ips : [],
-    ip_configured: ips.length > 0,
+    ip_configured: canEditIp ? ips.length > 0 : false,
     latitude: Number.isFinite(lat) ? lat : null,
     longitude: Number.isFinite(lng) ? lng : null,
     radius_meters:
@@ -114,16 +113,8 @@ function normalizeOfficeIpsOrError(raw) {
   return { stored: formatOfficeIps(ips), ips };
 }
 
-async function canEditBranchIp(req, branchName) {
-  if (isCeoRole(req.user?.role)) return true;
-  if (Array.isArray(req.user?.permissions) && req.user.permissions.includes('*')) return true;
-  const access = await loadAdminPermissionAccess(req.user.id);
-  const keys = access.permissions || [];
-  if (keys.includes('branches:create') || keys.includes('hr:add_employee')) return true;
-  if (!keys.includes('attendance:edit')) return false;
-  const scope = access.scopes['attendance:edit'];
-  if (isAllScope(scope)) return true;
-  return employeeMatchesScope({ branch: branchName }, scope);
+function canEditBranchIp(req) {
+  return isCeoRole(req.user?.role);
 }
 
 /**
@@ -141,7 +132,7 @@ async function listBranches(req, res) {
     );
     const out = [];
     for (const row of rows) {
-      out.push(serializeBranch(row, await canEditBranchIp(req, row.name)));
+      out.push(serializeBranch(row, canEditBranchIp(req)));
     }
     return res.json(out);
   } catch (err) {
@@ -163,7 +154,8 @@ async function createBranch(req, res) {
     if (name.length > 120) {
       return res.status(400).json({ message: 'Branch name must be 120 characters or fewer.' });
     }
-    const parsed = normalizeOfficeIpsOrError(officeIpsFromBody(req.body) ?? '');
+    const ceo = canEditBranchIp(req);
+    const parsed = normalizeOfficeIpsOrError(ceo ? officeIpsFromBody(req.body) ?? '' : '');
     if (parsed.error) {
       return res.status(400).json({ message: parsed.error });
     }
@@ -181,7 +173,7 @@ async function createBranch(req, res) {
       [name, req.user?.id ?? null, parsed.stored, geo.latitude, geo.longitude, geo.radius_meters]
     );
 
-    return res.status(201).json(serializeBranch(rows[0], true));
+    return res.status(201).json(serializeBranch(rows[0], ceo));
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'A branch with that name already exists.' });
@@ -210,9 +202,9 @@ async function updateBranch(req, res) {
       return res.status(404).json({ message: 'Branch not found.' });
     }
 
-    if (!(await canEditBranchIp(req, existing[0].name))) {
+    if (!canEditBranchIp(req)) {
       return res.status(403).json({
-        message: 'You can only update the office IP for a branch in your attendance edit scope.',
+        message: 'Only the CEO can view or update office IPs.',
       });
     }
 

@@ -101,7 +101,7 @@ export default function SettingsPage() {
           {pushStatus && !pushStatus.configured && (
             <p className="error" style={{ marginTop: '0.75rem' }}>
               {pushStatus.message ||
-                'Push is not configured on the server yet (missing VAPID keys).'}
+                'Notifications are unavailable. Please contact your admin.'}
             </p>
           )}
 

@@ -24,14 +24,25 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Textured Lab Portal', {
-      body: data.body || '',
-      icon: '/pwa-192.png',
-      badge: '/pwa-192.png',
-      tag: data.tag || 'portal-update',
-      renotify: true,
-      data: { url: data.url || '/account/messages' },
-    })
+    Promise.all([
+      self.registration.showNotification(data.title || 'Textured Lab Portal', {
+        body: data.body || '',
+        icon: '/pwa-192.png',
+        badge: '/pwa-192.png',
+        tag: data.tag || 'portal-update',
+        renotify: true,
+        data: { url: data.url || '/account/messages' },
+      }),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) {
+          try {
+            client.postMessage({ type: 'PORTAL_PUSH', url: data.url || '/account' });
+          } catch {
+            /* ignore */
+          }
+        }
+      }),
+    ])
   );
 });
 

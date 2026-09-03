@@ -60,13 +60,10 @@ async function getStatus(req, res) {
     configured: configured && schemaReady,
     enabled,
     subscriptionCount,
-    vapidReady: configured,
     schemaReady,
-    message: !configured
-      ? 'Push is not configured on the server yet (missing VAPID keys or web-push package).'
-      : !schemaReady
-        ? 'Push database tables are missing. Run migration 011_push_notifications.sql.'
-        : undefined,
+    message: !configured || !schemaReady
+      ? 'Notifications are unavailable. Please contact your admin.'
+      : undefined,
   });
 }
 

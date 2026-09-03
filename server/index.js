@@ -7,6 +7,7 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const fs = require('fs');
+const { sanitizePublicJson } = require('./utils/sanitizePublicJson');
 
 const app = express();
 // Hostinger / proxies: so req.ip and x-forwarded-for are correct for login emails
@@ -53,6 +54,11 @@ app.use(
   })
 );
 app.use(express.json({ limit: '2mb' }));
+app.use((req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (body) => sendJson(sanitizePublicJson(body));
+  next();
+});
 
 const CLIENT_HINTS =
   'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Arch, Sec-CH-UA-Form-Factors';
@@ -76,67 +82,9 @@ const apiOnlyMode =
   /^(0|false|no)$/i.test(String(process.env.SERVE_SPA || ''));
 
 function healthPayload() {
-  let uploadRootPath = null;
-  let uploadRootExists = false;
-  let uploadRootWritable = false;
-  try {
-    const { getUploadRoot } = require('./services/localStorage');
-    uploadRootPath = getUploadRoot();
-    uploadRootExists = fs.existsSync(uploadRootPath);
-    if (uploadRootExists) {
-      try {
-        fs.accessSync(uploadRootPath, fs.constants.W_OK);
-        uploadRootWritable = true;
-      } catch {
-        uploadRootWritable = false;
-      }
-    }
-  } catch {
-    /* storage module unavailable */
-  }
-
   return {
-    status: 'Server is running',
-    hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-    hasJwtSecret: Boolean(process.env.JWT_SECRET),
-    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-    hasSupabaseKey: Boolean(process.env.SUPABASE_SECRET_KEY),
-    hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
-    hasResendFrom: Boolean(process.env.RESEND_FROM),
-    hasUploadRoot: Boolean(process.env.UPLOAD_ROOT || process.env.UPLOADS_ROOT),
-    uploadRootConfigured: Boolean(
-      String(process.env.UPLOAD_ROOT || process.env.UPLOADS_ROOT || '').trim()
-    ),
-    // Safe diagnostics (absolute path is needed to verify Hostinger env)
-    uploadRootPath,
-    uploadRootExists,
-    uploadRootWritable,
-    spaEnabled,
-    apiOnlyMode,
+    status: 'ok',
   };
-}
-
-/** Hostname only — never return user/password/query from DATABASE_URL. */
-function databaseHostnameFromEnv() {
-  const raw = String(process.env.DATABASE_URL || '').trim();
-  if (!raw) return null;
-  try {
-    // URL() needs a parseable scheme; postgres:// works
-    const normalized = raw.replace(/^postgres(ql)?:/i, 'http:');
-    const host = new URL(normalized).hostname;
-    return host || null;
-  } catch {
-    const m = raw.match(/@([^/:?]+)/);
-    return m ? m[1] : null;
-  }
-}
-
-function isPoolerHost(hostname) {
-  return /pooler\.supabase\.com$/i.test(String(hostname || ''));
-}
-
-function isDirectDbHost(hostname) {
-  return /^db\.[a-z0-9-]+\.supabase\.co$/i.test(String(hostname || ''));
 }
 
 app.get('/api/health', (req, res) => {
@@ -145,7 +93,7 @@ app.get('/api/health', (req, res) => {
 
 /**
  * GET /api/health/db-check?secret=...
- * Safe DB probe: runs SELECT 1 and returns only the DATABASE_URL hostname.
+ * Safe DB probe: runs SELECT 1. Does not expose hostnames or env details.
  * Requires HEALTH_CHECK_SECRET (or DB_CHECK_SECRET) to match ?secret=
  */
 app.get('/api/health/db-check', async (req, res) => {
@@ -157,24 +105,20 @@ app.get('/api/health/db-check', async (req, res) => {
   if (!expected) {
     return res.status(503).json({
       ok: false,
-      error:
-        'HEALTH_CHECK_SECRET is not set. Add it in Hostinger env vars, then restart Node.',
+      error: 'Health check is not available.',
     });
   }
   if (!provided || provided !== expected) {
     return res.status(401).json({ ok: false, error: 'Unauthorized' });
   }
 
-  const hostname = databaseHostnameFromEnv();
   const started = Date.now();
 
   if (!process.env.DATABASE_URL) {
     return res.status(503).json({
       ok: false,
       connected: false,
-      hostname: null,
-      connectionKind: 'missing',
-      error: 'DATABASE_URL is not set',
+      error: 'Service unavailable.',
       ms: Date.now() - started,
     });
   }
@@ -188,34 +132,17 @@ app.get('/api/health/db-check', async (req, res) => {
     connected = true;
   } catch (err) {
     connected = false;
-    error = err.message || String(err);
-    // Never echo connection string fragments that might include credentials
-    if (/postgresql:\/\//i.test(error) || /postgres:\/\//i.test(error)) {
-      error = err.code || 'database_connection_failed';
-    }
+    error = 'Service unavailable.';
   }
-
-  const connectionKind = !hostname
-    ? 'unknown'
-    : isPoolerHost(hostname)
-      ? 'pooler'
-      : isDirectDbHost(hostname)
-        ? 'direct_db_ipv6'
-        : 'other';
 
   return res.status(connected ? 200 : 503).json({
     ok: connected,
     connected,
-    hostname,
-    connectionKind,
-    looksLikePooler: isPoolerHost(hostname),
-    looksLikeDirectDbHost: isDirectDbHost(hostname),
     error,
     ms: Date.now() - started,
   });
 });
 
-let apiBootError = null;
 try {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
@@ -227,13 +154,10 @@ try {
   app.use('/api/messages', require('./routes/messagesRoutes'));
   app.use('/api/push', require('./routes/pushRoutes'));
 } catch (err) {
-  apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);
   app.use('/api', (req, res) => {
     res.status(503).json({
-      message:
-        apiBootError?.message ||
-        'API is not configured. Set DATABASE_URL, JWT_SECRET, SUPABASE_URL, SUPABASE_SECRET_KEY in Hostinger.',
+      message: 'Server unavailable. Please contact your admin.',
     });
   });
 }

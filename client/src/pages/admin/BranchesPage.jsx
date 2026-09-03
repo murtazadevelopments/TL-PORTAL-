@@ -34,13 +34,10 @@ export default function BranchesPage() {
   const [saving, setSaving] = useState(false);
 
   const canManage = hasPermission(permissions, 'branches:create', role);
-  const canEditAllIps =
-    isCeo(role) ||
-    hasPermission(permissions, 'branches:create', role) ||
-    hasPermission(permissions, 'hr:add_employee', role);
+  const canEditIps = isCeo(role);
 
-  function canEditBranchIp(branch) {
-    return Boolean(canEditAllIps || branch?.can_edit_ip);
+  function canEditBranchIp() {
+    return canEditIps;
   }
 
   const loadBranches = useCallback(async () => {
@@ -106,7 +103,11 @@ export default function BranchesPage() {
         [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name)))
       );
       setNewName('');
-      setSuccess(`Branch “${data.name}” created. Add office IPs or GPS with Edit check-in.`);
+      setSuccess(
+        canEditIps
+          ? `Branch “${data.name}” created. Add office IPs or GPS with Edit check-in.`
+          : `Branch “${data.name}” created.`
+      );
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create branch.');
     } finally {
@@ -212,9 +213,8 @@ export default function BranchesPage() {
         <div>
           <h1>Manage Branches</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Offices used on employee records. For onsite check-in, add each office’s public IP
-            (whatismyip on that Wi‑Fi) and/or GPS coordinates — employees can check in if either
-            matches.
+            Offices used on employee records. Only the CEO can view and edit office IPs used for
+            onsite check-in.
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBranches}>
@@ -241,7 +241,7 @@ export default function BranchesPage() {
       )}
 
       {!canManage && (
-        <p className="muted">You can view branches. CEO / HR can add offices and set IPs.</p>
+        <p className="muted">You can view branches. Only the CEO can view or edit office IPs.</p>
       )}
 
       {error && <p className="error">{error}</p>}
@@ -277,7 +277,7 @@ export default function BranchesPage() {
                   <tr key={b.id}>
                     <td className="cell-name">{b.name}</td>
                     <td>
-                      {canEditBranchIp(b) ? (
+                      {canEditIps ? (
                         ips.length ? (
                           <div className="branch-ip-chips">
                             {ips.map((ip) => (
@@ -289,8 +289,6 @@ export default function BranchesPage() {
                         ) : (
                           <span className="muted">Not set</span>
                         )
-                      ) : b.ip_configured ? (
-                        <span className="muted">Configured</span>
                       ) : (
                         <span className="muted">—</span>
                       )}
@@ -309,7 +307,7 @@ export default function BranchesPage() {
                       {b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}
                     </td>
                     <td className="branches-actions">
-                      {canEditBranchIp(b) && (
+                      {canEditIps && (
                         <button
                           type="button"
                           className="btn btn-ghost"

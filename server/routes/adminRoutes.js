@@ -133,8 +133,7 @@ router.delete(
 );
 router.patch(
   '/branches/:id',
-  requireRole('admin'),
-  requireCeoOrAnyPermission('branches:create', 'hr:add_employee', 'attendance:edit'),
+  requireRole('ceo'),
   updateBranch
 );
 

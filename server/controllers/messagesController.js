@@ -128,6 +128,8 @@ async function deliverOneMessage({
   subject,
   messageBody,
   deliveryMethod,
+  emailIfPushUndelivered = false,
+  pushPayload = null,
 }) {
   const { rows } = await pool.query(
     `
@@ -146,7 +148,21 @@ async function deliverOneMessage({
   let emailSent = false;
   let emailError = null;
 
-  if (deliveryMethod === 'email' || deliveryMethod === 'both') {
+  const push = await notifyRecipientPush(
+    recipient,
+    subject,
+    messageBody,
+    message.id,
+    pushPayload
+  );
+
+  const pushDelivered = Number(push?.sent) > 0;
+  const wantEmail =
+    deliveryMethod === 'email' ||
+    deliveryMethod === 'both' ||
+    (emailIfPushUndelivered && !pushDelivered);
+
+  if (wantEmail) {
     if (!recipient.email) {
       emailError = 'No email on file';
     } else {
@@ -201,24 +217,25 @@ async function deliverOneMessage({
     }
   }
 
-  // Mobile PWA push (best-effort) — only reaches users who opted in on an installed app
-  await notifyRecipientPush(recipient, subject, messageBody, message.id);
-
-  return { message, emailSent, emailError };
+  return { message, emailSent, emailError, pushSent: Number(push?.sent) || 0 };
 }
 
-async function notifyRecipientPush(recipient, subject, messageBody, messageId) {
-  if (!recipient?.id) return;
+async function notifyRecipientPush(recipient, subject, messageBody, messageId, extra = null) {
+  if (!recipient?.id) return { sent: 0 };
   const preview = String(messageBody || '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
-  await sendPushToUserSafe(recipient.id, {
-    title: subject || 'New portal message',
-    body: preview || 'You have a new message in Textured Lab Portal.',
-    url: `/account/messages`,
-    tag: `message-${messageId || recipient.id}`,
-  });
+  return sendPushToUserSafe(
+    recipient.id,
+    {
+      title: extra?.title || subject || 'New portal message',
+      body: extra?.body || preview || 'You have a new message in Textured Lab Portal.',
+      url: extra?.url || `/account/messages`,
+      tag: extra?.tag || `message-${messageId || recipient.id}`,
+    },
+    extra?.pushOpts || { requireEnabled: false, urgency: extra?.urgency || 'high' }
+  );
 }
 
 /**

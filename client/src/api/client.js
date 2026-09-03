@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { sanitizePublicError, sanitizePublicPayload } from '../utils/sanitizePublicError';
 
 /**
  * Backend origin from Vite env (no trailing slash).
@@ -40,13 +41,23 @@ const SESSION_ENDED_CODES = new Set([
 ]);
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.data) sanitizePublicPayload(response.data);
+    return response;
+  },
   (error) => {
     const status = error.response?.status;
     const code = error.response?.data?.code;
     const url = String(error.config?.url || '');
     const isPublicAuth = /\/api\/auth\//.test(url);
     const isAttendanceCheckIn = /\/api\/attendance\/check-in/.test(url);
+
+    if (error.response?.data) {
+      error.response.data = sanitizePublicPayload(error.response.data);
+    }
+    if (typeof error.message === 'string') {
+      error.message = sanitizePublicError(error.message);
+    }
 
     if (
       !isPublicAuth &&

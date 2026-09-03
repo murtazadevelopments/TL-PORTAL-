@@ -65,7 +65,7 @@ function requireSupabaseAuth(auth = 'user') {
     } catch (err) {
       console.error('Supabase auth middleware error:', err);
       return res.status(500).json({
-        message: err.message || 'Supabase configuration error',
+        message: 'Authentication is unavailable. Please contact your admin.',
       });
     }
   };
