@@ -25,6 +25,30 @@ function formatKarachiTime(iso) {
   }).format(d);
 }
 
+function readCheckInCoords() {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      resolve({ coords: null, locationUnavailable: true });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          coords: {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          },
+          locationUnavailable: false,
+        });
+      },
+      () => {
+        resolve({ coords: null, locationUnavailable: true });
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  });
+}
+
 export default function OnsiteAttendancePage() {
   const { user, permissions } = useAuthUser();
   const [data, setData] = useState(null);
@@ -63,8 +87,16 @@ export default function OnsiteAttendancePage() {
     setCheckingIn(true);
     setError('');
     setStatus('');
+    let locationUnavailable = false;
     try {
-      const { data: payload } = await api.post('/api/attendance/onsite-check-in');
+      const located = await readCheckInCoords();
+      locationUnavailable = located.locationUnavailable;
+      const { data: payload } = await api.post(
+        '/api/attendance/onsite-check-in',
+        located.coords
+          ? { latitude: located.coords.latitude, longitude: located.coords.longitude }
+          : {}
+      );
       setStatus(
         payload.status === 'on_time'
           ? 'Checked in on time.'
@@ -74,7 +106,13 @@ export default function OnsiteAttendancePage() {
       );
       await load();
     } catch (err) {
-      setError(err.response?.data?.message || 'Check-in failed.');
+      const apiMessage = err.response?.data?.message || 'Check-in failed.';
+      const networkDenied = err.response?.status === 403;
+      setError(
+        networkDenied && locationUnavailable
+          ? 'Enable location access for check-in, or connect to branch WiFi/LAN'
+          : apiMessage
+      );
     } finally {
       setCheckingIn(false);
     }
@@ -90,7 +128,7 @@ export default function OnsiteAttendancePage() {
         <div>
           <h1>My attendance</h1>
           <p className="muted">
-            Check in from your branch network any time. Status follows your shift (on time / late / absent).
+            Check in from your branch network or while on site (GPS). Status follows your shift (on time / late / absent).
             Your office is recorded as{' '}
             {data?.branch_name || user?.branch || 'your assigned branch'} — never as a raw IP.
           </p>
@@ -159,8 +197,8 @@ export default function OnsiteAttendancePage() {
         </button>
         {!data?.network_configured && !today && (
           <p className="muted">
-            No office IP is saved for {data?.branch_name || user?.branch || 'your branch'} yet.
-            Set it on Manage Branches for that same branch.
+            No office IP or GPS location is saved for {data?.branch_name || user?.branch || 'your branch'} yet.
+            Set them on Manage Branches for that same branch.
           </p>
         )}
       </section>

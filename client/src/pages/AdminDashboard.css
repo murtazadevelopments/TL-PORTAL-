@@ -560,7 +560,7 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     padding-bottom: 0.25rem;
-    margin-right: -0.25rem;
+    max-width: 100%;
   }
 
   .status-tab {

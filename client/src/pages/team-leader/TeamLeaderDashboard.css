@@ -22,6 +22,9 @@
   border-radius: 12px;
   background: rgba(8, 12, 22, 0.92);
   backdrop-filter: blur(8px);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .tl-setup-card {

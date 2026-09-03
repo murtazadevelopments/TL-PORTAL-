@@ -5,17 +5,32 @@ const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissi
 const { employeeMatchesScope, isAllScope } = require('../utils/employeeScope');
 const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
 
-const BRANCH_SELECT = `id, name, ip_address, created_by, created_at`;
+const BRANCH_SELECT = `id, name, ip_address, latitude, longitude, radius_meters, created_by, created_at`;
 const MAX_OFFICE_IPS = 20;
+const DEFAULT_RADIUS_METERS = 150;
+
+function toFiniteNumber(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : NaN;
+}
 
 function serializeBranch(row, canEditIp) {
   const ips = parseOfficeIps(row.ip_address);
+  const lat = toFiniteNumber(row.latitude);
+  const lng = toFiniteNumber(row.longitude);
   return {
     id: row.id,
     name: row.name,
     ip_address: canEditIp ? formatOfficeIps(ips) || '' : null,
     ip_addresses: canEditIp ? ips : [],
     ip_configured: ips.length > 0,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lng) ? lng : null,
+    radius_meters:
+      row.radius_meters == null || row.radius_meters === ''
+        ? DEFAULT_RADIUS_METERS
+        : Number(row.radius_meters),
     created_by: row.created_by,
     created_at: row.created_at,
     can_edit_ip: Boolean(canEditIp),
@@ -28,6 +43,52 @@ function officeIpsFromBody(body) {
     return body.ip_address;
   }
   return undefined;
+}
+
+function parseBranchGeo(body, { allowSkip = false } = {}) {
+  const src = body || {};
+  const hasLat = Object.prototype.hasOwnProperty.call(src, 'latitude');
+  const hasLng = Object.prototype.hasOwnProperty.call(src, 'longitude');
+  const hasRad = Object.prototype.hasOwnProperty.call(src, 'radius_meters');
+  if (allowSkip && !hasLat && !hasLng && !hasRad) {
+    return { skip: true };
+  }
+
+  const latRaw = src.latitude;
+  const lngRaw = src.longitude;
+  const radRaw = src.radius_meters;
+  const latEmpty = latRaw == null || latRaw === '';
+  const lngEmpty = lngRaw == null || lngRaw === '';
+
+  if (latEmpty !== lngEmpty) {
+    return { error: 'Latitude and longitude must both be set, or both left empty.' };
+  }
+
+  let latitude = null;
+  let longitude = null;
+  if (!latEmpty) {
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+      return { error: 'Latitude must be a number between -90 and 90.' };
+    }
+    if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+      return { error: 'Longitude must be a number between -180 and 180.' };
+    }
+    latitude = lat;
+    longitude = lng;
+  }
+
+  let radius_meters = DEFAULT_RADIUS_METERS;
+  if (radRaw != null && radRaw !== '') {
+    const rad = Number(radRaw);
+    if (!Number.isFinite(rad) || rad < 1 || Math.round(rad) !== rad) {
+      return { error: 'Radius must be a whole number of meters (1 or more).' };
+    }
+    radius_meters = Math.round(rad);
+  }
+
+  return { latitude, longitude, radius_meters };
 }
 
 function normalizeOfficeIpsOrError(raw) {
@@ -106,14 +167,18 @@ async function createBranch(req, res) {
     if (parsed.error) {
       return res.status(400).json({ message: parsed.error });
     }
+    const geo = parseBranchGeo(req.body);
+    if (geo.error) {
+      return res.status(400).json({ message: geo.error });
+    }
 
     const { rows } = await pool.query(
       `
-        INSERT INTO branches (name, created_by, ip_address)
-        VALUES ($1, $2, $3)
+        INSERT INTO branches (name, created_by, ip_address, latitude, longitude, radius_meters)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING ${BRANCH_SELECT}
       `,
-      [name, req.user?.id ?? null, parsed.stored]
+      [name, req.user?.id ?? null, parsed.stored, geo.latitude, geo.longitude, geo.radius_meters]
     );
 
     return res.status(201).json(serializeBranch(rows[0], true));
@@ -160,15 +225,31 @@ async function updateBranch(req, res) {
     if (parsed.error) {
       return res.status(400).json({ message: parsed.error });
     }
+    const geo = parseBranchGeo(req.body, { allowSkip: true });
+    if (geo.error) {
+      return res.status(400).json({ message: geo.error });
+    }
 
     const { rows } = await pool.query(
-      `
+      geo.skip
+        ? `
         UPDATE branches
         SET ip_address = $2
         WHERE id = $1
         RETURNING ${BRANCH_SELECT}
+      `
+        : `
+        UPDATE branches
+        SET ip_address = $2,
+            latitude = $3,
+            longitude = $4,
+            radius_meters = $5
+        WHERE id = $1
+        RETURNING ${BRANCH_SELECT}
       `,
-      [id, parsed.stored]
+      geo.skip
+        ? [id, parsed.stored]
+        : [id, parsed.stored, geo.latitude, geo.longitude, geo.radius_meters]
     );
 
     return res.json(serializeBranch(rows[0], true));

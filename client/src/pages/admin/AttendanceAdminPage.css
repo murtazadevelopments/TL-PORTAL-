@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .attendance-admin .attendance-hero {
@@ -10,6 +13,13 @@
   gap: 1rem;
   align-items: flex-start;
   flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.attendance-admin .attendance-hero > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .attendance-admin .attendance-hero h1 {
@@ -63,13 +73,15 @@
 
 .attendance-admin .attendance-filters {
   display: grid;
-  grid-template-columns: minmax(9.5rem, 0.9fr) minmax(8.5rem, 0.8fr) minmax(12rem, 1.4fr) auto;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
   gap: 0.75rem;
   align-items: end;
   padding: 0.85rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+  max-width: 100%;
+  min-width: 0;
 }
 
 .attendance-admin .attendance-filters label {

@@ -63,3 +63,25 @@ export function startPwaUpdateWatcher() {
     })
     .catch(() => {});
 }
+
+/**
+ * Wipe Cache Storage + service workers, then reload so a PWA picks up a new deploy.
+ */
+export async function hardEmptyCacheAndReload() {
+  if (typeof window === 'undefined') return;
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch {
+    /* still reload */
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('_nocache', String(Date.now()));
+  window.location.replace(url.href);
+}

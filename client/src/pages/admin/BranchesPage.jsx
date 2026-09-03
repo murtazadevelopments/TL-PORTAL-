@@ -28,6 +28,9 @@ export default function BranchesPage() {
   const [deletingId, setDeletingId] = useState(null);
   const [editing, setEditing] = useState(null);
   const [editIps, setEditIps] = useState(['']);
+  const [editLat, setEditLat] = useState('');
+  const [editLng, setEditLng] = useState('');
+  const [editRadius, setEditRadius] = useState('150');
   const [saving, setSaving] = useState(false);
 
   const canManage = hasPermission(permissions, 'branches:create', role);
@@ -103,7 +106,7 @@ export default function BranchesPage() {
         [...prev, data].sort((a, b) => String(a.name).localeCompare(String(b.name)))
       );
       setNewName('');
-      setSuccess(`Branch “${data.name}” created. Add office IPs with Edit IPs.`);
+      setSuccess(`Branch “${data.name}” created. Add office IPs or GPS with Edit check-in.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create branch.');
     } finally {
@@ -138,6 +141,13 @@ export default function BranchesPage() {
     const ips = ipsFromBranch(branch);
     setEditing(branch);
     setEditIps(ips.length ? ips : ['']);
+    setEditLat(branch?.latitude == null || branch?.latitude === '' ? '' : String(branch.latitude));
+    setEditLng(branch?.longitude == null || branch?.longitude === '' ? '' : String(branch.longitude));
+    setEditRadius(
+      branch?.radius_meters == null || branch?.radius_meters === ''
+        ? '150'
+        : String(branch.radius_meters)
+    );
     setError('');
     setSuccess('');
   }
@@ -145,6 +155,9 @@ export default function BranchesPage() {
   function closeEditor() {
     setEditing(null);
     setEditIps(['']);
+    setEditLat('');
+    setEditLng('');
+    setEditRadius('150');
   }
 
   async function handleSaveIps(e) {
@@ -157,13 +170,23 @@ export default function BranchesPage() {
       const ips = editIps.map((s) => String(s).trim()).filter(Boolean);
       const { data } = await api.patch(`/api/admin/branches/${editing.id}`, {
         ip_addresses: ips,
+        latitude: editLat.trim() === '' ? null : Number(editLat),
+        longitude: editLng.trim() === '' ? null : Number(editLng),
+        radius_meters: editRadius.trim() === '' ? 150 : Number(editRadius),
       });
       setBranches((prev) => prev.map((b) => (b.id === data.id ? { ...b, ...data } : b)));
       closeEditor();
+      const geoSet = data.latitude != null && data.longitude != null;
       setSuccess(
-        ips.length
-          ? `Saved ${ips.length} office IP${ips.length === 1 ? '' : 's'} for “${data.name}”.`
-          : `Cleared office IPs for “${data.name}”.`
+        [
+          ips.length
+            ? `Saved ${ips.length} office IP${ips.length === 1 ? '' : 's'}`
+            : 'Cleared office IPs',
+          geoSet
+            ? `and location (${data.radius_meters || 150} m)`
+            : 'and cleared GPS location',
+          `for “${data.name}”.`,
+        ].join(' ')
       );
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save office IPs.');
@@ -190,7 +213,8 @@ export default function BranchesPage() {
           <h1>Manage Branches</h1>
           <p className="muted" style={{ margin: 0 }}>
             Offices used on employee records. For onsite check-in, add each office’s public IP
-            (whatismyip on that Wi‑Fi) — not 192.168… router addresses.
+            (whatismyip on that Wi‑Fi) and/or GPS coordinates — employees can check in if either
+            matches.
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBranches}>
@@ -241,6 +265,7 @@ export default function BranchesPage() {
               <tr>
                 <th>Name</th>
                 <th>Office IPs</th>
+                <th>GPS</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
@@ -270,6 +295,16 @@ export default function BranchesPage() {
                         <span className="muted">—</span>
                       )}
                     </td>
+                    <td>
+                      {b.latitude != null && b.longitude != null ? (
+                        <span title={`${b.latitude}, ${b.longitude}`}>
+                          {Number(b.latitude).toFixed(5)}, {Number(b.longitude).toFixed(5)}
+                          <span className="muted"> · {b.radius_meters || 150} m</span>
+                        </span>
+                      ) : (
+                        <span className="muted">Not set</span>
+                      )}
+                    </td>
                     <td className="branches-date">
                       {b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}
                     </td>
@@ -281,7 +316,7 @@ export default function BranchesPage() {
                           disabled={saving || creating}
                           onClick={() => openEditor(b)}
                         >
-                          Edit IPs
+                          Edit check-in
                         </button>
                       )}
                       {canManage && (
@@ -306,10 +341,10 @@ export default function BranchesPage() {
       {editing && (
         <div className="modal-backdrop modal-backdrop-stack" onClick={closeEditor}>
           <form className="modal-card branches-ip-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSaveIps}>
-            <h2>Office IPs</h2>
+            <h2>Office check-in</h2>
             <p className="muted">
               {editing.name} — add every public IPv4, or an IPv6 prefix like 2407:aa80:14:3c96::/64.
-              Check-in matches any exact IP or prefix.
+              Check-in matches any exact IP or prefix, or GPS within the radius below.
             </p>
             <div className="branches-ip-list">
               {(editIps.length ? editIps : ['']).map((ip, idx) => (
@@ -352,12 +387,52 @@ export default function BranchesPage() {
             >
               Add another IP
             </button>
+            <div className="branches-geo-fields">
+              <label>
+                Latitude
+                <input
+                  type="number"
+                  step="any"
+                  min="-90"
+                  max="90"
+                  value={editLat}
+                  onChange={(e) => setEditLat(e.target.value)}
+                  placeholder="e.g. 24.86148"
+                  disabled={saving}
+                />
+              </label>
+              <label>
+                Longitude
+                <input
+                  type="number"
+                  step="any"
+                  min="-180"
+                  max="180"
+                  value={editLng}
+                  onChange={(e) => setEditLng(e.target.value)}
+                  placeholder="e.g. 67.00991"
+                  disabled={saving}
+                />
+              </label>
+              <label>
+                Radius (meters)
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={editRadius}
+                  onChange={(e) => setEditRadius(e.target.value)}
+                  placeholder="150"
+                  disabled={saving}
+                />
+              </label>
+            </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" disabled={saving} onClick={closeEditor}>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Saving…' : 'Save IPs'}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </form>

@@ -5,10 +5,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .msg-row {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
@@ -20,6 +24,7 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
+  overflow: hidden;
 }
 
 .msg-row:hover {
@@ -58,6 +63,8 @@
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .msg-sender {
@@ -89,7 +96,7 @@
 }
 
 .msg-detail-modal {
-  width: min(560px, calc(100vw - 2rem));
+  width: min(560px, calc(100% - 2rem));
 }
 
 .msg-body {

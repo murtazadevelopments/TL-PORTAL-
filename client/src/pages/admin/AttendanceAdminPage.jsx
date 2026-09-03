@@ -441,14 +441,12 @@ export default function AttendanceAdminPage() {
                         onClick={() =>
                           setOnsiteManual({
                             user: row,
-                            checked_in_at: row.record?.checked_in_at
-                              ? toDatetimeLocalValue(new Date(row.record.checked_in_at))
-                              : datetimeLocalForDay(date),
-                            note: row.record?.note || '',
+                            checked_in_at: datetimeLocalForDay(date),
+                            note: '',
                           })
                         }
                       >
-                        Add / update check-in
+                        Add check-in
                       </button>
                     )}
                     {row.can_override && (

@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .attendance-hero {
@@ -10,6 +13,13 @@
   gap: 1rem;
   align-items: flex-start;
   flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.attendance-hero > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .attendance-summary {

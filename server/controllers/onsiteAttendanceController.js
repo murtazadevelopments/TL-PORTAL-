@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
 const { statusForCheckIn, parseCheckInAt, pgDateKey, addDaysToDateKey } = require('../utils/onsiteShiftStatus');
 const { requestMatchesConfiguredIp, parseOfficeIps } = require('../utils/requestMeta');
+const { haversineDistanceMeters } = require('../utils/geo');
 const { writeAuditLog } = require('../utils/auditLog');
 const { zonedParts } = require('../utils/attendanceWindows');
 const {
@@ -124,10 +125,46 @@ async function loadBranchIp(branchName) {
   const name = String(branchName || '').trim();
   if (!name) return null;
   const { rows } = await pool.query(
-    `SELECT name, ip_address FROM branches WHERE lower(name) = lower($1) LIMIT 1`,
+    `SELECT name, ip_address, latitude, longitude, radius_meters
+     FROM branches WHERE lower(name) = lower($1) LIMIT 1`,
     [name]
   );
   return rows[0] || null;
+}
+
+function parseCheckInCoords(body) {
+  const latRaw = body?.latitude;
+  const lngRaw = body?.longitude;
+  const latPresent = latRaw != null && latRaw !== '';
+  const lngPresent = lngRaw != null && lngRaw !== '';
+  if (latPresent !== lngPresent) {
+    const err = new Error('latitude and longitude must both be provided.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!latPresent) return null;
+  const latitude = Number(latRaw);
+  const longitude = Number(lngRaw);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    const err = new Error('latitude must be a number between -90 and 90.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    const err = new Error('longitude must be a number between -180 and 180.');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { latitude, longitude };
+}
+
+function branchGeofence(row) {
+  const latitude = Number(row?.latitude);
+  const longitude = Number(row?.longitude);
+  const radiusMeters = Number(row?.radius_meters);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (!Number.isFinite(radiusMeters) || radiusMeters <= 0) return null;
+  return { latitude, longitude, radiusMeters };
 }
 
 async function insertOnsiteRecord({
@@ -173,6 +210,22 @@ async function insertOnsiteRecord({
     markedBy ?? null,
     note || null,
   ];
+
+  if (!upsert) {
+    const { rows: existing } = await pool.query(
+      `
+        SELECT id FROM onsite_attendance
+        WHERE user_id = $1 AND work_date = $2::date
+        LIMIT 1
+      `,
+      [user.id, calc.workDate]
+    );
+    if (existing[0]) {
+      const err = new Error('This employee already checked in. You can only change their status.');
+      err.statusCode = 409;
+      throw err;
+    }
+  }
 
   if (upsert) {
     const { rows: existing } = await pool.query(
@@ -248,13 +301,38 @@ async function onsiteCheckIn(req, res) {
     const branchRow = await loadBranchIp(user.branch);
     const branchLabel = String(user.branch || '').trim() || 'your assigned branch';
     const officeIps = parseOfficeIps(branchRow?.ip_address);
-    if (!officeIps.length) {
+    const geofence = branchGeofence(branchRow);
+    const requestCoords = parseCheckInCoords(req.body);
+
+    if (!officeIps.length && !geofence) {
       return res.status(400).json({
-        message: `No office IP is set for ${branchLabel}. Open Manage Branches and save the public IP on that same branch (not a different office).`,
+        message: `No office IP or check-in location is set for ${branchLabel}. Open Manage Branches and save the public IP and/or GPS coordinates on that same branch (not a different office).`,
       });
     }
 
-    if (!requestMatchesConfiguredIp(req, officeIps)) {
+    const ipOk = officeIps.length > 0 && requestMatchesConfiguredIp(req, officeIps);
+    let gpsOk = false;
+    let gpsDistanceMeters = null;
+    if (!ipOk && geofence && requestCoords) {
+      gpsDistanceMeters = haversineDistanceMeters(
+        requestCoords.latitude,
+        requestCoords.longitude,
+        geofence.latitude,
+        geofence.longitude
+      );
+      gpsOk = gpsDistanceMeters <= geofence.radiusMeters;
+      if (gpsOk) {
+        console.log('[onsite-gps-fallback]', {
+          branch: branchRow?.name || branchLabel,
+          distanceMeters: Math.round(gpsDistanceMeters),
+          radiusMeters: geofence.radiusMeters,
+          requestLatitude: requestCoords.latitude,
+          requestLongitude: requestCoords.longitude,
+        });
+      }
+    }
+
+    if (!ipOk && !gpsOk) {
       return res.status(403).json({
         message: "You must check in from your branch's network.",
       });
@@ -315,7 +393,8 @@ async function getMyOnsiteAttendance(req, res) {
     const user = await loadOnsiteEmployee(req.user.id);
     const shift = user?.shift ? await getShiftByName(user.shift) : null;
     const branchRow = await loadBranchIp(user?.branch);
-    const networkConfigured = parseOfficeIps(branchRow?.ip_address).length > 0;
+    const networkConfigured =
+      parseOfficeIps(branchRow?.ip_address).length > 0 || Boolean(branchGeofence(branchRow));
 
     const todayRaw =
       rows.find((r) => pgDateKey(r.work_date) === parts.dateKey) ||
@@ -439,7 +518,7 @@ async function adminListOnsite(req, res) {
         shift: person.shift,
         profile_picture_url: withProfileApiUrl(person).profile_picture_url,
         row_status: rowStatus,
-        can_manual: canEdit,
+        can_manual: Boolean(canEdit && !rec),
         can_override: Boolean(canEdit && rec),
         record: publicRow(rec),
       });
@@ -489,7 +568,7 @@ async function adminManualOnsite(req, res) {
         method: 'manual',
         markedBy: req.user.id,
         note: String(req.body?.note || '').trim() || null,
-        upsert: true,
+        upsert: false,
         workDateOverride,
       });
 
@@ -510,7 +589,7 @@ async function adminManualOnsite(req, res) {
     } catch (err) {
       if (err.code === '23505') {
         return res.status(409).json({
-          message: 'This employee already has an attendance record for that shift day.',
+          message: 'This employee already checked in. You can only change their status.',
         });
       }
       throw err;

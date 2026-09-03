@@ -23,8 +23,9 @@
   grid-area: topbar;
   display: none;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.55rem 0.75rem;
+  flex-wrap: nowrap;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem;
   border-bottom: 1px solid var(--border);
   background: rgba(8, 12, 22, 0.92);
   backdrop-filter: blur(12px);
@@ -33,6 +34,7 @@
   z-index: 40;
   max-width: 100%;
   min-width: 0;
+  overflow: hidden;
 }
 
 .shell-menu-btn {
@@ -87,7 +89,7 @@
 }
 
 .shell-brand-mobile {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -105,8 +107,7 @@
 }
 
 .shell-topbar-spacer {
-  flex: 1;
-  min-width: 0;
+  display: none;
 }
 
 .shell-user-chip {
@@ -277,6 +278,17 @@
 .sidebar-footer {
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sidebar-footer .btn,
+.sidebar-footer .hard-refresh-btn {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-logout {
@@ -309,6 +321,8 @@
 .page-panel {
   margin-top: 1.25rem;
   max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -342,6 +356,10 @@
 
   .app-shell-topbar {
     display: flex;
+  }
+
+  .app-shell-topbar .hard-refresh-btn {
+    flex: 0 0 auto;
   }
 
   .shell-brand-desktop {
@@ -388,9 +406,20 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
+  .app-shell-topbar {
+    gap: 0.3rem;
+    padding-inline: 0.45rem;
+  }
+
   .shell-user-chip {
     display: none;
+  }
+
+  .app-shell-topbar .hard-refresh-btn {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.72rem;
+    min-height: 34px;
   }
 
   .app-main > .admin-page,

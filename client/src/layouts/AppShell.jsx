@@ -8,6 +8,7 @@ import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import InstallAppModal from '../components/InstallAppModal';
+import HardRefreshButton from '../components/HardRefreshButton';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import './AppShell.css';
 
@@ -107,7 +108,7 @@ function ShellInner() {
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
-        <div className="shell-topbar-spacer" />
+        <HardRefreshButton compact />
         {user && (
           <span className="shell-user-chip muted">
             {user.name || user.username}
@@ -140,6 +141,7 @@ function ShellInner() {
         />
 
         <div className="sidebar-footer">
+          <HardRefreshButton block />
           <button type="button" className="btn btn-ghost sidebar-logout" onClick={logout}>
             Logout
           </button>

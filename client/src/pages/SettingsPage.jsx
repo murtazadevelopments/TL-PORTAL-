@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import InstallAppButton from '../components/InstallAppButton';
+import HardRefreshButton from '../components/HardRefreshButton';
 import {
   canUseMobilePushUi,
   disablePushNotifications,
@@ -137,6 +138,16 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+
+      <section style={{ marginTop: '1.75rem' }}>
+        <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Updates</h2>
+        <p className="muted">
+          If this device still shows an old version, empty the app cache and reload.
+        </p>
+        <div style={{ marginTop: '0.75rem' }}>
+          <HardRefreshButton />
+        </div>
+      </section>
     </div>
   );
 }

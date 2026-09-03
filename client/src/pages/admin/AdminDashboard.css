@@ -1,6 +1,8 @@
 .admin-page {
   width: min(1180px, calc(100% - 2rem));
   max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
   margin: 1.25rem auto 2.5rem;
   box-sizing: border-box;
 }
@@ -87,7 +89,8 @@
   padding: 0.65rem 0.9rem;
   background: rgba(5, 8, 16, 0.7);
   color: var(--text-h);
-  min-width: 150px;
+  min-width: min(150px, 100%);
+  max-width: 100%;
 }
 
 .filter-select:focus {
@@ -200,7 +203,9 @@
   border-radius: var(--radius);
   background: var(--surface);
   backdrop-filter: blur(14px);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -214,7 +219,8 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0.45rem;
-  min-width: 16rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .branch-ip-row {
@@ -244,13 +250,13 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.75rem 1rem;
-  max-width: 36rem;
+  max-width: min(36rem, 100%);
   margin-bottom: 1.25rem;
 }
 
 .branches-add-form label {
   flex: 1;
-  min-width: 14rem;
+  min-width: min(14rem, 100%);
   margin: 0;
 }
 
@@ -294,11 +300,41 @@
   width: calc(100% - 2rem);
 }
 
-.branches-ip-list {
+.branches-geo-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.65rem;
+  max-width: 100%;
+}
+
+.branches-geo-fields label {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin: 0.75rem 0 0.85rem;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.branches-geo-fields label:last-child {
+  grid-column: 1 / -1;
+}
+
+.branches-geo-fields input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 520px) {
+  .branches-geo-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .branches-geo-fields label:last-child {
+    grid-column: auto;
+  }
 }
 
 .branches-page .modal-card.branches-ip-modal {
@@ -474,7 +510,7 @@
 }
 
 .modal-panel.modal-panel-center {
-  width: min(560px, calc(100vw - 2rem));
+  width: min(560px, calc(100% - 2rem));
   height: auto;
   max-height: min(90vh, 760px);
   border-left: none;
@@ -753,7 +789,7 @@ button.doc-preview:not(:disabled):hover {
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     padding-bottom: 0.25rem;
-    margin-right: -0.25rem;
+    max-width: 100%;
   }
 
   .status-tab {
@@ -802,7 +838,7 @@ button.doc-preview:not(:disabled):hover {
   }
 
   .modal-panel.modal-panel-center {
-    width: min(560px, calc(100vw - 2rem));
+    width: min(560px, calc(100% - 2rem));
     height: auto;
     max-height: 90vh;
     border: 1px solid var(--border);
@@ -945,7 +981,7 @@ button.doc-preview:not(:disabled):hover {
 }
 
 .add-employee-panel {
-  width: min(760px, calc(100vw - 2rem));
+  width: min(760px, calc(100% - 2rem));
   max-height: min(92vh, 860px);
   overflow: auto;
 }

@@ -15,6 +15,21 @@ async function ensureOnsiteAttendanceSchema() {
   if (ensured) return;
 
   await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS ip_address TEXT`);
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION`);
+  await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION`);
+  await pool.query(
+    `ALTER TABLE branches ADD COLUMN IF NOT EXISTS radius_meters INTEGER DEFAULT 150`
+  );
+
+  await pool.query(`
+    UPDATE branches
+    SET latitude = 24.8614834,
+        longitude = 67.0099051,
+        radius_meters = 150
+    WHERE lower(name) = 'division'
+      AND latitude IS NULL
+      AND longitude IS NULL
+  `);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shifts (
