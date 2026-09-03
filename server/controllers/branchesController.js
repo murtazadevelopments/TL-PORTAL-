@@ -3,7 +3,7 @@ const { BRANCH_OPTIONS } = require('../constants/branches');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
 const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
 const { employeeMatchesScope, isAllScope } = require('../utils/employeeScope');
-const { stripIp, parseOfficeIps, formatOfficeIps, looksLikeRawIp } = require('../utils/requestMeta');
+const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
 
 const BRANCH_SELECT = `id, name, ip_address, created_by, created_at`;
 const MAX_OFFICE_IPS = 20;
@@ -38,9 +38,9 @@ function normalizeOfficeIpsOrError(raw) {
   const ips = [];
   const seen = new Set();
   for (const token of tokens) {
-    const ip = stripIp(token);
-    if (!ip || !looksLikeRawIp(ip)) {
-      return { error: `“${token}” is not a valid IPv4 or IPv6 address.` };
+    const ip = normalizeOfficeNetworkEntry(token);
+    if (!ip || !looksLikeOfficeNetworkEntry(token)) {
+      return { error: `“${token}” is not a valid IPv4/IPv6 address or CIDR prefix (for example 203.0.113.10 or 2407:aa80:14:3c96::/64).` };
     }
     const key = ip.toLowerCase();
     if (seen.has(key)) continue;

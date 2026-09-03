@@ -308,7 +308,8 @@ export default function BranchesPage() {
           <form className="modal-card branches-ip-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSaveIps}>
             <h2>Office IPs</h2>
             <p className="muted">
-              {editing.name} — add every public IP this office uses. Check-in matches any of them.
+              {editing.name} — add every public IPv4, or an IPv6 prefix like 2407:aa80:14:3c96::/64.
+              Check-in matches any exact IP or prefix.
             </p>
             <div className="branches-ip-list">
               {(editIps.length ? editIps : ['']).map((ip, idx) => (
@@ -323,7 +324,7 @@ export default function BranchesPage() {
                         return next;
                       })
                     }
-                    placeholder="e.g. 203.0.113.10"
+                    placeholder="e.g. 203.0.113.10 or 2407:aa80:14:3c96::/64"
                     autoComplete="off"
                     disabled={saving}
                   />

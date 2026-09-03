@@ -2,6 +2,8 @@
  * Client IP, User-Agent, and approximate geo for login logs / emails.
  */
 
+const ipaddr = require('ipaddr.js');
+
 const PRIVATE_V4 =
   /^(127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0)$/;
 
@@ -84,7 +86,7 @@ function parseOfficeIps(value) {
   const out = [];
   const seen = new Set();
   for (const part of parts) {
-    const ip = stripIp(part);
+    const ip = normalizeOfficeNetworkEntry(part);
     if (!ip) continue;
     const key = ip.toLowerCase();
     if (seen.has(key)) continue;
@@ -99,12 +101,38 @@ function formatOfficeIps(ips) {
   return list.length ? list.join(', ') : null;
 }
 
+function ipInCidr(ip, cidr) {
+  try {
+    const addr = ipaddr.process(ip);
+    const range = ipaddr.parseCIDR(cidr);
+    if (addr.kind() !== range[0].kind()) return false;
+    return addr.match(range);
+  } catch {
+    return false;
+  }
+}
+
 function requestMatchesConfiguredIp(req, configuredIp) {
-  const wants = new Set(parseOfficeIps(configuredIp).map((ip) => ip.toLowerCase()));
-  if (!wants.size) return false;
+  const entries = parseOfficeIps(configuredIp).map((ip) => ip.toLowerCase());
+  if (!entries.length) return false;
+  const exact = new Set(entries.filter((ip) => !ip.includes('/')));
+  const cidrs = entries.filter((ip) => ip.includes('/'));
+  // DEBUG - remove after
+  console.log('[onsite-ip-debug]', {
+    reqIp: req.ip,
+    remoteAddress: req.socket?.remoteAddress,
+    xForwardedFor: req.headers['x-forwarded-for'],
+    xRealIp: req.headers['x-real-ip'],
+    cfConnectingIp: req.headers['cf-connecting-ip'],
+    forwarded: req.headers['forwarded'],
+    collected: collectRequestIps(req),
+    whitelist: entries,
+  });
   return collectRequestIps(req).some((ip) => {
     const got = stripIp(ip)?.toLowerCase();
-    return Boolean(got && wants.has(got));
+    if (!got) return false;
+    if (exact.has(got)) return true;
+    return cidrs.some((cidr) => ipInCidr(got, cidr));
   });
 }
 
@@ -124,6 +152,46 @@ function looksLikeRawIp(value) {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(s)) return true;
   if (/^[0-9a-f:]+$/i.test(s) && s.includes(':')) return true;
   return false;
+}
+
+function normalizeCidrToken(value) {
+  let s = String(value || '').trim();
+  if (!s) return null;
+  if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1).trim();
+  const bracketed = s.match(/^\[([^\]]+)\]\/(\d+)$/);
+  if (bracketed) s = `${bracketed[1]}/${bracketed[2]}`;
+  return s.toLowerCase();
+}
+
+function looksLikeOfficeNetworkEntry(value) {
+  const s = String(value || '').trim();
+  if (!s) return false;
+  if (s.includes('/')) {
+    try {
+      ipaddr.parseCIDR(normalizeCidrToken(s));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  const ip = stripIp(s);
+  return Boolean(ip && looksLikeRawIp(ip));
+}
+
+function normalizeOfficeNetworkEntry(value) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  if (s.includes('/')) {
+    const cidr = normalizeCidrToken(s);
+    try {
+      ipaddr.parseCIDR(cidr);
+      return cidr;
+    } catch {
+      return null;
+    }
+  }
+  const ip = stripIp(s);
+  return ip && looksLikeRawIp(ip) ? ip : null;
 }
 
 async function fetchJson(url, timeoutMs, extraHeaders = {}) {
@@ -260,5 +328,7 @@ module.exports = {
   lookupGeoFromIp,
   isPrivateOrLocalIp,
   looksLikeRawIp,
+  looksLikeOfficeNetworkEntry,
+  normalizeOfficeNetworkEntry,
   stripIp,
 };
