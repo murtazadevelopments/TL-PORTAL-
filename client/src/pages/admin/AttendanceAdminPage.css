@@ -352,7 +352,8 @@
 }
 
 .attendance-day.present,
-.attendance-day.verified {
+.attendance-day.verified,
+.attendance-day.on_time {
   background: rgba(61, 255, 122, 0.08);
 }
 .attendance-day.late {

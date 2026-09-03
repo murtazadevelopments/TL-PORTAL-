@@ -103,6 +103,29 @@ function statusForCheckIn(checkedInAt, shift) {
   };
 }
 
+function isNightShift(shiftOrName) {
+  const name = String(
+    typeof shiftOrName === 'string' ? shiftOrName : shiftOrName?.name || ''
+  )
+    .trim()
+    .toLowerCase();
+  return name === 'night' || /(^|[\s/_-])night([\s/_-]|$)/.test(name);
+}
+
+const NIGHT_SELF_CHECKIN_START_MIN = 21 * 60;
+const NIGHT_SELF_CHECKIN_END_MIN = 23 * 60 + 59;
+
+function isWithinNightSelfCheckInWindow(at = new Date()) {
+  const parts = zonedParts(at);
+  const clock = parts.hour * 60 + parts.minute;
+  return clock >= NIGHT_SELF_CHECKIN_START_MIN && clock <= NIGHT_SELF_CHECKIN_END_MIN;
+}
+
+function employeeCanSelfCheckIn(shiftOrName, at = new Date()) {
+  if (!isNightShift(shiftOrName)) return true;
+  return isWithinNightSelfCheckInWindow(at);
+}
+
 function parseCheckInAt(value) {
   if (value == null || value === '') return new Date();
   const d = new Date(value);
@@ -117,4 +140,7 @@ module.exports = {
   parseCheckInAt,
   pgDateKey,
   addDaysToDateKey,
+  isNightShift,
+  isWithinNightSelfCheckInWindow,
+  employeeCanSelfCheckIn,
 };

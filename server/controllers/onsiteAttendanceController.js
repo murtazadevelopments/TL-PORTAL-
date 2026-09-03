@@ -1,6 +1,6 @@
 const pool = require('../config/db');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
-const { statusForCheckIn, parseCheckInAt, pgDateKey, addDaysToDateKey } = require('../utils/onsiteShiftStatus');
+const { statusForCheckIn, parseCheckInAt, pgDateKey, addDaysToDateKey, isNightShift, employeeCanSelfCheckIn } = require('../utils/onsiteShiftStatus');
 const { requestMatchesConfiguredIp, parseOfficeIps } = require('../utils/requestMeta');
 const { haversineDistanceMeters } = require('../utils/geo');
 const { writeAuditLog } = require('../utils/auditLog');
@@ -20,11 +20,20 @@ const ONSITE_SELECT = `
   created_at, updated_at
 `;
 
-function assertManualWorkDate(dateKey) {
+function assertManualWorkDate(dateKey, { allowPast = false } = {}) {
   const today = zonedParts().dateKey;
   const yesterday = addDaysToDateKey(today, -1);
   const key = String(dateKey || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key > today || key < yesterday) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key > today) {
+    const err = new Error(
+      allowPast
+        ? 'Manual attendance cannot be saved for a future date.'
+        : 'Manual attendance can only be saved for today or yesterday.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!allowPast && key < yesterday) {
     const err = new Error('Manual attendance can only be saved for today or yesterday.');
     err.statusCode = 400;
     throw err;
@@ -175,6 +184,7 @@ async function insertOnsiteRecord({
   note,
   upsert = false,
   workDateOverride = null,
+  allowAnyPastDate = false,
 }) {
   const shift = await getShiftByName(user.shift);
   if (!shift) {
@@ -197,7 +207,7 @@ async function insertOnsiteRecord({
   const calc = statusForCheckIn(checkedInAt, shift);
   const override = String(workDateOverride || '').slice(0, 10);
   let workDate = /^\d{4}-\d{2}-\d{2}$/.test(override) ? override : calc.workDate;
-  if (method === 'manual') workDate = assertManualWorkDate(workDate);
+  if (method === 'manual') workDate = assertManualWorkDate(workDate, { allowPast: allowAnyPastDate });
   calc.workDate = workDate;
   const params = [
     user.id,
@@ -295,6 +305,15 @@ async function onsiteCheckIn(req, res) {
     if (String(user.employment_type || 'onsite').trim().toLowerCase() !== 'onsite') {
       return res.status(403).json({
         message: 'Office check-in is only for onsite employees.',
+      });
+    }
+
+    const shiftForWindow = user.shift ? await getShiftByName(user.shift) : null;
+    if (!employeeCanSelfCheckIn(shiftForWindow || user.shift)) {
+      return res.status(403).json({
+        code: 'night_checkin_window',
+        message:
+          'Night shift check-in is only open from 9:00 PM to 11:59 PM. Ask an admin to mark attendance after that.',
       });
     }
 
@@ -413,11 +432,19 @@ async function getMyOnsiteAttendance(req, res) {
       if (pub && totals[pub.status] != null) totals[pub.status] += 1;
     }
 
+    const nightShift = isNightShift(shift || user?.shift);
+    const windowOpen = employeeCanSelfCheckIn(shift || user?.shift);
+
     return res.json({
       date: parts.dateKey,
       month,
       today: publicRow(today),
-      can_check_in: !today,
+      can_check_in: Boolean(!today && windowOpen),
+      night_shift: nightShift,
+      self_check_in_open: windowOpen,
+      self_check_in_window: nightShift
+        ? { start: '21:00', end: '23:59', timezone: 'Asia/Karachi' }
+        : null,
       network_configured: networkConfigured,
       branch_name: user?.branch || null,
       shift: shift
@@ -518,8 +545,9 @@ async function adminListOnsite(req, res) {
         shift: person.shift,
         profile_picture_url: withProfileApiUrl(person).profile_picture_url,
         row_status: rowStatus,
-        can_manual: Boolean(canEdit && !rec),
+        can_manual: Boolean(canEdit && (!rec || isCeoRole(req.user?.role))),
         can_override: Boolean(canEdit && rec),
+        can_delete: Boolean(isCeoRole(req.user?.role) && rec),
         record: publicRow(rec),
       });
     }
@@ -528,6 +556,70 @@ async function adminListOnsite(req, res) {
   } catch (err) {
     console.error('adminListOnsite error:', err);
     return res.status(500).json({ message: 'Server error fetching onsite attendance.' });
+  }
+}
+
+/**
+ * GET /api/admin/onsite-attendance/:userId/month
+ */
+async function adminGetOnsiteMonth(req, res) {
+  try {
+    await ensureOnsiteAttendanceSchema();
+    const userId = Number(req.params.userId);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const user = await loadOnsiteEmployee(userId);
+    if (!user) return res.status(404).json({ message: 'Employee not found.' });
+
+    const viewScope = await resolveOnsiteViewScope(req);
+    if (!employeeMatchesScope(user, viewScope)) {
+      return res.status(403).json({ message: 'This employee is outside your attendance view scope.' });
+    }
+
+    const parts = zonedParts();
+    const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ message: 'month must look like YYYY-MM.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT ${ONSITE_SELECT}
+        FROM onsite_attendance
+        WHERE user_id = $1
+          AND to_char(work_date, 'YYYY-MM') = $2
+        ORDER BY work_date DESC
+      `,
+      [userId, month]
+    );
+
+    const shift = user.shift ? await getShiftByName(user.shift) : null;
+    const totals = { on_time: 0, late: 0, absent: 0 };
+    const days = [];
+    for (const row of rows) {
+      const live = await persistLiveStatus(row, shift);
+      const pub = publicRow(live);
+      days.push(pub);
+      if (pub && totals[pub.status] != null) totals[pub.status] += 1;
+    }
+
+    return res.json({
+      month,
+      employee: {
+        id: user.id,
+        name: user.name,
+        employee_id: user.employee_id,
+        branch: user.branch,
+        shift: user.shift,
+      },
+      days,
+      totals,
+      recorded: days.length,
+    });
+  } catch (err) {
+    console.error('adminGetOnsiteMonth error:', err);
+    return res.status(500).json({ message: 'Server error loading month attendance.' });
   }
 }
 
@@ -546,7 +638,7 @@ async function adminManualOnsite(req, res) {
       return res.status(400).json({ message: 'Enter a valid check-in time.' });
     }
     const workDateOverride = String(req.body?.work_date || req.body?.workDate || '').slice(0, 10);
-    if (workDateOverride) assertManualWorkDate(workDateOverride);
+    if (workDateOverride && !isCeoRole(req.user?.role)) assertManualWorkDate(workDateOverride);
 
     const user = await loadOnsiteEmployee(userId);
     if (!user || user.is_active === false) {
@@ -561,6 +653,7 @@ async function adminManualOnsite(req, res) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
 
+    const ceo = isCeoRole(req.user?.role);
     try {
       const { row, calc } = await insertOnsiteRecord({
         user,
@@ -568,8 +661,9 @@ async function adminManualOnsite(req, res) {
         method: 'manual',
         markedBy: req.user.id,
         note: String(req.body?.note || '').trim() || null,
-        upsert: false,
+        upsert: ceo,
         workDateOverride,
+        allowAnyPastDate: ceo,
       });
 
       await writeAuditLog({
@@ -671,10 +765,56 @@ async function adminOverrideOnsite(req, res) {
   }
 }
 
+/**
+ * DELETE /api/admin/onsite-attendance/:id
+ * CEO only — removes one employee's check-in for that record's work date.
+ */
+async function adminDeleteOnsite(req, res) {
+  try {
+    if (!isCeoRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can delete attendance.' });
+    }
+    await ensureOnsiteAttendanceSchema();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid attendance id.' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT ${ONSITE_SELECT} FROM onsite_attendance WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    const rec = rows[0];
+    if (!rec) return res.status(404).json({ message: 'Attendance record not found.' });
+
+    const user = await loadOnsiteEmployee(rec.user_id);
+    await pool.query(`DELETE FROM onsite_attendance WHERE id = $1`, [id]);
+
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'onsite_attendance.delete',
+      targetTable: 'onsite_attendance',
+      targetId: id,
+      reason: `Deleted onsite attendance for ${user?.name || user?.username || rec.user_id} (${user?.employee_id || rec.user_id}) on ${pgDateKey(rec.work_date)} (was ${rec.status}, ${rec.method})`,
+    });
+
+    return res.json({
+      message: `Deleted attendance for ${pgDateKey(rec.work_date)}.`,
+      record: publicRow(rec),
+    });
+  } catch (err) {
+    console.error('adminDeleteOnsite error:', err);
+    return res.status(500).json({ message: 'Server error deleting attendance.' });
+  }
+}
+
 module.exports = {
   onsiteCheckIn,
   getMyOnsiteAttendance,
   adminListOnsite,
+  adminGetOnsiteMonth,
   adminManualOnsite,
   adminOverrideOnsite,
+  adminDeleteOnsite,
 };

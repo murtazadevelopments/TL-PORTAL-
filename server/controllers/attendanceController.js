@@ -562,6 +562,9 @@ async function adminOverview(req, res) {
           work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
           day_status: rowStatus,
           can_manual: employeeMatchesScope(person, editScope),
+          can_delete: Boolean(
+            isCeoRole(req.user?.role) && (personLogs.length > 0 || dayByUser.has(String(person.id)))
+          ),
           row_status: rowStatus,
           verified_count: verifiedCount,
           missed_count: missedCount,
@@ -618,7 +621,14 @@ async function adminManualMark(req, res) {
       const [y, mo, d] = today.split('-').map(Number);
       return new Date(Date.UTC(y, mo - 1, d - 1)).toISOString().slice(0, 10);
     })();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay) || stampDay > today || stampDay < yesterday) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay) || stampDay > today) {
+      return res.status(400).json({
+        message: isCeoRole(req.user?.role)
+          ? 'Manual attendance cannot be saved for a future date.'
+          : 'Manual attendance can only be saved for today or yesterday.',
+      });
+    }
+    if (!isCeoRole(req.user?.role) && stampDay < yesterday) {
       return res.status(400).json({ message: 'Manual attendance can only be saved for today or yesterday.' });
     }
     if (note.length < 8) {
@@ -851,6 +861,60 @@ async function getMyHistory(req, res) {
   }
 }
 
+/**
+ * DELETE /api/admin/attendance/:userId/days/:dateKey
+ * CEO only — removes remote face/manual logs and the day rollup for that date.
+ */
+async function adminDeleteRemoteDay(req, res) {
+  try {
+    if (!isCeoRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can delete attendance.' });
+    }
+    await ensureAttendanceTables();
+    const userId = Number(req.params.userId);
+    const dateKey = String(req.params.dateKey || '').slice(0, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      return res.status(400).json({ message: 'date must look like YYYY-MM-DD.' });
+    }
+
+    const user = await loadUser(userId);
+    if (!user) return res.status(404).json({ message: 'Employee not found.' });
+
+    const { rowCount: logCount } = await pool.query(
+      `DELETE FROM attendance_logs WHERE user_id = $1 AND hour_key LIKE $2`,
+      [userId, `${dateKey}-%`]
+    );
+    const { rowCount: dayCount } = await pool.query(
+      `DELETE FROM attendance_days WHERE user_id = $1 AND date_key = $2`,
+      [userId, dateKey]
+    );
+    if (!logCount && !dayCount) {
+      return res.status(404).json({ message: 'No attendance found for that date.' });
+    }
+
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'attendance.delete_day',
+      targetTable: 'attendance_logs',
+      targetId: userId,
+      reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${dayCount} day row(s))`,
+    });
+
+    return res.json({
+      message: `Deleted attendance for ${dateKey}.`,
+      logs_deleted: logCount,
+      day_deleted: dayCount,
+    });
+  } catch (err) {
+    console.error('adminDeleteRemoteDay error:', err);
+    return res.status(500).json({ message: 'Server error deleting attendance.' });
+  }
+}
+
 module.exports = {
   getEnrollment,
   saveEnrollment,
@@ -861,5 +925,6 @@ module.exports = {
   adminManualMark,
   adminSetHours,
   adminEmployeeDays,
+  adminDeleteRemoteDay,
   markMissedSlots,
 };

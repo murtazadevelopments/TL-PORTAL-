@@ -45,8 +45,10 @@ const {
 } = require('../controllers/shiftsController');
 const {
   adminListOnsite,
+  adminGetOnsiteMonth,
   adminManualOnsite,
   adminOverrideOnsite,
+  adminDeleteOnsite,
 } = require('../controllers/onsiteAttendanceController');
 const {
   listMessageRecipients,
@@ -59,6 +61,7 @@ const {
   adminManualMark,
   adminSetHours,
   adminEmployeeDays,
+  adminDeleteRemoteDay,
 } = require('../controllers/attendanceController');
 
 const router = express.Router();
@@ -277,6 +280,11 @@ router.post(
   requirePermission('attendance:edit'),
   adminManualMark
 );
+router.delete(
+  '/attendance/:userId/days/:dateKey',
+  requireRole('ceo'),
+  adminDeleteRemoteDay
+);
 
 router.get(
   '/onsite-attendance',
@@ -290,6 +298,18 @@ router.get(
   ),
   adminListOnsite
 );
+router.get(
+  '/onsite-attendance/:userId/month',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit',
+    'hr:add_employee'
+  ),
+  adminGetOnsiteMonth
+);
 router.post(
   '/onsite-attendance',
   requireRole('admin'),
@@ -301,6 +321,11 @@ router.patch(
   requireRole('admin'),
   requireCeoOrAnyPermission('attendance:edit', 'employees:edit', 'hr:add_employee'),
   adminOverrideOnsite
+);
+router.delete(
+  '/onsite-attendance/:id',
+  requireRole('ceo'),
+  adminDeleteOnsite
 );
 
 // Admin → employee messaging

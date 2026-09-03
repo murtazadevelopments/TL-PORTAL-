@@ -7,6 +7,7 @@ import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
   canViewTeamAttendance,
+  isCeo,
 } from '../../utils/permissions';
 import './AttendanceAdminPage.css';
 
@@ -49,8 +50,18 @@ function clampAttendanceDate(value) {
   return key;
 }
 
-function datetimeLocalForDay(dateKey, source = new Date()) {
-  const day = clampAttendanceDate(dateKey);
+function dateForAdminFilter(value, ceo) {
+  if (ceo) {
+    const today = karachiDateKey();
+    const key = String(value || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return today;
+    return key > today ? today : key;
+  }
+  return clampAttendanceDate(value);
+}
+
+function datetimeLocalForDay(dateKey, source = new Date(), ceo = false) {
+  const day = dateForAdminFilter(dateKey, ceo);
   if (source instanceof Date && Number.isFinite(source.getTime())) {
     const existingDay = karachiDateKey(source);
     if (existingDay === day) return toDatetimeLocalValue(source);
@@ -98,6 +109,7 @@ function AttendancePhoto({ row }) {
 
 export default function AttendanceAdminPage() {
   const { user, permissions, loading: authLoading } = useAuthUser();
+  const ceo = isCeo(user?.role);
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
@@ -117,12 +129,14 @@ export default function AttendanceAdminPage() {
   const [onsiteManual, setOnsiteManual] = useState(EMPTY_ONSITE_MANUAL);
   const [overrideRow, setOverrideRow] = useState(null);
   const [overrideStatus, setOverrideStatus] = useState('on_time');
+  const [deletingId, setDeletingId] = useState(null);
+  const [onsiteMonth, setOnsiteMonth] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
     setLoading(true);
     setError('');
-    const dateKey = clampAttendanceDate(dateOverride || date);
+    const dateKey = dateForAdminFilter(dateOverride || date, ceo);
     try {
       if (mode === 'onsite') {
         const { data: payload } = await api.get('/api/admin/onsite-attendance', {
@@ -208,6 +222,19 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function openOnsiteMonth(row) {
+    setError('');
+    try {
+      const month = karachiDateKey().slice(0, 7);
+      const { data: payload } = await api.get(`/api/admin/onsite-attendance/${row.id}/month`, {
+        params: { month },
+      });
+      setOnsiteMonth(payload);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not load this month’s attendance.');
+    }
+  }
+
   async function openHistory(row) {
     setError('');
     try {
@@ -234,11 +261,11 @@ export default function AttendanceAdminPage() {
       const { data: payload } = await api.post('/api/admin/onsite-attendance', {
         user_id: onsiteManual.user.id,
         checked_in_at: when.toISOString(),
-        work_date: clampAttendanceDate(String(onsiteManual.checked_in_at).slice(0, 10) || date),
+        work_date: dateForAdminFilter(String(onsiteManual.checked_in_at).slice(0, 10) || date, ceo),
         note: onsiteManual.note,
       });
       setOnsiteManual(EMPTY_ONSITE_MANUAL);
-      const savedDate = clampAttendanceDate(payload?.record?.work_date || date);
+      const savedDate = dateForAdminFilter(payload?.record?.work_date || date, ceo);
       setDate(savedDate);
       await load(savedDate);
     } catch (err) {
@@ -263,6 +290,43 @@ export default function AttendanceAdminPage() {
       setError(err.response?.data?.message || 'Could not update status.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteOnsiteRecord(row) {
+    if (!ceo || !row?.record?.id) return;
+    const workDate = row.record.work_date || date;
+    const ok = window.confirm(
+      `Delete ${row.name}'s attendance for ${workDate}? They will be able to check in again for that date.`
+    );
+    if (!ok) return;
+    setDeletingId(`onsite-${row.record.id}`);
+    setError('');
+    try {
+      await api.delete(`/api/admin/onsite-attendance/${row.record.id}`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not delete attendance.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function deleteRemoteDay(row) {
+    if (!ceo || !row?.id) return;
+    const ok = window.confirm(
+      `Delete ${row.name}'s attendance for ${date}? Face and manual marks for that date will be removed.`
+    );
+    if (!ok) return;
+    setDeletingId(`remote-${row.id}`);
+    setError('');
+    try {
+      await api.delete(`/api/admin/attendance/${row.id}/days/${date}`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not delete attendance.');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -355,10 +419,10 @@ export default function AttendanceAdminPage() {
           Date
           <input
             type="date"
-            min={yesterdayKey}
+            min={ceo ? undefined : yesterdayKey}
             max={todayKey}
             value={date}
-            onChange={(e) => setDate(clampAttendanceDate(e.target.value))}
+            onChange={(e) => setDate(dateForAdminFilter(e.target.value, ceo))}
           />
         </label>
         <label>
@@ -441,12 +505,14 @@ export default function AttendanceAdminPage() {
                         onClick={() =>
                           setOnsiteManual({
                             user: row,
-                            checked_in_at: datetimeLocalForDay(date),
-                            note: '',
+                            checked_in_at: row.record?.checked_in_at
+                              ? toDatetimeLocalValue(new Date(row.record.checked_in_at))
+                              : datetimeLocalForDay(date, undefined, ceo),
+                            note: row.record?.note || '',
                           })
                         }
                       >
-                        Add check-in
+                        {row.record && ceo ? 'Update check-in' : 'Add check-in'}
                       </button>
                     )}
                     {row.can_override && (
@@ -461,7 +527,20 @@ export default function AttendanceAdminPage() {
                         Change status
                       </button>
                     )}
-                    {!row.can_manual && !row.can_override && (
+                    {ceo && row.record && (
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={deletingId === `onsite-${row.record.id}`}
+                        onClick={() => deleteOnsiteRecord(row)}
+                      >
+                        {deletingId === `onsite-${row.record.id}` ? 'Deleting…' : 'Delete attendance'}
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-ghost" onClick={() => openOnsiteMonth(row)}>
+                      This month
+                    </button>
+                    {!row.can_manual && !row.can_override && !row.record && (
                       <p className="muted">Out of your edit scope</p>
                     )}
                   </div>
@@ -532,12 +611,32 @@ export default function AttendanceAdminPage() {
                   >
                     Manual mark
                   </button>
+                  {ceo && row.can_delete && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={deletingId === `remote-${row.id}`}
+                      onClick={() => deleteRemoteDay(row)}
+                    >
+                      {deletingId === `remote-${row.id}` ? 'Deleting…' : 'Delete attendance'}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="attendance-admin-actions">
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row)}>
                     Daily records
                   </button>
+                  {ceo && row.can_delete && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={deletingId === `remote-${row.id}`}
+                      onClick={() => deleteRemoteDay(row)}
+                    >
+                      {deletingId === `remote-${row.id}` ? 'Deleting…' : 'Delete attendance'}
+                    </button>
+                  )}
                   <p className="muted">Out of your edit scope</p>
                 </div>
               )}
@@ -631,6 +730,35 @@ export default function AttendanceAdminPage() {
         </div>
       )}
 
+      {onsiteMonth && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={() => setOnsiteMonth(null)}>
+          <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
+            <h2>{onsiteMonth.employee?.name || 'This month'}</h2>
+            <p className="muted">
+              {onsiteMonth.month} · {onsiteMonth.recorded || 0} check-in
+              {onsiteMonth.recorded === 1 ? '' : 's'} · on time {onsiteMonth.totals?.on_time || 0} · late{' '}
+              {onsiteMonth.totals?.late || 0} · absent {onsiteMonth.totals?.absent || 0}
+            </p>
+            <ol className="attendance-day-list">
+              {(onsiteMonth.days || []).map((day) => (
+                <li key={day.work_date} className={`attendance-day ${day.status}`}>
+                  <span className="attendance-day-date">{day.work_date}</span>
+                  <span className="attendance-day-status">{onsiteStatusLabel(day.status)}</span>
+                </li>
+              ))}
+              {(onsiteMonth.days || []).length === 0 && (
+                <li className="muted">No check-ins this month.</li>
+              )}
+            </ol>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" onClick={() => setOnsiteMonth(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {history && (
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setHistory(null)}>
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
@@ -664,7 +792,10 @@ export default function AttendanceAdminPage() {
           <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitOnsiteManual}>
             <h2>Manual onsite check-in</h2>
             <p className="muted">
-              {onsiteManual.user.name} — only today or yesterday. Status follows their shift.
+              {onsiteManual.user.name} —{' '}
+              {ceo
+                ? 'CEO can add or replace a check-in for any date up to today. Status follows their shift.'
+                : 'only today or yesterday. Status follows their shift.'}
             </p>
             {error && <p className="error">{error}</p>}
             <label>
@@ -672,12 +803,12 @@ export default function AttendanceAdminPage() {
               <input
                 type="datetime-local"
                 required
-                min={`${yesterdayKey}T00:00`}
+                min={ceo ? undefined : `${yesterdayKey}T00:00`}
                 max={`${todayKey}T23:59`}
                 value={onsiteManual.checked_in_at}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  const day = clampAttendanceDate(raw.slice(0, 10));
+                  const day = dateForAdminFilter(raw.slice(0, 10), ceo);
                   const time = raw.includes('T') ? raw.slice(raw.indexOf('T') + 1) : '09:00';
                   setOnsiteManual((m) => ({ ...m, checked_in_at: `${day}T${time}` }));
                 }}

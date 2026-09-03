@@ -107,11 +107,14 @@ export default function OnsiteAttendancePage() {
       await load();
     } catch (err) {
       const apiMessage = err.response?.data?.message || 'Check-in failed.';
+      const code = err.response?.data?.code;
       const networkDenied = err.response?.status === 403;
       setError(
-        networkDenied && locationUnavailable
-          ? 'Enable location access for check-in, or connect to branch WiFi/LAN'
-          : apiMessage
+        code === 'night_checkin_window'
+          ? apiMessage
+          : networkDenied && locationUnavailable
+            ? 'Enable location access for check-in, or connect to branch WiFi/LAN'
+            : apiMessage
       );
     } finally {
       setCheckingIn(false);
@@ -184,6 +187,11 @@ export default function OnsiteAttendancePage() {
             · {statusLabel(today.status)}
             {today.branch_name ? ` · ${today.branch_name}` : ''}
           </p>
+        ) : data?.night_shift && !data?.self_check_in_open ? (
+          <p className="muted">
+            Night shift self check-in is open from 9:00 PM to 11:59 PM.
+            After that, only an admin can mark attendance.
+          </p>
         ) : (
           <p className="muted">Not checked in yet.</p>
         )}
@@ -193,8 +201,17 @@ export default function OnsiteAttendancePage() {
           disabled={checkingIn || Boolean(today) || !data?.can_check_in}
           onClick={handleCheckIn}
         >
-          {checkingIn ? 'Checking in…' : today ? 'Already checked in' : 'Check in'}
+          {checkingIn
+            ? 'Checking in…'
+            : today
+              ? 'Already checked in'
+              : data?.night_shift && !data?.self_check_in_open
+                ? 'Check-in closed'
+                : 'Check in'}
         </button>
+        {data?.night_shift && !today && data?.self_check_in_open && (
+          <p className="muted">Self check-in closes at 11:59 PM. After that, ask an admin.</p>
+        )}
         {!data?.network_configured && !today && (
           <p className="muted">
             No office IP or GPS location is saved for {data?.branch_name || user?.branch || 'your branch'} yet.
