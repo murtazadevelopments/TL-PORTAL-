@@ -2,6 +2,13 @@ const { zonedParts } = require('./attendanceWindows');
 
 function timeToMinutes(value) {
   if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 0 && value < 24 * 60) return Math.floor(value);
+    if (value >= 0 && value < 24 * 3600 * 1000) {
+      return Math.floor(value / 60000) % (24 * 60);
+    }
+    return null;
+  }
   if (typeof value === 'string') {
     const m = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
     if (!m) return null;
@@ -10,18 +17,22 @@ function timeToMinutes(value) {
     if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
     return h * 60 + min;
   }
-  if (typeof value === 'object' && Number.isFinite(Number(value.hours))) {
-    const h = Number(value.hours);
-    const min = Number(value.minutes || 0);
-    if (h > 23 || min > 59) return null;
-    return h * 60 + min;
-  }
   if (value instanceof Date && Number.isFinite(value.getTime())) {
     const iso = value.toISOString();
     if (/^1970-01-01T/.test(iso) || /^1899-12-3/.test(iso)) {
       return value.getUTCHours() * 60 + value.getUTCMinutes();
     }
-    return value.getHours() * 60 + value.getMinutes();
+    if (/^1969-12-31T/.test(iso)) {
+      return value.getHours() * 60 + value.getMinutes();
+    }
+    const parts = zonedParts(value);
+    return parts.hour * 60 + parts.minute;
+  }
+  if (typeof value === 'object' && Number.isFinite(Number(value.hours))) {
+    const h = Number(value.hours);
+    const min = Number(value.minutes || 0);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
   }
   return null;
 }
@@ -57,11 +68,21 @@ function addDaysToDateKey(dateKey, delta) {
   return dt.toISOString().slice(0, 10);
 }
 
+const DAY_MIN = 24 * 60;
+const EARLY_ON_TIME_MIN = 3 * 60;
+
+function wrapDelta(from, to) {
+  return (to - from + DAY_MIN) % DAY_MIN;
+}
+
 /**
- * On time: from shift start until late threshold (and up to 3 hours early).
- * Late: from late threshold until absent threshold.
- * Absent: at/after absent threshold, or so early that it is the previous day's miss
- * (e.g. 02:03 for a 09:00 start).
+ * Pakistan wall clock vs Manage Shifts times.
+ * On time: from 3 hours before start through "Late after" (inclusive).
+ * Late: after "Late after", before "Absent after".
+ * Absent: at/after "Absent after", or more than 3 hours before start.
+ *
+ * Example: start 09:00, late after 09:30, absent after 10:00
+ *   09:30 → on time, 09:31 → late, 10:00 → absent.
  */
 function statusForCheckIn(checkedInAt, shift) {
   const parts = zonedParts(checkedInAt);
@@ -74,18 +95,17 @@ function statusForCheckIn(checkedInAt, shift) {
     throw new Error('Shift times are not configured.');
   }
 
-  const EARLY_ON_TIME_MIN = 3 * 60;
-  let status;
+  const beforeStart = wrapDelta(clock, start);
+  const afterStart = wrapDelta(start, clock);
+  const lateAfterStart = wrapDelta(start, late);
+  const absentAfterStart = wrapDelta(start, absent) || DAY_MIN;
 
-  if (absent >= late) {
-    if (clock >= start && clock < late) status = 'on_time';
-    else if (clock >= late && clock < absent) status = 'late';
-    else if (clock >= absent) status = 'absent';
-    else if (start >= 18 * 60 && clock < 12 * 60) status = 'absent';
-    else status = start - clock <= EARLY_ON_TIME_MIN ? 'on_time' : 'absent';
-  } else if (clock >= start && clock < late) {
+  let status;
+  if (beforeStart > 0 && beforeStart <= EARLY_ON_TIME_MIN) {
     status = 'on_time';
-  } else if (clock >= late || clock < absent) {
+  } else if (afterStart <= lateAfterStart) {
+    status = 'on_time';
+  } else if (afterStart < absentAfterStart) {
     status = 'late';
   } else {
     status = 'absent';
@@ -122,7 +142,11 @@ function isWithinNightSelfCheckInWindow(at = new Date()) {
 }
 
 function employeeCanSelfCheckIn(shiftOrName, at = new Date()) {
-  if (!isNightShift(shiftOrName)) return true;
+  const start = timeToMinutes(
+    typeof shiftOrName === 'object' && shiftOrName ? shiftOrName.start_time : null
+  );
+  const overnight = start != null ? start >= 18 * 60 : isNightShift(shiftOrName);
+  if (!overnight) return true;
   return isWithinNightSelfCheckInWindow(at);
 }
 

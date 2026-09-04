@@ -1,4 +1,4 @@
-const TIMEZONE = process.env.APP_TIMEZONE || process.env.ATTENDANCE_TIMEZONE || 'Asia/Karachi';
+const TIMEZONE = 'Asia/Karachi';
 const SHIFT_START = Number(process.env.ATTENDANCE_SHIFT_START || 9);
 const SHIFT_END = Number(process.env.ATTENDANCE_SHIFT_END || 18);
 const GRACE_MINUTES = Number(process.env.ATTENDANCE_GRACE_MINUTES || 10);

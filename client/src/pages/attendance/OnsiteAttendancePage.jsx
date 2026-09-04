@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
+import { formatTimeAmPm } from '../../utils/timeAmPm';
 import './AttendancePage.css';
 
 function statusLabel(status) {
@@ -171,9 +172,9 @@ export default function OnsiteAttendancePage() {
         {shift ? (
           <p className="muted">
             {shift.name}
-            {shift.start_time ? ` · starts ${shift.start_time}` : ''}
-            {shift.late_after ? ` · late after ${shift.late_after}` : ''}
-            {shift.absent_after ? ` · absent after ${shift.absent_after}` : ''}
+            {shift.start_time ? ` · starts ${formatTimeAmPm(shift.start_time)}` : ''}
+            {shift.late_after ? ` · late after ${formatTimeAmPm(shift.late_after)}` : ''}
+            {shift.absent_after ? ` · absent after ${formatTimeAmPm(shift.absent_after)}` : ''}
           </p>
         ) : (
           <p className="muted">No shift assigned yet. Ask HR to assign one.</p>

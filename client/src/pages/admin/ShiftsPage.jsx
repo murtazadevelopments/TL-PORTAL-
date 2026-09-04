@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import TimeAmPmInput from '../../components/TimeAmPmInput';
+import { formatTimeAmPm } from '../../utils/timeAmPm';
 import './AdminDashboard.css';
 
 const EMPTY_FORM = {
@@ -172,7 +174,8 @@ export default function ShiftsPage() {
         <div>
           <h1>Manage Shifts</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Start, late, and absent times used for onsite check-in. Times are in Pakistan time.
+            Start, late, and absent times used for onsite check-in (Pakistan time). Use AM or PM on
+            each time. On time until “Late after”; late until “Absent after”.
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadShifts}>
@@ -195,35 +198,26 @@ export default function ShiftsPage() {
           </label>
           <label>
             Shift start
-            <input
-              type="time"
-              name="start_time"
+            <TimeAmPmInput
               value={form.start_time}
-              onChange={handleChange}
               disabled={saving}
-              required
+              onChange={(start_time) => setForm((prev) => ({ ...prev, start_time }))}
             />
           </label>
           <label>
             Late after
-            <input
-              type="time"
-              name="late_after"
+            <TimeAmPmInput
               value={form.late_after}
-              onChange={handleChange}
               disabled={saving}
-              required
+              onChange={(late_after) => setForm((prev) => ({ ...prev, late_after }))}
             />
           </label>
           <label>
             Absent after
-            <input
-              type="time"
-              name="absent_after"
+            <TimeAmPmInput
               value={form.absent_after}
-              onChange={handleChange}
               disabled={saving}
-              required
+              onChange={(absent_after) => setForm((prev) => ({ ...prev, absent_after }))}
             />
           </label>
           <div className="modal-actions" style={{ justifyContent: 'flex-start' }}>
@@ -281,9 +275,9 @@ export default function ShiftsPage() {
               {shifts.map((s) => (
                 <tr key={s.id}>
                   <td className="cell-name">{s.name}</td>
-                  <td>{s.start_time || '—'}</td>
-                  <td>{s.late_after || '—'}</td>
-                  <td>{s.absent_after || '—'}</td>
+                  <td>{formatTimeAmPm(s.start_time)}</td>
+                  <td>{formatTimeAmPm(s.late_after)}</td>
+                  <td>{formatTimeAmPm(s.absent_after)}</td>
                   {canManage && (
                     <td>
                       <button
