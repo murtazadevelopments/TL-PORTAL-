@@ -143,6 +143,7 @@ app.get('/api/health/db-check', async (req, res) => {
   });
 });
 
+let apiBootError = null;
 try {
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api/users', require('./routes/userRoutes'));
@@ -154,6 +155,7 @@ try {
   app.use('/api/messages', require('./routes/messagesRoutes'));
   app.use('/api/push', require('./routes/pushRoutes'));
 } catch (err) {
+  apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);
   app.use('/api', (req, res) => {
     res.status(503).json({
