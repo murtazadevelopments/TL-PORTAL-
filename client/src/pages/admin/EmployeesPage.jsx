@@ -390,11 +390,12 @@ function EmployeesPage() {
         setListError('');
         const canView =
           hasPermission(data.permissions, 'employees:view', data.role) ||
-          hasPermission(data.permissions, 'hr:add_employee', data.role);
+          hasPermission(data.permissions, 'hr:add_employee', data.role) ||
+          hasPermission(data.permissions, 'employees:remote', data.role);
         if (!canView) {
           setEmployees([]);
           setListError(
-            'You do not have permission to view employees. Ask the CEO to grant Add employees (HR) or View employees.'
+            'You do not have permission to view employees. Ask the CEO to grant View employees, Remote employees, or Add employees (HR).'
           );
           setLoading(false);
         } else {
@@ -462,8 +463,15 @@ function EmployeesPage() {
   }
 
   const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
-  const canEditEmployees =
+  const canRemoteEmployees = hasPermission(permissions, 'employees:remote', role);
+  const canEditOnsiteEmployees =
     hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
+  const canEditEmployees = canEditOnsiteEmployees || canRemoteEmployees;
+  function canEditEmploymentType(type) {
+    return String(type || '').trim().toLowerCase() === 'remote'
+      ? canRemoteEmployees
+      : canEditOnsiteEmployees;
+  }
   const canDeactivateEmployees = hasPermission(
     permissions,
     'employees:deactivate',
@@ -513,7 +521,8 @@ function EmployeesPage() {
     if (
       canAccessAdmin(role) ||
       hasPermission(permissions, 'employees:view', role) ||
-      hasPermission(permissions, 'hr:add_employee', role)
+      hasPermission(permissions, 'hr:add_employee', role) ||
+      hasPermission(permissions, 'employees:remote', role)
     ) {
       loadTeams();
       loadBranches();
@@ -898,8 +907,8 @@ function EmployeesPage() {
   async function handleSave(e) {
     e.preventDefault();
     if (!selectedId) return;
-    if (!canEditEmployees) {
-      setSaveError('You do not have permission to edit employees.');
+    if (!canEditEmploymentType(detail?.employment_type) && !canEditEmploymentType(editForm.employment_type)) {
+      setSaveError('You do not have permission to edit this employee.');
       return;
     }
 
@@ -2284,13 +2293,13 @@ function EmployeesPage() {
 
                 <div className="detail-subsection">
                 <h3>Admin fields</h3>
-                {!canEditEmployees && (
+                {!canEditEmploymentType(detail.employment_type) && (
                   <p className="muted" style={{ marginBottom: '0.75rem' }}>
-                    You can view this profile but cannot edit admin fields (needs employees:edit).
+                    You can view this profile but cannot edit admin fields.
                   </p>
                 )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
-                  <fieldset disabled={!canEditEmployees}>
+                  <fieldset disabled={!canEditEmploymentType(detail.employment_type)}>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID <span className="req-star" aria-hidden="true">*</span>
                     <input
@@ -2520,8 +2529,12 @@ function EmployeesPage() {
                       value={editForm.employment_type}
                       onChange={handleEditChange}
                     >
-                      <option value="onsite">Onsite</option>
-                      <option value="remote">Remote</option>
+                      {(canEditOnsiteEmployees || editForm.employment_type === 'onsite') && (
+                        <option value="onsite">Onsite</option>
+                      )}
+                      {(canRemoteEmployees || editForm.employment_type === 'remote') && (
+                        <option value="remote">Remote</option>
+                      )}
                     </select>
                   </label>
                   {editForm.employment_type === 'remote' && (
@@ -2665,7 +2678,7 @@ function EmployeesPage() {
                       {deactivating ? 'Deactivating…' : 'Deactivate'}
                     </button>
                     )}
-                    {canEditEmployees && (
+                    {canEditEmploymentType(detail.employment_type) && (
                     <button type="submit" className="btn btn-primary" disabled={saving}>
                       {saving ? 'Saving…' : 'Save Changes'}
                     </button>
@@ -2827,7 +2840,7 @@ function EmployeesPage() {
                     onChange={handleAddChange}
                   >
                     <option value="onsite">Onsite</option>
-                    <option value="remote">Remote</option>
+                    {canRemoteEmployees && <option value="remote">Remote</option>}
                   </select>
                 </label>
                 <label>

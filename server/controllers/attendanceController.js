@@ -8,6 +8,7 @@ const windows = require('../utils/attendanceWindows');
 const notifications = require('../services/notifications');
 const workHours = require('../utils/workHours');
 const attendanceDays = require('../utils/attendanceDays');
+const { normalizeEmploymentType } = require('../utils/employmentType');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -126,7 +127,7 @@ async function saveEnrollment(req, res) {
     await ensureAttendanceTables();
     const user = await loadUser(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    if (user.employment_type !== 'remote') {
+    if (normalizeEmploymentType(user.employment_type) !== 'remote') {
       return res.status(403).json({
         message: 'Face enrollment is only available for remote employees.',
       });
@@ -298,7 +299,7 @@ async function checkIn(req, res) {
     await ensureAttendanceTables();
     const user = await loadUser(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    if (user.employment_type !== 'remote') {
+    if (normalizeEmploymentType(user.employment_type) !== 'remote') {
       return res.status(403).json({ message: 'Hourly face check-in is only for remote employees.' });
     }
     if (rateLimited(req.user.id)) {
@@ -356,6 +357,7 @@ async function checkIn(req, res) {
     const distance = euclideanDistance(stored, probe);
     const matched = isFaceMatch(distance);
     const suspicious = rememberScore(req.user.id, distance);
+    const parts = zonedParts();
     const late = matched && isLateCheckIn(user, parts.hour, parts.minute);
     const status = !matched ? 'failed' : late ? 'late' : 'verified';
 
@@ -436,12 +438,15 @@ async function resolveAttendanceScope(req, permissionKey) {
   const access = await loadAdminPermissionAccess(req.user.id);
   const scopes = access.scopes || {};
   const keys = access.permissions || [];
-  if (permissionKey === 'attendance:edit') {
-    if (!keys.includes('attendance:edit')) return { type: 'branch', values: [] };
-    return normalizeScope(scopes['attendance:edit']);
+  if (!keys.includes('employees:remote') && !keys.includes('*')) {
+    return { type: 'branch', values: [] };
   }
-  const picked = scopes['attendance:view'] || scopes['attendance:edit'] || scopes['employees:view'] || scopes['employees:edit'];
-  return normalizeScope(picked);
+  if (permissionKey === 'attendance:edit') {
+    return normalizeScope(scopes['employees:remote'] || scopes['attendance:edit']);
+  }
+  return normalizeScope(
+    scopes['employees:remote'] || scopes['attendance:view'] || scopes['attendance:edit']
+  );
 }
 
 async function adminOverview(req, res) {

@@ -5,6 +5,7 @@ import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import {
   loadFaceModels,
+  areFaceModelsReady,
   trackFace,
   captureFace,
   faceHint,
@@ -56,6 +57,8 @@ export default function AttendancePage() {
   const [days, setDays] = useState([]);
   const [workHoursLabel, setWorkHoursLabel] = useState('');
   const [canCheckIn, setCanCheckIn] = useState(false);
+  const [modelsReady, setModelsReady] = useState(() => areFaceModelsReady());
+  const [engineHint, setEngineHint] = useState('');
 
   const isRemote = user?.employment_type === 'remote';
   const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
@@ -89,18 +92,16 @@ export default function AttendancePage() {
   }, []);
 
   const startCamera = useCallback(async () => {
-    await loadFaceModels();
     const video = videoRef.current;
     if (!video) throw new Error('Camera view is not ready. Refresh the page.');
 
-    if (streamRef.current && video.srcObject === streamRef.current && !video.paused && video.videoWidth > 0) {
-      setCameraOn(true);
-      return;
-    }
-
     if (!streamRef.current) {
       streamRef.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        video: {
+          facingMode: 'user',
+          width: { ideal: 480 },
+          height: { ideal: 360 },
+        },
         audio: false,
       });
     }
@@ -108,6 +109,7 @@ export default function AttendancePage() {
     video.muted = true;
     video.playsInline = true;
     video.setAttribute('playsinline', 'true');
+    video.setAttribute('autoplay', 'true');
     if (video.srcObject !== streamRef.current) {
       video.srcObject = streamRef.current;
     }
@@ -124,6 +126,15 @@ export default function AttendancePage() {
 
     setCameraOn(true);
     await waitForVideo(video);
+
+    if (!areFaceModelsReady()) {
+      setEngineHint('Preparing face check…');
+      await loadFaceModels();
+      setModelsReady(true);
+      setEngineHint('');
+    } else {
+      setModelsReady(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -135,7 +146,7 @@ export default function AttendancePage() {
     startCamera()
       .then(() => {
         setHint('You should see yourself now');
-        setDetail('Sit so your whole face is in the circle, then tap check-in');
+        setDetail('Sit in the circle, then tap Enroll face or Check in');
         setRing('ready');
       })
       .catch((err) => {
@@ -162,26 +173,35 @@ export default function AttendancePage() {
   }, [isRemote, load]);
 
   useEffect(() => {
-    if (!isRemote || !cameraOn || phase !== 'idle') return undefined;
+    if (!isRemote || !cameraOn || !modelsReady || phase !== 'idle') return undefined;
     let active = true;
     async function previewLoop() {
       while (active && runningRef.current === false) {
+        if (typeof document !== 'undefined' && document.hidden) {
+          await sleep(400);
+          continue;
+        }
         const video = videoRef.current;
         if (video?.readyState >= 2) {
-          const tracked = await trackFace(video);
-          const advice = faceHint(tracked, video);
-          setHint(advice.ok ? 'Ready to check in' : advice.hint);
-          setDetail(advice.ok ? 'Tap the green button' : advice.detail);
-          setRing(advice.ok ? 'ready' : 'idle');
+          try {
+            const tracked = await trackFace(video);
+            if (!active) break;
+            const advice = faceHint(tracked);
+            setHint(advice.ok ? 'Ready' : advice.hint);
+            setDetail(advice.ok ? 'Tap Enroll face or Check in' : advice.detail);
+            setRing(advice.ok ? 'ready' : 'idle');
+          } catch {
+            /* skip a busy frame */
+          }
         }
-        await sleep(220);
+        await sleep(400);
       }
     }
     previewLoop();
     return () => {
       active = false;
     };
-  }, [cameraOn, phase, isRemote]);
+  }, [cameraOn, phase, isRemote, modelsReady]);
 
   async function waitForFace(deadlineMs = 12000) {
     const started = Date.now();
@@ -190,7 +210,7 @@ export default function AttendancePage() {
       if (!runningRef.current) throw new Error('Cancelled.');
       const video = videoRef.current;
       const tracked = video?.readyState >= 2 ? await trackFace(video) : null;
-      const advice = faceHint(tracked, video);
+      const advice = faceHint(tracked);
       setHint(advice.hint);
       setDetail(advice.detail);
       setRing(advice.ok ? 'ready' : 'capturing');
@@ -207,10 +227,10 @@ export default function AttendancePage() {
   }
 
   async function grabDescriptor() {
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       const shot = await captureFace(videoRef.current);
-      if (shot?.descriptor) return shot;
-      await sleep(90);
+      if (shot?.descriptor && shot.descriptor.length >= 64) return shot;
+      await sleep(70);
     }
     throw new Error('Hold still for a moment so we can capture your face.');
   }
@@ -221,12 +241,18 @@ export default function AttendancePage() {
     setPhase('enroll');
     runningRef.current = true;
     try {
-      setHint('Starting');
-      setDetail('Look at the camera');
-      setProgress(8);
+      setHint('Starting camera');
+      setDetail('Look at the circle');
+      setProgress(6);
       setRing('capturing');
       await startCamera();
-      await waitForFace(12000);
+      if (!areFaceModelsReady()) {
+        setHint('Preparing face check');
+        setDetail('One moment…');
+        await loadFaceModels();
+        setModelsReady(true);
+      }
+      await waitForFace(16000);
 
       const samples = [];
       for (let i = 0; i < SAMPLE_COUNT; i += 1) {
@@ -235,28 +261,30 @@ export default function AttendancePage() {
         setRing('capturing');
         const shot = await grabDescriptor();
         samples.push(Array.from(shot.descriptor));
-        setProgress(40 + Math.round(((i + 1) / SAMPLE_COUNT) * 45));
+        setProgress(35 + Math.round(((i + 1) / SAMPLE_COUNT) * 50));
         if (i < SAMPLE_COUNT - 1) await sleep(SAMPLE_GAP_MS);
       }
 
-      setHint('Saving');
-      setDetail('No photo is uploaded — only a face template');
+      setHint('Saving your face template');
+      setDetail('No photo is uploaded');
       const embedding = averageDescriptors(samples);
-      await api.post('/api/attendance/enrollment', {
+      if (!embedding) throw new Error('Could not build a face template. Try again in better light.');
+      const { data } = await api.post('/api/attendance/enrollment', {
         embedding,
         sample_count: SAMPLE_COUNT,
       });
+      setEnrollment((prev) => ({ ...prev, ...data, enrolled: true }));
       setRing('success');
       setProgress(100);
       setHint('Enrolled');
       setDetail('You can check in now');
-      setStatus('Face enrollment complete. You can check in this hour.');
+      setStatus(data.message || 'Face enrollment complete. You can check in this hour.');
       await load();
     } catch (err) {
       const msg = friendlyError(err);
       setRing('fail');
       setHint('Let’s try again');
-      if (msg) setError(msg);
+      setError(msg || 'Enrollment did not finish. Allow the camera, sit in the light, and try again.');
     } finally {
       runningRef.current = false;
       setPhase('idle');
@@ -275,7 +303,12 @@ export default function AttendancePage() {
       setProgress(8);
       setRing('capturing');
       await startCamera();
-      await waitForFace(12000);
+      if (!areFaceModelsReady()) {
+        setHint('Preparing face check');
+        await loadFaceModels();
+        setModelsReady(true);
+      }
+      await waitForFace(16000);
 
       const action = pickLivenessAction();
       setHint(action.label);
@@ -286,7 +319,7 @@ export default function AttendancePage() {
       while (Date.now() - started < LIVENESS_MS) {
         if (!runningRef.current) throw new Error('Cancelled.');
         const tracked = await trackFace(videoRef.current);
-        const advice = faceHint(tracked, videoRef.current);
+        const advice = faceHint(tracked);
         if (advice.ok && tracked?.landmarks) {
           const pose = poseFromLandmarks(tracked.landmarks);
           if (!baseline) baseline = pose;
@@ -301,7 +334,7 @@ export default function AttendancePage() {
           setDetail(advice.detail);
         }
         setProgress(45 + Math.min(30, Math.round(((Date.now() - started) / LIVENESS_MS) * 30)));
-        await sleep(70);
+        await sleep(140);
       }
       if (!passed) {
         setDetail('Continuing with a still photo');
@@ -390,11 +423,16 @@ export default function AttendancePage() {
           <div className="attendance-prompt">
             <div className="attendance-prompt-bar" style={{ width: `${progress}%` }} />
             <p>{hint}</p>
-            {detail ? <span>{detail}</span> : null}
+            {engineHint ? <span>{engineHint}</span> : detail ? <span>{detail}</span> : null}
           </div>
           <div className="attendance-actions">
             {!enrollment?.enrolled ? (
-              <button type="button" className="btn btn-primary" disabled={phase !== 'idle'} onClick={handleEnroll}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={phase !== 'idle' || !modelsReady}
+                onClick={handleEnroll}
+              >
                 {phase === 'enroll' ? 'Capturing…' : 'Enroll face'}
               </button>
             ) : (
@@ -402,12 +440,12 @@ export default function AttendancePage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={phase !== 'idle' || !canCheckIn}
+                  disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
                   onClick={handleCheckIn}
                 >
                   {phase === 'checkin' ? 'Checking in…' : 'Check in this hour'}
                 </button>
-                <button type="button" className="btn btn-ghost" disabled={phase !== 'idle'} onClick={handleEnroll}>
+                <button type="button" className="btn btn-ghost" disabled={phase !== 'idle' || !modelsReady} onClick={handleEnroll}>
                   Re-enroll
                 </button>
               </>

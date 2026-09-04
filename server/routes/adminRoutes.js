@@ -186,7 +186,7 @@ router.put(
 router.get(
   '/employees',
   requireRole('admin'),
-  requireCeoOrAnyPermission('employees:view', 'hr:add_employee'),
+  requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
   listEmployees
 );
 router.post(
@@ -212,13 +212,13 @@ router.delete(
 router.get(
   '/employees/:id',
   requireRole('admin'),
-  requireCeoOrAnyPermission('employees:view', 'hr:add_employee'),
+  requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
   getEmployeeById
 );
 router.put(
   '/employees/:id',
   requireRole('admin'),
-  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee', 'employees:remote'),
   updateEmployee
 );
 
@@ -248,35 +248,25 @@ router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
 router.get(
   '/attendance',
   requireRole('admin'),
-  requireCeoOrAnyPermission(
-    'attendance:view',
-    'attendance:edit',
-    'employees:view',
-    'employees:edit'
-  ),
+  requireCeoOrAnyPermission('employees:remote'),
   adminOverview
 );
 router.get(
   '/attendance/:userId/days',
   requireRole('admin'),
-  requireCeoOrAnyPermission(
-    'attendance:view',
-    'attendance:edit',
-    'employees:view',
-    'employees:edit'
-  ),
+  requireCeoOrAnyPermission('employees:remote'),
   adminEmployeeDays
 );
 router.put(
   '/attendance/:userId/hours',
   requireRole('admin'),
-  requirePermission('attendance:edit'),
+  requireCeoOrAnyPermission('employees:remote'),
   adminSetHours
 );
 router.post(
   '/attendance/:userId/manual',
   requireRole('admin'),
-  requirePermission('attendance:edit'),
+  requireCeoOrAnyPermission('employees:remote'),
   adminManualMark
 );
 router.delete(

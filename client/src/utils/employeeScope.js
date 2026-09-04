@@ -38,6 +38,7 @@ export function isScopedEmployeePermission(key) {
   return (
     key === 'employees:view' ||
     key === 'employees:edit' ||
+    key === 'employees:remote' ||
     key === 'attendance:view' ||
     key === 'attendance:edit'
   );

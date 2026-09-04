@@ -16,6 +16,12 @@ const PERMISSIONS_CATALOG = [
       'Update employee ID, status, department, designation, branch, shift, date of joining (scope: all, a branch, or a team).',
   },
   {
+    key: 'employees:remote',
+    label: 'Remote employees',
+    description:
+      'View and edit remote employees. Without this grant, remote staff are hidden. CEO always has access; assign this to the person who manages remote staff.',
+  },
+  {
     key: 'hr:followup',
     label: 'HR assignee',
     description:
@@ -31,13 +37,13 @@ const PERMISSIONS_CATALOG = [
     key: 'attendance:view',
     label: 'View attendance',
     description:
-      'See remote and onsite attendance for the assigned scope (all, a branch, or a team). Remote attendance is CEO + this grant only; onsite is also visible to HR.',
+      'See onsite attendance for the assigned scope (all, a branch, or a team). Does not include remote employees.',
   },
   {
     key: 'attendance:edit',
     label: 'Edit attendance',
     description:
-      'Mark and override attendance for the assigned scope. Remote records are CEO + this grant; onsite also includes HR.',
+      'Mark and override onsite attendance for the assigned scope. Remote attendance is only for people granted Remote employees.',
   },
   {
     key: 'employees:deactivate',

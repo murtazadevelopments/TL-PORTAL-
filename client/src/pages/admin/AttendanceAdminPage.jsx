@@ -355,39 +355,37 @@ export default function AttendanceAdminPage() {
           <p className="muted">
             {mode === 'onsite'
               ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Remote employees attendance — face check-in. Visible to CEO and people the CEO assigns attendance access.'}
+              : 'Remote employees attendance — face check-in. Only the CEO and people granted Remote employees can open this.'}
           </p>
         </div>
+        {canRemote && canOnsite ? (
         <div className="attendance-mode-toggle" role="tablist" aria-label="Attendance type">
-          {canRemote && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'remote'}
-              className={mode === 'remote' ? 'btn btn-primary' : 'btn btn-ghost'}
-              onClick={() => {
-                setStatus('all');
-                setMode('remote');
-              }}
-            >
-              Remote employees attendance
-            </button>
-          )}
-          {canOnsite && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'onsite'}
-              className={mode === 'onsite' ? 'btn btn-primary' : 'btn btn-ghost'}
-              onClick={() => {
-                setStatus('all');
-                setMode('onsite');
-              }}
-            >
-              Onsite employees attendance
-            </button>
-          )}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'remote'}
+            className={mode === 'remote' ? 'btn btn-primary' : 'btn btn-ghost'}
+            onClick={() => {
+              setStatus('all');
+              setMode('remote');
+            }}
+          >
+            Remote employees attendance
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'onsite'}
+            className={mode === 'onsite' ? 'btn btn-primary' : 'btn btn-ghost'}
+            onClick={() => {
+              setStatus('all');
+              setMode('onsite');
+            }}
+          >
+            Onsite employees attendance
+          </button>
         </div>
+        ) : null}
       </div>
 
       <div className="attendance-summary">

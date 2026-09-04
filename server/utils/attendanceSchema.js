@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 
 let ensured = false;
+let ensurePromise = null;
 
 function compactName(name) {
   return String(name || '')
@@ -71,6 +72,21 @@ async function persistUserWorkHours(userId, start, end) {
 
 async function ensureAttendanceTables() {
   if (ensured) return;
+  if (!ensurePromise) {
+    ensurePromise = runEnsureAttendanceTables().then(
+      () => {
+        ensured = true;
+      },
+      (err) => {
+        ensurePromise = null;
+        throw err;
+      }
+    );
+  }
+  await ensurePromise;
+}
+
+async function runEnsureAttendanceTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS face_enrollments (
       id            BIGSERIAL PRIMARY KEY,
@@ -133,13 +149,12 @@ async function ensureAttendanceTables() {
       ON attendance_logs (hour_key, status);
   `);
   await pool.query(`
-    DROP INDEX IF EXISTS attendance_logs_slot_unique;
-  `);
-  await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS attendance_logs_slot_unique
       ON attendance_logs (user_id, hour_key)
       WHERE status IN ('verified', 'missed', 'late', 'leave') OR method = 'manual';
-  `);
+  `).catch((err) => {
+    if (err.code !== '23505') throw err;
+  });
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS attendance_days (
@@ -158,8 +173,6 @@ async function ensureAttendanceTables() {
     CREATE INDEX IF NOT EXISTS attendance_days_date_idx
       ON attendance_days (date_key, status);
   `);
-
-  ensured = true;
 }
 
 module.exports = { ensureAttendanceTables, persistUserWorkHours };

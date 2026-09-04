@@ -9,6 +9,11 @@ function parseEmbedding(raw) {
       return null;
     }
   }
+  if (list && typeof list === 'object' && !Array.isArray(list)) {
+    const keys = Object.keys(list).sort((a, b) => Number(a) - Number(b));
+    list = keys.map((k) => list[k]);
+  }
+  if (ArrayBuffer.isView(list)) list = Array.from(list);
   if (!Array.isArray(list) || list.length < 64) return null;
   const nums = list.map((n) => Number(n));
   if (nums.some((n) => !Number.isFinite(n))) return null;

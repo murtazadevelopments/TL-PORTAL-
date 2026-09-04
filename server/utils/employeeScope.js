@@ -83,6 +83,41 @@ function scopeWhereClause(scope, startIndex = 1) {
   return { sql: '', params: [] };
 }
 
+/**
+ * List filter: onsite rows vs remote rows, each with its own scope.
+ */
+function employmentAccessWhere({
+  canOnsite,
+  canRemote,
+  onsiteScope,
+  remoteScope,
+  startIndex = 1,
+}) {
+  const parts = [];
+  const params = [];
+  let i = startIndex;
+  if (canOnsite) {
+    const f = scopeWhereClause(onsiteScope, i);
+    parts.push(
+      `(COALESCE(NULLIF(TRIM(employment_type), ''), 'onsite') <> 'remote'${f.sql ? ` ${f.sql}` : ''})`
+    );
+    params.push(...f.params);
+    i += f.params.length;
+  }
+  if (canRemote) {
+    const f = scopeWhereClause(remoteScope, i);
+    parts.push(
+      `(COALESCE(NULLIF(TRIM(employment_type), ''), 'onsite') = 'remote'${f.sql ? ` ${f.sql}` : ''})`
+    );
+    params.push(...f.params);
+    i += f.params.length;
+  }
+  if (!parts.length) {
+    return { sql: 'AND FALSE', params: [] };
+  }
+  return { sql: `AND (${parts.join(' OR ')})`, params };
+}
+
 function describeScope(scope) {
   const s = normalizeScope(scope);
   if (s.type === 'all') return 'all employees';
@@ -98,6 +133,7 @@ function describeScope(scope) {
 const SCOPED_PERMISSION_KEYS = new Set([
   'employees:view',
   'employees:edit',
+  'employees:remote',
   'attendance:view',
   'attendance:edit',
 ]);
@@ -113,6 +149,7 @@ module.exports = {
   isAllScope,
   employeeMatchesScope,
   scopeWhereClause,
+  employmentAccessWhere,
   describeScope,
   isScopedPermissionKey,
   SCOPED_PERMISSION_KEYS,

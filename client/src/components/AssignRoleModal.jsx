@@ -24,7 +24,13 @@ function employeeLabel(row) {
 function defaultScopesFromUser(user) {
   const scopes = {};
   const incoming = user?.scopes && typeof user.scopes === 'object' ? user.scopes : {};
-  for (const key of ['employees:view', 'employees:edit', 'attendance:view', 'attendance:edit']) {
+  for (const key of [
+    'employees:view',
+    'employees:edit',
+    'employees:remote',
+    'attendance:view',
+    'attendance:edit',
+  ]) {
     scopes[key] = normalizeEmployeeScope(incoming[key]);
   }
   return scopes;
@@ -49,6 +55,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [scopes, setScopes] = useState({
     'employees:view': { type: 'all' },
     'employees:edit': { type: 'all' },
+    'employees:remote': { type: 'all' },
     'attendance:view': { type: 'all' },
     'attendance:edit': { type: 'all' },
   });
@@ -120,6 +127,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setScopes({
         'employees:view': { type: 'all' },
         'employees:edit': { type: 'all' },
+        'employees:remote': { type: 'all' },
         'attendance:view': { type: 'all' },
         'attendance:edit': { type: 'all' },
       });
@@ -466,7 +474,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                   {catalog.map((perm) => (
                     <div
                       key={perm.key}
-                      className={`permission-block${perm.key === 'hr:followup' || perm.key === 'hr:add_employee' ? ' permission-block-hr' : ''}`}
+                      className={`permission-block${perm.key === 'hr:followup' || perm.key === 'hr:add_employee' || perm.key === 'employees:remote' ? ' permission-block-hr' : ''}`}
                     >
                       <label className="permission-item">
                         <input

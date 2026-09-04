@@ -15,8 +15,8 @@ const {
 } = require('../middleware/permissions');
 const {
   employeeMatchesScope,
-  scopeWhereClause,
   normalizeScope,
+  employmentAccessWhere,
 } = require('../utils/employeeScope');
 const { ensureBlockedColumn } = require('../utils/accountStatus');
 const { ensureUsersBranchNotEnumLocked } = require('../utils/usersBranchConstraint');
@@ -121,6 +121,24 @@ function canManageLowerStaff(req) {
   return perms.includes('hr:add_employee') || perms.includes('*');
 }
 
+function directoryAccess(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  const ceo = role === 'ceo' || perms.includes('*');
+  return {
+    ceo,
+    canOnsiteDirectory:
+      ceo || perms.includes('employees:view') || perms.includes('hr:add_employee'),
+    canRemoteDirectory: ceo || perms.includes('employees:remote'),
+    canEditOnsite: ceo || perms.includes('employees:edit') || perms.includes('hr:add_employee'),
+    canEditRemote: ceo || perms.includes('employees:remote'),
+  };
+}
+
+function isRemoteEmployment(value) {
+  return String(value || '').trim().toLowerCase() === 'remote';
+}
+
 function slugLowerStaffUsername(name) {
   const base = String(name || '')
     .trim()
@@ -214,8 +232,14 @@ async function listEmployees(req, res) {
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
     const scopes = await resolvePermissionScopes(req);
-    const viewScope = scopeForPermission(scopes, 'employees:view');
-    const filter = scopeWhereClause(viewScope, 1);
+    const access = directoryAccess(req);
+    const filter = employmentAccessWhere({
+      canOnsite: access.canOnsiteDirectory,
+      canRemote: access.canRemoteDirectory,
+      onsiteScope: scopeForPermission(scopes, 'employees:view'),
+      remoteScope: scopeForPermission(scopes, 'employees:remote'),
+      startIndex: 1,
+    });
     const nextIndex = filter.params.length + 1;
     const canSeeLower = canManageLowerStaff(req);
 
@@ -284,7 +308,17 @@ async function getEmployeeById(req, res) {
     }
 
     const scopes = await resolvePermissionScopes(req);
-    const viewScope = scopeForPermission(scopes, 'employees:view');
+    const access = directoryAccess(req);
+    const remote = isRemoteEmployment(rows[0].employment_type);
+    if (remote && !access.canRemoteDirectory) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (!remote && !access.canOnsiteDirectory) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    const viewScope = remote
+      ? scopeForPermission(scopes, 'employees:remote')
+      : scopeForPermission(scopes, 'employees:view');
     if (!employeeMatchesScope(rows[0], viewScope)) {
       return res.status(403).json({
         message: 'This employee is outside your assigned view scope.',
@@ -674,6 +708,11 @@ async function createEmployee(req, res) {
     }
 
     const hours = normalizeWorkHours(body.work_start_hour, body.work_end_hour);
+    if (employmentType === 'remote' && !directoryAccess(req).canEditRemote) {
+      return res.status(403).json({
+        message: 'You need Remote employees permission to add remote staff.',
+      });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
     const dateOfJoining =
       body.date_of_joining === undefined ||
@@ -817,12 +856,26 @@ async function updateEmployee(req, res) {
     }
 
     const before = existingRows[0];
+    const access = directoryAccess(req);
+    const wasRemote = isRemoteEmployment(before.employment_type);
 
     const scopes = await resolvePermissionScopes(req);
-    const editScope = scopeForPermission(scopes, 'employees:edit');
+    const editScope = wasRemote
+      ? scopeForPermission(scopes, 'employees:remote')
+      : scopeForPermission(scopes, 'employees:edit');
     if (!employeeMatchesScope(before, editScope)) {
       return res.status(403).json({
         message: 'This employee is outside your assigned edit scope.',
+      });
+    }
+    if (wasRemote && !access.canEditRemote) {
+      return res.status(403).json({
+        message: 'You need Remote employees permission to edit remote staff.',
+      });
+    }
+    if (!wasRemote && !access.canEditOnsite) {
+      return res.status(403).json({
+        message: 'You do not have permission to edit this employee.',
       });
     }
 
@@ -862,6 +915,16 @@ async function updateEmployee(req, res) {
 
     if (!next.employment_type) {
       return res.status(400).json({ message: 'employment_type must be "onsite" or "remote".' });
+    }
+    if (isRemoteEmployment(next.employment_type) && !access.canEditRemote) {
+      return res.status(403).json({
+        message: 'You need Remote employees permission to set work location to remote.',
+      });
+    }
+    if (!isRemoteEmployment(next.employment_type) && wasRemote && !access.canEditOnsite) {
+      return res.status(403).json({
+        message: 'You do not have permission to change this person to onsite.',
+      });
     }
 
     const catalogShift = await findShiftName(next.shift);
@@ -976,7 +1039,7 @@ async function deactivateEmployee(req, res) {
 
     const { rows: existingRows } = await pool.query(
       `
-        SELECT id, branch, department, is_active
+        SELECT id, branch, department, is_active, employment_type
         FROM users
         WHERE id = $1 AND is_active = true
         LIMIT 1
@@ -988,10 +1051,16 @@ async function deactivateEmployee(req, res) {
     }
 
     const scopes = await resolvePermissionScopes(req);
-    // Prefer edit scope if present, otherwise view scope
-    const editScope = scopes['employees:edit']
-      ? scopeForPermission(scopes, 'employees:edit')
-      : scopeForPermission(scopes, 'employees:view');
+    const access = directoryAccess(req);
+    const remote = isRemoteEmployment(existingRows[0].employment_type);
+    if (remote && !access.canRemoteDirectory) {
+      return res.status(404).json({ message: 'Employee not found or already deactivated.' });
+    }
+    const editScope = remote
+      ? scopeForPermission(scopes, 'employees:remote')
+      : scopes['employees:edit']
+        ? scopeForPermission(scopes, 'employees:edit')
+        : scopeForPermission(scopes, 'employees:view');
     if (!employeeMatchesScope(existingRows[0], editScope)) {
       return res.status(403).json({
         message: 'This employee is outside your assigned scope.',
