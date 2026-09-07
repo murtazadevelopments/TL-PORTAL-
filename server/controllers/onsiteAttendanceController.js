@@ -476,6 +476,7 @@ async function adminListOnsite(req, res) {
     const dateKey = String(req.query.date || parts.dateKey).slice(0, 10);
     const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
+    const branchFilter = String(req.query.branch || '').trim().toLowerCase();
 
     const viewScope = await resolveOnsiteViewScope(req);
     const editScope = await resolveOnsiteEditScope(req);
@@ -511,10 +512,21 @@ async function adminListOnsite(req, res) {
     }
     const byUser = new Map(records.map((r) => [String(r.user_id), r]));
 
+    const branches = [
+      ...new Set(
+        people
+          .map((p) => String(p.branch || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
     const employees = [];
     const summary = { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 };
     const shiftCache = new Map();
     for (const person of people) {
+      if (branchFilter && branchFilter !== 'all') {
+        if (String(person.branch || '').trim().toLowerCase() !== branchFilter) continue;
+      }
       if (search) {
         const hay = `${person.name} ${person.employee_id} ${person.username} ${person.branch}`.toLowerCase();
         if (!hay.includes(search)) continue;
@@ -552,7 +564,7 @@ async function adminListOnsite(req, res) {
       });
     }
 
-    return res.json({ date: dateKey, summary, employees });
+    return res.json({ date: dateKey, summary, employees, branches });
   } catch (err) {
     console.error('adminListOnsite error:', err);
     return res.status(500).json({ message: 'Server error fetching onsite attendance.' });

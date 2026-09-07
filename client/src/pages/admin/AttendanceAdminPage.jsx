@@ -117,6 +117,8 @@ export default function AttendanceAdminPage() {
   const [date, setDate] = useState(() => clampAttendanceDate(karachiDateKey()));
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [branch, setBranch] = useState('all');
+  const [branchOptions, setBranchOptions] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -138,18 +140,22 @@ export default function AttendanceAdminPage() {
     setError('');
     const dateKey = dateForAdminFilter(dateOverride || date, ceo);
     try {
+      const params = { date: dateKey, search, status };
+      if (branch && branch !== 'all') params.branch = branch;
       if (mode === 'onsite') {
         const { data: payload } = await api.get('/api/admin/onsite-attendance', {
-          params: { date: dateKey, search, status },
+          params,
         });
         setOnsite(payload);
         setData(null);
+        if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
       } else {
         const { data: payload } = await api.get('/api/admin/attendance', {
-          params: { date: dateKey, search, status },
+          params,
         });
         setData(payload);
         setOnsite(null);
+        if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load attendance.');
@@ -176,7 +182,7 @@ export default function AttendanceAdminPage() {
     if (mode === 'onsite' && !canOnsite) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, status, mode, authLoading, canRemote, canOnsite, canAny]);
+  }, [date, status, branch, mode, authLoading, canRemote, canOnsite, canAny]);
 
   async function submitManual(e) {
     e.preventDefault();
@@ -367,6 +373,7 @@ export default function AttendanceAdminPage() {
             className={mode === 'remote' ? 'btn btn-primary' : 'btn btn-ghost'}
             onClick={() => {
               setStatus('all');
+              setBranch('all');
               setMode('remote');
             }}
           >
@@ -379,6 +386,7 @@ export default function AttendanceAdminPage() {
             className={mode === 'onsite' ? 'btn btn-primary' : 'btn btn-ghost'}
             onClick={() => {
               setStatus('all');
+              setBranch('all');
               setMode('onsite');
             }}
           >
@@ -449,11 +457,25 @@ export default function AttendanceAdminPage() {
           </select>
         </label>
         <label>
+          Branch
+          <select value={branch} onChange={(e) => setBranch(e.target.value)} aria-label="Filter by branch">
+            <option value="all">All</option>
+            {branchOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+            {branch !== 'all' && !branchOptions.includes(branch) && (
+              <option value={branch}>{branch}</option>
+            )}
+          </select>
+        </label>
+        <label>
           Search
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name, ID, branch…"
+            placeholder="Name, ID…"
           />
         </label>
         <button type="submit" className="btn btn-ghost">

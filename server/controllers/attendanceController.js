@@ -456,6 +456,7 @@ async function adminOverview(req, res) {
     const dateKey = String(req.query.date || parts.dateKey).slice(0, 10);
     const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
+    const branchFilter = String(req.query.branch || '').trim().toLowerCase();
 
     const viewScope = await resolveAttendanceScope(req, 'attendance:view');
     const editScope = isCeoRole(req.user?.role)
@@ -509,10 +510,6 @@ async function adminOverview(req, res) {
         )
       : { rows: [] };
     const dayByUser = new Map(dayRows.map((d) => [String(d.user_id), d.status]));
-    let verified = 0;
-    let missed = 0;
-    let manual = 0;
-    let failed = 0;
 
     const employees = people
       .map((person) => {
@@ -537,10 +534,6 @@ async function adminOverview(req, res) {
         const missedCount = slotStates.filter((s) => s.state === 'missed').length;
         const failedCount = slotStates.filter((s) => s.state === 'failed').length;
         const manualCount = personLogs.filter((l) => l.method === 'manual').length;
-        verified += verifiedCount;
-        missed += missedCount;
-        failed += failedCount;
-        manual += manualCount;
 
         let rowStatus = dayByUser.get(String(person.id)) || 'pending';
         if (rowStatus === 'pending') {
@@ -573,22 +566,50 @@ async function adminOverview(req, res) {
           row_status: rowStatus,
           verified_count: verifiedCount,
           missed_count: missedCount,
+          manual_count: manualCount,
           slots: slotStates,
           latest,
         };
       })
       .filter((row) => {
+        if (
+          branchFilter &&
+          branchFilter !== 'all' &&
+          String(row.branch || '').trim().toLowerCase() !== branchFilter
+        ) {
+          return false;
+        }
         if (statusFilter !== 'all' && row.row_status !== statusFilter) return false;
         if (!search) return true;
         const blob = `${row.name} ${row.username} ${row.employee_id} ${row.branch} ${row.department}`.toLowerCase();
         return blob.includes(search);
       });
 
+    let verified = 0;
+    let missed = 0;
+    let manual = 0;
+    let failed = 0;
+    for (const row of employees) {
+      verified += row.verified_count;
+      missed += row.missed_count;
+      failed += (row.slots || []).filter((s) => s.state === 'failed').length;
+      manual += row.manual_count || 0;
+    }
+
+    const branches = [
+      ...new Set(
+        people
+          .map((p) => String(p.branch || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
     return res.json({
       date: dateKey,
       timezone: TIMEZONE,
       summary: { verified, missed, failed, manual, employees: employees.length },
       employees,
+      branches,
     });
   } catch (err) {
     console.error('adminOverview error:', err);
