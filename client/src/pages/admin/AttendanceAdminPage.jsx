@@ -82,10 +82,28 @@ function formatKarachiTime(iso) {
   }).format(d);
 }
 
+function checkStateLabel(state) {
+  if (state === 'verified' || state === 'on_time') return 'On time';
+  if (state === 'late' || state === 'late_window') return 'Late';
+  if (state === 'missed' || state === 'absent') return 'Absent';
+  if (state === 'leave') return 'Leave';
+  if (state === 'holiday') return 'Holiday';
+  if (state === 'failed') return 'Failed';
+  if (state === 'open') return 'Open';
+  if (state === 'pending' || state === 'upcoming') return 'Pending';
+  return state || '—';
+}
+
+function dayStatusLabel(status) {
+  if (status === 'present' || status === 'verified') return 'Present';
+  return checkStateLabel(status);
+}
+
 function onsiteStatusLabel(status) {
   if (status === 'on_time') return 'On time';
   if (status === 'late') return 'Late';
   if (status === 'absent') return 'Absent';
+  if (status === 'holiday') return 'Holiday';
   if (status === 'pending') return 'Pending';
   return status || '—';
 }
@@ -125,6 +143,7 @@ export default function AttendanceAdminPage() {
   const [manual, setManual] = useState(EMPTY_MANUAL);
   const [hoursEdit, setHoursEdit] = useState(EMPTY_HOURS);
   const [history, setHistory] = useState(null);
+  const [historyMode, setHistoryMode] = useState('detail');
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState('onsite');
   const [onsite, setOnsite] = useState(null);
@@ -241,15 +260,16 @@ export default function AttendanceAdminPage() {
     }
   }
 
-  async function openHistory(row) {
+  async function openHistory(row, mode = 'detail') {
     setError('');
     try {
       const { data: payload } = await api.get(`/api/admin/attendance/${row.id}/days`, {
         params: { month: date.slice(0, 7) },
       });
+      setHistoryMode(mode);
       setHistory(payload);
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not load daily records.');
+      setError(err.response?.data?.message || 'Could not load attendance history.');
     }
   }
 
@@ -403,6 +423,7 @@ export default function AttendanceAdminPage() {
             <div className="attendance-stat"><span>On time</span><strong>{summary.on_time}</strong></div>
             <div className="attendance-stat"><span>Late</span><strong>{summary.late}</strong></div>
             <div className="attendance-stat"><span>Absent / pending</span><strong>{(summary.absent || 0) + (summary.pending || 0)}</strong></div>
+            <div className="attendance-stat"><span>Holiday</span><strong>{summary.holiday || 0}</strong></div>
           </>
         ) : (
           <>
@@ -441,6 +462,7 @@ export default function AttendanceAdminPage() {
                 <option value="late">Late</option>
                 <option value="absent">Absent</option>
                 <option value="pending">Pending</option>
+                <option value="holiday">Holiday</option>
               </>
             ) : (
               <>
@@ -452,6 +474,7 @@ export default function AttendanceAdminPage() {
                 <option value="late">Late</option>
                 <option value="absent">Absent</option>
                 <option value="leave">Leave</option>
+                <option value="holiday">Holiday</option>
               </>
             )}
           </select>
@@ -614,8 +637,11 @@ export default function AttendanceAdminPage() {
                   >
                     Set hours
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row)}>
+                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'detail')}>
                     Daily records
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
+                    This month
                   </button>
                   <button
                     type="button"
@@ -644,8 +670,11 @@ export default function AttendanceAdminPage() {
                 </div>
               ) : (
                 <div className="attendance-admin-actions">
-                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row)}>
+                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'detail')}>
                     Daily records
+                  </button>
+                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
+                    This month
                   </button>
                   {ceo && row.can_delete && (
                     <button
@@ -754,15 +783,39 @@ export default function AttendanceAdminPage() {
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setOnsiteMonth(null)}>
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
             <h2>{onsiteMonth.employee?.name || 'This month'}</h2>
-            <p className="muted">
-              {onsiteMonth.month} · {onsiteMonth.recorded || 0} check-in
-              {onsiteMonth.recorded === 1 ? '' : 's'} · on time {onsiteMonth.totals?.on_time || 0} · late{' '}
-              {onsiteMonth.totals?.late || 0} · absent {onsiteMonth.totals?.absent || 0}
-            </p>
+            <p className="muted">{onsiteMonth.month} summary</p>
+            <div className="attendance-month-summary">
+              <div className="attendance-stat">
+                <span>On time</span>
+                <strong>{onsiteMonth.totals?.on_time || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Late</span>
+                <strong>{onsiteMonth.totals?.late || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Absent</span>
+                <strong>{onsiteMonth.totals?.absent || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Days recorded</span>
+                <strong>{onsiteMonth.recorded || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Holiday</span>
+                <strong>{onsiteMonth.totals?.holiday || 0}</strong>
+              </div>
+            </div>
             <ol className="attendance-day-list">
               {(onsiteMonth.days || []).map((day) => (
                 <li key={day.work_date} className={`attendance-day ${day.status}`}>
-                  <span className="attendance-day-date">{day.work_date}</span>
+                  <div className="attendance-day-main">
+                    <span className="attendance-day-date">{day.work_date}</span>
+                    <span className="muted">
+                      {day.checked_in_at ? formatKarachiTime(day.checked_in_at) : day.status === 'holiday' ? 'Holiday' : 'No check-in'}
+                      {day.method ? ` · ${day.method}` : ''}
+                    </span>
+                  </div>
                   <span className="attendance-day-status">{onsiteStatusLabel(day.status)}</span>
                 </li>
               ))}
@@ -782,19 +835,76 @@ export default function AttendanceAdminPage() {
       {history && (
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setHistory(null)}>
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
-            <h2>{history.employee?.name || 'Daily records'}</h2>
-            <p className="muted">
-              {history.month} · presents {history.totals?.present || 0} · lates {history.totals?.late || 0} ·
-              absents {history.totals?.absent || 0} · leaves {history.totals?.leave || 0}
-            </p>
-            <ol className="attendance-day-list">
-              {(history.days || []).map((day) => (
-                <li key={day.date} className={`attendance-day ${day.status}`}>
-                  <span className="attendance-day-date">{day.date}</span>
-                  <span className="attendance-day-status">{day.status}</span>
-                </li>
-              ))}
-            </ol>
+            <h2>
+              {history.employee?.name || 'Attendance'}
+              {historyMode === 'summary' ? ' — this month' : ' — daily records'}
+            </h2>
+            <p className="muted">{history.month}</p>
+            <div className="attendance-month-summary">
+              <div className="attendance-stat">
+                <span>Present</span>
+                <strong>{history.totals?.present || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Late</span>
+                <strong>{history.totals?.late || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Absent</span>
+                <strong>{history.totals?.absent || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Leave</span>
+                <strong>{history.totals?.leave || 0}</strong>
+              </div>
+              <div className="attendance-stat">
+                <span>Holiday</span>
+                <strong>{history.totals?.holiday || 0}</strong>
+              </div>
+            </div>
+            {historyMode === 'detail' ? (
+              <ol className="attendance-day-list attendance-day-detail-list">
+                {(history.days || []).map((day) => (
+                  <li key={day.date} className={`attendance-day-detail ${day.status}`}>
+                    <div className="attendance-day-detail-head">
+                      <span className="attendance-day-date">{day.date}</span>
+                      <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
+                    </div>
+                    <ul className="attendance-check-list">
+                      {(day.slots || []).map((slot) => (
+                        <li key={slot.hour_key || slot.seq}>
+                          <span>
+                            {slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`}
+                            {slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''}
+                          </span>
+                          <span>
+                            {checkStateLabel(slot.state)}
+                            {slot.checked_in_at ? ` · in ${formatKarachiTime(slot.checked_in_at)}` : ''}
+                            {slot.method ? ` · ${slot.method}` : ''}
+                          </span>
+                        </li>
+                      ))}
+                      {!(day.slots || []).length && <li className="muted">No checks recorded.</li>}
+                    </ul>
+                  </li>
+                ))}
+                {(history.days || []).length === 0 && (
+                  <li className="muted">No daily records yet this month.</li>
+                )}
+              </ol>
+            ) : (
+              <ol className="attendance-day-list">
+                {(history.days || []).map((day) => (
+                  <li key={day.date} className={`attendance-day ${day.status}`}>
+                    <span className="attendance-day-date">{day.date}</span>
+                    <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
+                  </li>
+                ))}
+                {(history.days || []).length === 0 && (
+                  <li className="muted">No daily records yet this month.</li>
+                )}
+              </ol>
+            )}
             <div className="modal-actions">
               <button type="button" className="btn btn-primary" onClick={() => setHistory(null)}>
                 Close

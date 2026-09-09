@@ -219,6 +219,10 @@
   color: var(--cyan);
   border-color: rgba(126, 203, 255, 0.5);
 }
+.attendance-admin-card .badge.holiday {
+  color: #ddd6fe;
+  border-color: rgba(167, 139, 250, 0.5);
+}
 
 .attendance-mini-slots {
   display: flex;
@@ -329,7 +333,77 @@
 }
 
 .attendance-admin .history-card {
-  width: min(520px, 100%);
+  width: min(560px, 100%);
+  max-height: min(86vh, 900px);
+  overflow: auto;
+}
+
+.attendance-month-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.35rem 0 0.85rem;
+}
+
+.attendance-month-summary .attendance-stat {
+  padding: 0.55rem 0.65rem;
+}
+
+.attendance-month-summary .attendance-stat strong {
+  font-size: 1.15rem;
+}
+
+.attendance-day-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.attendance-day-detail-list {
+  gap: 0.65rem;
+}
+
+.attendance-day-detail {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+}
+
+.attendance-day-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.45rem;
+  text-transform: capitalize;
+}
+
+.attendance-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.attendance-check-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.attendance-check-list li span:first-child {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  .attendance-month-summary {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .attendance-day-list {
@@ -365,6 +439,9 @@
 }
 .attendance-day.leave {
   background: rgba(126, 203, 255, 0.1);
+}
+.attendance-day.holiday {
+  background: rgba(167, 139, 250, 0.12);
 }
 
 @media (max-width: 900px) {

@@ -37,6 +37,16 @@ function remainFromCheck(check, nowTick, field) {
   return Math.max(0, end - nowTick);
 }
 
+function friendlyDayStatus(status) {
+  if (status === 'present' || status === 'verified') return 'Present';
+  if (status === 'late') return 'Late';
+  if (status === 'absent') return 'Absent';
+  if (status === 'leave') return 'Leave';
+  if (status === 'holiday') return 'Holiday';
+  if (status === 'pending') return 'Pending';
+  return status || '—';
+}
+
 function friendlyError(err) {
   const raw = err?.response?.data?.message || err?.message || '';
   if (/interrupted by a new load request|AbortError|The play\(\) request was interrupted/i.test(raw)) {
@@ -73,6 +83,7 @@ export default function AttendancePage() {
   const [modelsReady, setModelsReady] = useState(() => areFaceModelsReady());
   const [engineHint, setEngineHint] = useState('');
   const [openCheck, setOpenCheck] = useState(null);
+  const [sundayHoliday, setSundayHoliday] = useState(false);
   const [nowTick, setNowTick] = useState(Date.now());
 
   const isRemote = user?.employment_type === 'remote';
@@ -96,6 +107,7 @@ export default function AttendancePage() {
     );
     setCanCheckIn(Boolean(att.can_check_in ?? att.can_check_in));
     setOpenCheck(att.open_check || null);
+    setSundayHoliday(Boolean(att.holiday));
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -429,6 +441,10 @@ export default function AttendancePage() {
           <span>Leaves</span>
           <strong>{totals.leave || 0}</strong>
         </div>
+        <div className="attendance-stat">
+          <span>Holidays</span>
+          <strong>{totals.holiday || 0}</strong>
+        </div>
       </div>
       {workHoursLabel ? (
         <p className="muted">
@@ -436,7 +452,9 @@ export default function AttendancePage() {
           check.
         </p>
       ) : null}
-      {openCheck?.can_check_in ? (
+      {sundayHoliday ? (
+        <p className="attendance-open-banner">Sunday is a holiday. Attendance checks are not required.</p>
+      ) : openCheck?.can_check_in ? (
         <p className="attendance-open-banner">
           Check {openCheck.seq} of 5 is open
           {remainFromCheck(openCheck, nowTick, 'late_at') > 0
@@ -477,7 +495,7 @@ export default function AttendancePage() {
                   disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
                   onClick={handleCheckIn}
                 >
-                  {phase === 'checkin' ? 'Checking in…' : canCheckIn ? 'Check in now' : 'Waiting for next check'}
+                  {phase === 'checkin' ? 'Checking in…' : canCheckIn ? 'Check in now' : sundayHoliday ? 'Sunday holiday' : 'Waiting for next check'}
                 </button>
                 <button type="button" className="btn btn-ghost" disabled={phase !== 'idle' || !modelsReady} onClick={handleEnroll}>
                   Re-enroll
@@ -503,7 +521,9 @@ export default function AttendancePage() {
             </li>
           ))}
           {timeline.length === 0 && (
-            <li className="muted">Checks appear at the start of your shift.</li>
+            <li className="muted">
+              {sundayHoliday ? 'Sunday is a holiday — no checks today.' : 'Checks appear at the start of your shift.'}
+            </li>
           )}
         </ol>
       </section>
@@ -514,7 +534,7 @@ export default function AttendancePage() {
           {days.map((day) => (
             <li key={day.date} className={`attendance-day ${day.status}`}>
               <span className="attendance-day-date">{day.date}</span>
-              <span className="attendance-day-status">{day.status}</span>
+              <span className="attendance-day-status">{friendlyDayStatus(day.status)}</span>
             </li>
           ))}
           {days.length === 0 && <li className="muted">No daily records yet this month.</li>}

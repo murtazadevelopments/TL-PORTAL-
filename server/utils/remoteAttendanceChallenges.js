@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { normalizeEmploymentType } = require('./employmentType');
+const { isSundayDateKey } = require('./workWeek');
 const { workHoursFromUser } = require('./workHours');
 const {
   CHECK_COUNT,
@@ -7,17 +8,13 @@ const {
   activeShiftDate,
   currentShiftDateKey,
   planChallengeTimes,
-  pickRandomInstants,
-  shiftBounds,
   formatClock,
   windowsForScheduled,
-  randomWindowStart,
-  seededRandom,
+  shiftBounds,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
   ABSENT_AFTER_MINUTES,
   RESPOND_TARGET_MINUTES,
-  MIN_CHECK_GAP_MINUTES,
 } = require('./remoteCheckWindows');
 
 async function ensureChallengeTable() {
@@ -67,8 +64,31 @@ async function loadChallenges(userId, shiftDate) {
   return rows;
 }
 
+async function minuteTaken(userId, at) {
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM attendance_challenges
+      WHERE user_id <> $1
+        AND status IN ('pending', 'notified')
+        AND date_trunc('minute', scheduled_at) = date_trunc('minute', $2::timestamptz)
+      LIMIT 1
+    `,
+    [userId, at]
+  );
+  return Boolean(rows[0]);
+}
+
 async function insertPlan(user, shiftDate, plan) {
   for (const row of plan) {
+    let at = new Date(row.scheduled_at);
+    if (row.kind !== 'start') {
+      for (let n = 0; n < 40; n += 1) {
+        if (!(await minuteTaken(user.id, at))) break;
+        at = new Date(at.getTime() + 2 * 60 * 1000);
+      }
+    }
+    const windows = windowsForScheduled(at);
     await pool.query(
       `
         INSERT INTO attendance_challenges (
@@ -87,9 +107,9 @@ async function insertPlan(user, shiftDate, plan) {
         row.seq,
         row.kind,
         hourKeyForSeq(shiftDate, row.seq),
-        row.scheduled_at,
-        row.late_at,
-        row.absent_at,
+        at,
+        windows.late_at,
+        windows.absent_at,
       ]
     );
   }
@@ -97,6 +117,18 @@ async function insertPlan(user, shiftDate, plan) {
 
 async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
   if (normalizeEmploymentType(user.employment_type) !== 'remote') return [];
+  if (isSundayDateKey(shiftDate)) {
+    await pool.query(
+      `
+        DELETE FROM attendance_challenges
+        WHERE user_id = $1
+          AND shift_date = $2
+          AND status IN ('pending', 'notified')
+      `,
+      [user.id, shiftDate]
+    );
+    return [];
+  }
   await pool.query(
     `
       DELETE FROM attendance_challenges
@@ -109,49 +141,25 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
     `,
     [user.id, shiftDate, now]
   );
+  const { start } = shiftBounds(shiftDate, user);
+  const firstWindows = windowsForScheduled(start);
+  await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET scheduled_at = $3, late_at = $4, absent_at = $5
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND seq = 1
+        AND status IN ('pending', 'notified')
+        AND scheduled_at IS DISTINCT FROM $3
+    `,
+    [user.id, shiftDate, start, firstWindows.late_at, firstWindows.absent_at]
+  );
   const existing = await loadChallenges(user.id, shiftDate);
   if (existing.length >= CHECK_COUNT) return existing;
   const have = new Set(existing.map((r) => Number(r.seq)));
-  const plan = [];
-  if (!have.has(1)) {
-    const base = planChallengeTimes(shiftDate, user, now, existing)[0];
-    plan.push(base);
-  }
-  const missingRandom = [];
-  for (let seq = 2; seq <= CHECK_COUNT; seq += 1) {
-    if (!have.has(seq)) missingRandom.push(seq);
-  }
-  if (missingRandom.length) {
-    const { start, end } = shiftBounds(shiftDate, user);
-    const soon = new Date(now.getTime() + 5 * 60 * 1000);
-    const randomFrom = randomWindowStart(start, now, existing);
-    const randomUntil = new Date(end.getTime() - ABSENT_AFTER_MINUTES * 60 * 1000);
-    const until =
-      randomUntil > randomFrom
-        ? randomUntil
-        : new Date(
-            Math.max(
-              randomFrom.getTime() + MIN_CHECK_GAP_MINUTES * 60 * 1000,
-              end.getTime() - RESPOND_TARGET_MINUTES * 60 * 1000
-            )
-          );
-    const instants = pickRandomInstants(
-      randomFrom,
-      until,
-      missingRandom.length,
-      MIN_CHECK_GAP_MINUTES * 60 * 1000,
-      seededRandom(`${user.id}:${shiftDate}:fill`)
-    );
-    missingRandom.forEach((seq, i) => {
-      const at = instants[i] || soon;
-      plan.push({
-        seq,
-        kind: 'random',
-        scheduled_at: at,
-        ...windowsForScheduled(at),
-      });
-    });
-  }
+  const planned = planChallengeTimes(shiftDate, user, now, existing);
+  const plan = planned.filter((row) => !have.has(Number(row.seq)));
   const futurePlan = plan.filter((row) => {
     if (row.kind === 'start') return true;
     return new Date(row.scheduled_at).getTime() >= now.getTime();
@@ -249,7 +257,7 @@ async function dueNotifications(now = new Date()) {
     `,
     [now]
   );
-  return rows;
+  return rows.filter((row) => !isSundayDateKey(row.shift_date));
 }
 
 async function markNotified(id, now = new Date()) {
@@ -277,7 +285,7 @@ async function expiredOpen(now = new Date()) {
     `,
     [now]
   );
-  return rows;
+  return rows.filter((row) => !isSundayDateKey(row.shift_date));
 }
 
 module.exports = {

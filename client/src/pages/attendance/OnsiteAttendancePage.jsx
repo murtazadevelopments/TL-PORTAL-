@@ -10,6 +10,7 @@ function statusLabel(status) {
   if (status === 'on_time') return 'On time';
   if (status === 'late') return 'Late';
   if (status === 'absent') return 'Absent';
+  if (status === 'holiday') return 'Holiday';
   return status || '—';
 }
 
@@ -158,6 +159,10 @@ export default function OnsiteAttendancePage() {
           <strong>{totals.absent || 0}</strong>
         </div>
         <div className="attendance-stat">
+          <span>Holiday</span>
+          <strong>{totals.holiday || 0}</strong>
+        </div>
+        <div className="attendance-stat">
           <span>Today</span>
           <strong>{today ? statusLabel(today.status) : '—'}</strong>
         </div>
@@ -179,7 +184,9 @@ export default function OnsiteAttendancePage() {
         ) : (
           <p className="muted">No shift assigned yet. Ask HR to assign one.</p>
         )}
-        {today ? (
+        {data?.holiday && !today?.checked_in_at ? (
+          <p className="muted">Sunday is a holiday. Office check-in is not required.</p>
+        ) : today ? (
           <p>
             Checked in at{' '}
             <strong>
@@ -204,11 +211,13 @@ export default function OnsiteAttendancePage() {
         >
           {checkingIn
             ? 'Checking in…'
-            : today
+            : today?.checked_in_at
               ? 'Already checked in'
-              : data?.night_shift && !data?.self_check_in_open
-                ? 'Check-in closed'
-                : 'Check in'}
+              : data?.holiday
+                ? 'Sunday holiday'
+                : data?.night_shift && !data?.self_check_in_open
+                  ? 'Check-in closed'
+                  : 'Check in'}
         </button>
         {data?.night_shift && !today && data?.self_check_in_open && (
           <p className="muted">Self check-in closes at 11:59 PM. After that, ask an admin.</p>

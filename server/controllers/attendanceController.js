@@ -11,6 +11,7 @@ const attendanceDays = require('../utils/attendanceDays');
 const remoteChallenges = require('../utils/remoteAttendanceChallenges');
 const { runRemoteAttendanceTick } = require('../services/remoteAttendancePings');
 const { normalizeEmploymentType } = require('../utils/employmentType');
+const { isSundayDateKey } = require('../utils/workWeek');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -202,7 +203,8 @@ async function getMyAttendance(req, res) {
       parts.dateKey;
     const hours = workHoursFromUser(user);
 
-    if (normalizeEmploymentType(user.employment_type) === 'remote') {
+    const sundayHoliday = isSundayDateKey(shiftDate);
+    if (normalizeEmploymentType(user.employment_type) === 'remote' && !sundayHoliday) {
       const active = remoteChallenges.activeShiftDate(now, user);
       if (!req.query.date && active) {
         await remoteChallenges.ensureChallengesForUser(user, active);
@@ -255,8 +257,8 @@ async function getMyAttendance(req, res) {
       : []
     );
 
-    const opened = remoteChallenges.openChallenge(challengeRows, now);
-    const canCheckIn = Boolean(opened?.pub?.can_check_in);
+    const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now);
+    const canCheckIn = Boolean(!sundayHoliday && opened?.pub?.can_check_in);
     const month = await monthHistory(user, shiftDate.slice(0, 7));
     return res.json({
       date: shiftDate,
@@ -272,7 +274,8 @@ async function getMyAttendance(req, res) {
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
       checks_per_shift: remoteChallenges.CHECK_COUNT,
-      timeline,
+      holiday: sundayHoliday,
+      timeline: sundayHoliday ? [] : timeline,
       month: month.month,
       totals: month.totals,
       days: month.days,
@@ -297,8 +300,12 @@ async function checkIn(req, res) {
 
     const now = new Date();
     const shiftDate = remoteChallenges.activeShiftDate(now, user);
-    if (!shiftDate) {
-      return res.status(400).json({ message: 'There is no open attendance check during this shift.' });
+    if (!shiftDate || isSundayDateKey(shiftDate)) {
+      return res.status(400).json({
+        message: isSundayDateKey(shiftDate)
+          ? 'Sunday is a holiday. Attendance checks are not required.'
+          : 'There is no open attendance check during this shift.',
+      });
     }
     const challengeRows = await remoteChallenges.ensureChallengesForUser(user, shiftDate);
     const opened = remoteChallenges.openChallenge(challengeRows, now);
@@ -547,14 +554,17 @@ async function adminOverview(req, res) {
             method: log?.method || null,
           };
         });
-        const slots = mapped.length
-          ? mapped
-          : [1, 2, 3, 4, 5].map((seq) => ({
-              hour_key: `${dateKey}-c${seq}`,
-              label: seq === 1 ? 'Start' : `Check ${seq}`,
-              state: 'pending',
-              method: null,
-            }));
+        const sundayHoliday = isSundayDateKey(dateKey);
+        const slots = sundayHoliday
+          ? []
+          : mapped.length
+            ? mapped
+            : [1, 2, 3, 4, 5].map((seq) => ({
+                hour_key: `${dateKey}-c${seq}`,
+                label: seq === 1 ? 'Start' : `Check ${seq}`,
+                state: 'pending',
+                method: null,
+              }));
         const verifiedCount = slots.filter(
           (s) => s.state === 'verified' || s.state === 'late'
         ).length;
@@ -562,12 +572,13 @@ async function adminOverview(req, res) {
         const failedCount = slots.filter((s) => s.state === 'failed').length;
         const manualCount = personLogs.filter((l) => l.method === 'manual').length;
 
-        let rowStatus = dayByUser.get(String(person.id)) || 'pending';
-        if (rowStatus === 'pending') {
+        let rowStatus = dayByUser.get(String(person.id)) || (sundayHoliday ? 'holiday' : 'pending');
+        if (rowStatus === 'pending' && !sundayHoliday) {
           if (missedCount > 0 && verifiedCount === 0) rowStatus = 'missed';
           else if (failedCount > 0 && verifiedCount === 0) rowStatus = 'failed';
           else if (verifiedCount > 0) rowStatus = 'verified';
         }
+        if (sundayHoliday && rowStatus !== 'leave') rowStatus = 'holiday';
 
         const hours = workHoursFromUser(person);
         return {
@@ -821,7 +832,7 @@ async function adminSetHours(req, res) {
     const shiftDate =
       remoteChallenges.activeShiftDate(new Date(), updated) ||
       remoteChallenges.currentShiftDateKey(new Date(), updated);
-    if (shiftDate) {
+    if (shiftDate && !isSundayDateKey(shiftDate)) {
       await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
       await remoteChallenges.ensureChallengesForUser(updated, shiftDate);
     }

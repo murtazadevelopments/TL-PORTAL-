@@ -1,5 +1,6 @@
 const { zonedParts } = require('./attendanceWindows');
 const { workHoursFromUser, normalizeWorkHours } = require('./workHours');
+const { isSundayDateKey } = require('./workWeek');
 
 const CHECK_COUNT = 5;
 const RANDOM_COUNT = 4;
@@ -62,6 +63,7 @@ function activeShiftDate(now, user) {
   const candidates = hours.overnight ? [yesterday, today] : [today];
   const lead = GENERATE_LEAD_MINUTES * 60 * 1000;
   for (const date of candidates) {
+    if (isSundayDateKey(date)) continue;
     const { start, end } = shiftBounds(date, { start: hours.start, end: hours.end });
     if (now.getTime() >= start.getTime() - lead && now.getTime() <= end.getTime()) {
       return date;
@@ -82,7 +84,6 @@ function alignMinute(ms) {
   return Math.round(Number(ms) / 60000) * 60000;
 }
 
-/** Different every calendar shift and every employee; stable for the same person+day. */
 function seededRandom(seed) {
   let h = 2166136261;
   const text = String(seed || '');
@@ -98,6 +99,16 @@ function seededRandom(seed) {
   };
 }
 
+function personSeed(user, shiftDate, extra) {
+  return [
+    user?.id || 'u',
+    user?.username || '',
+    user?.employee_id || '',
+    shiftDate,
+    extra || '',
+  ].join('|');
+}
+
 function pickRandomInstants(from, until, count, minGapMs, rng = Math.random) {
   const fromMs = alignMinute(from.getTime());
   const untilMs = alignMinute(until.getTime());
@@ -110,20 +121,30 @@ function pickRandomInstants(from, until, count, minGapMs, rng = Math.random) {
   if (count > 1 && (count - 1) * gap > span) {
     gap = Math.max(15 * 60 * 1000, Math.floor(span / count));
   }
-  const usable = Math.max(0, span - (count - 1) * gap);
-  const offsets = [];
+  const slot = Math.max(gap, Math.floor(span / count));
+  const times = [];
   for (let i = 0; i < count; i += 1) {
-    offsets.push(Math.floor(rng() * (usable + 1)));
+    const slotFrom = fromMs + i * slot;
+    const slotTo = i === count - 1 ? untilMs : Math.min(untilMs, fromMs + (i + 1) * slot);
+    const inner = Math.max(60 * 1000, slotTo - slotFrom);
+    const pick = slotFrom + Math.floor(rng() * inner);
+    times.push(new Date(alignMinute(pick)));
   }
-  offsets.sort((a, b) => a - b);
-  return offsets.map((off, i) => new Date(alignMinute(fromMs + off + i * gap)));
+  times.sort((a, b) => a.getTime() - b.getTime());
+  for (let i = 1; i < times.length; i += 1) {
+    const minNext = times[i - 1].getTime() + gap;
+    if (times[i].getTime() < minNext) times[i] = new Date(alignMinute(minNext));
+  }
+  return times;
 }
 
-function randomWindowStart(start, now, existing = []) {
+function randomWindowStart(start, now, existing = [], firstAt = null) {
   const soon = new Date(now.getTime() + 5 * 60 * 1000);
-  const afterFirst = start.getTime() + MIN_CHECK_GAP_MINUTES * 60 * 1000;
+  const anchor = firstAt || start;
+  const afterFirst = new Date(anchor).getTime() + MIN_CHECK_GAP_MINUTES * 60 * 1000;
   let from = Math.max(afterFirst, soon.getTime());
   for (const row of existing) {
+    if (Number(row.seq) === 1) continue;
     const at = new Date(row.scheduled_at).getTime();
     if (Number.isFinite(at)) {
       from = Math.max(from, at + MIN_CHECK_GAP_MINUTES * 60 * 1000);
@@ -141,10 +162,9 @@ function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
     ...windowsForScheduled(start),
   };
   const haveRandom = existing.filter((r) => Number(r.seq) > 1).length;
-  const missing = Math.max(0, RANDOM_COUNT - haveRandom);
-  const count = missing > 0 ? missing : RANDOM_COUNT;
-  const rng = seededRandom(`${user?.id || user?.username || 'u'}:${shiftDate}`);
-  const randomFrom = randomWindowStart(start, now, existing);
+  const count = Math.max(0, RANDOM_COUNT - haveRandom);
+  const rng = seededRandom(personSeed(user, shiftDate, 'randoms-v3'));
+  const randomFrom = randomWindowStart(start, now, existing, start);
   const randomUntil = new Date(end.getTime() - ABSENT_AFTER_MINUTES * 60 * 1000);
   const until =
     randomUntil > randomFrom

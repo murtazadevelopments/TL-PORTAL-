@@ -161,13 +161,24 @@ async function runEnsureAttendanceTables() {
       id              BIGSERIAL PRIMARY KEY,
       user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       date_key        TEXT NOT NULL,
-      status          TEXT NOT NULL CHECK (status IN ('present', 'late', 'absent', 'leave', 'pending')),
+      status          TEXT NOT NULL,
       first_check_in  TIMESTAMPTZ,
       note            TEXT,
       marked_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (user_id, date_key)
     );
+  `);
+  await pool.query(`ALTER TABLE attendance_days DROP CONSTRAINT IF EXISTS attendance_days_status_check`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      ALTER TABLE attendance_days
+        ADD CONSTRAINT attendance_days_status_check
+        CHECK (status IN ('present', 'late', 'absent', 'leave', 'pending', 'holiday'));
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$;
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS attendance_days_date_idx

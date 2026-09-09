@@ -3,6 +3,8 @@ const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const challenges = require('../utils/remoteAttendanceChallenges');
 const { notifyRemoteAttendanceCheck } = require('../services/notifications');
 const { refreshAttendanceDay } = require('../utils/attendanceDays');
+const { isSundayDateKey } = require('../utils/workWeek');
+const { zonedParts } = require('../utils/attendanceWindows');
 
 async function loadRemote(userId) {
   const { rows } = await pool.query(
@@ -20,7 +22,7 @@ async function loadRemote(userId) {
 async function ensureActiveShiftChallenges(now = new Date()) {
   const { rows: remotes } = await pool.query(
     `
-      SELECT id, name, username, email, employment_type, work_start_hour, work_end_hour
+      SELECT id, name, username, email, employee_id, employment_type, work_start_hour, work_end_hour
       FROM users
       WHERE is_active = true
         AND status = 'active'
@@ -83,6 +85,17 @@ async function markExpiredChallenges(now = new Date()) {
 
 async function runRemoteAttendanceTick(now = new Date()) {
   await ensureAttendanceTables();
+  const today = zonedParts(now).dateKey;
+  if (isSundayDateKey(today)) {
+    await pool.query(
+      `
+        DELETE FROM attendance_challenges
+        WHERE shift_date = $1
+          AND status IN ('pending', 'notified')
+      `,
+      [today]
+    );
+  }
   const ensured = await ensureActiveShiftChallenges(now);
   const notified = await dispatchDueNotifications(now);
   const missed = await markExpiredChallenges(now);

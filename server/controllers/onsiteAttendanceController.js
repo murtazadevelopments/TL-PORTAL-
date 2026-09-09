@@ -13,12 +13,37 @@ const {
 const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
 const { getShiftByName } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
+const { sundayKeysInMonth, isSundayDateKey } = require('../utils/workWeek');
 
 const ONSITE_SELECT = `
   id, user_id, work_date, checked_in_at, status, method,
   branch_name, shift_name, marked_by, note, status_overridden, previous_status,
   created_at, updated_at
 `;
+
+function holidayOnsiteDay(dateKey) {
+  return {
+    work_date: dateKey,
+    status: 'holiday',
+    checked_in_at: null,
+    method: null,
+    branch_name: null,
+    shift_name: null,
+    note: 'Sunday holiday',
+  };
+}
+
+function withSundayHolidays(days, month, untilDateKey) {
+  const byKey = new Map();
+  for (const day of days) {
+    const key = String(day.work_date || '').slice(0, 10);
+    if (key) byKey.set(key, day);
+  }
+  for (const key of sundayKeysInMonth(month, untilDateKey)) {
+    if (!byKey.has(key)) byKey.set(key, holidayOnsiteDay(key));
+  }
+  return [...byKey.values()].sort((a, b) => String(b.work_date).localeCompare(String(a.work_date)));
+}
 
 function assertManualWorkDate(dateKey, { allowPast = false } = {}) {
   const today = zonedParts().dateKey;
@@ -317,6 +342,21 @@ async function onsiteCheckIn(req, res) {
       });
     }
 
+    let workDate = zonedParts().dateKey;
+    if (shiftForWindow) {
+      try {
+        workDate = statusForCheckIn(new Date(), shiftForWindow).workDate;
+      } catch (_) {
+        /* calendar date */
+      }
+    }
+    if (isSundayDateKey(workDate)) {
+      return res.status(403).json({
+        code: 'sunday_holiday',
+        message: 'Sunday is a holiday. Office check-in is not required.',
+      });
+    }
+
     const branchRow = await loadBranchIp(user.branch);
     const branchLabel = String(user.branch || '').trim() || 'your assigned branch';
     const officeIps = parseOfficeIps(branchRow?.ip_address);
@@ -422,14 +462,22 @@ async function getMyOnsiteAttendance(req, res) {
         return at === parts.dateKey;
       }) ||
       null;
-    const today = todayRaw ? await persistLiveStatus(todayRaw, shift) : null;
-    const totals = { on_time: 0, late: 0, absent: 0 };
+    const sundayHoliday = isSundayDateKey(parts.dateKey);
+    const today = todayRaw
+      ? await persistLiveStatus(todayRaw, shift)
+      : sundayHoliday
+        ? holidayOnsiteDay(parts.dateKey)
+        : null;
     const days = [];
     for (const row of rows) {
       const live = row.id === todayRaw?.id ? today : await persistLiveStatus(row, shift);
       const pub = publicRow(live);
-      days.push(pub);
-      if (pub && totals[pub.status] != null) totals[pub.status] += 1;
+      if (pub) days.push(pub);
+    }
+    const mergedDays = withSundayHolidays(days, month, parts.dateKey);
+    const totals = { on_time: 0, late: 0, absent: 0, holiday: 0 };
+    for (const day of mergedDays) {
+      if (totals[day.status] != null) totals[day.status] += 1;
     }
 
     const nightShift = isNightShift(shift || user?.shift);
@@ -438,8 +486,9 @@ async function getMyOnsiteAttendance(req, res) {
     return res.json({
       date: parts.dateKey,
       month,
-      today: publicRow(today),
-      can_check_in: Boolean(!today && windowOpen),
+      today: todayRaw ? publicRow(today) : sundayHoliday ? holidayOnsiteDay(parts.dateKey) : null,
+      can_check_in: Boolean(!todayRaw && windowOpen && !sundayHoliday),
+      holiday: sundayHoliday,
       night_shift: nightShift,
       self_check_in_open: windowOpen,
       self_check_in_window: nightShift
@@ -457,7 +506,7 @@ async function getMyOnsiteAttendance(req, res) {
         : user?.shift
           ? { name: user.shift }
           : null,
-      days,
+      days: mergedDays,
       totals,
     });
   } catch (err) {
@@ -521,7 +570,8 @@ async function adminListOnsite(req, res) {
     ].sort((a, b) => a.localeCompare(b));
 
     const employees = [];
-    const summary = { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 };
+    const sundayHoliday = isSundayDateKey(dateKey);
+    const summary = { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, holiday: 0, manual: 0 };
     const shiftCache = new Map();
     for (const person of people) {
       if (branchFilter && branchFilter !== 'all') {
@@ -538,13 +588,14 @@ async function adminListOnsite(req, res) {
         }
         rec = await persistLiveStatus(rec, shiftCache.get(person.shift));
       }
-      const rowStatus = rec?.status || 'pending';
+      const rowStatus = rec?.status || (sundayHoliday ? 'holiday' : 'pending');
       if (statusFilter !== 'all' && rowStatus !== statusFilter) continue;
       const canEdit = employeeMatchesScope(person, editScope);
       summary.employees += 1;
       if (rowStatus === 'on_time') summary.on_time += 1;
       else if (rowStatus === 'late') summary.late += 1;
       else if (rowStatus === 'absent') summary.absent += 1;
+      else if (rowStatus === 'holiday') summary.holiday += 1;
       else summary.pending += 1;
       if (rec?.method === 'manual') summary.manual += 1;
       employees.push({
@@ -607,13 +658,16 @@ async function adminGetOnsiteMonth(req, res) {
     );
 
     const shift = user.shift ? await getShiftByName(user.shift) : null;
-    const totals = { on_time: 0, late: 0, absent: 0 };
+    const totals = { on_time: 0, late: 0, absent: 0, holiday: 0 };
     const days = [];
     for (const row of rows) {
       const live = await persistLiveStatus(row, shift);
       const pub = publicRow(live);
-      days.push(pub);
-      if (pub && totals[pub.status] != null) totals[pub.status] += 1;
+      if (pub) days.push(pub);
+    }
+    const mergedDays = withSundayHolidays(days, month, parts.dateKey);
+    for (const day of mergedDays) {
+      if (totals[day.status] != null) totals[day.status] += 1;
     }
 
     return res.json({
@@ -625,7 +679,7 @@ async function adminGetOnsiteMonth(req, res) {
         branch: user.branch,
         shift: user.shift,
       },
-      days,
+      days: mergedDays,
       totals,
       recorded: days.length,
     });

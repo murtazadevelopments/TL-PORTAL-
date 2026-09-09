@@ -14,6 +14,7 @@ const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
 const { shiftBounds } = require('./remoteCheckWindows');
+const { isSundayDateKey } = require('./workWeek');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
 const slotsForWorkHours = pick(workHours, 'slotsforworkhours');
@@ -42,6 +43,7 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
   const hours = workHoursFromUser(user);
   const hourList = hoursBetween(hours.start, hours.end);
   if (logs.some((l) => l.status === 'leave')) return 'leave';
+  if (isSundayDateKey(dateKey)) return 'holiday';
 
   const challengeLogs = logs.filter(
     (l) => isChallengeKey(l.hour_key) && ['verified', 'late', 'missed'].includes(l.status)
@@ -124,6 +126,10 @@ async function upsertAttendanceDay(userId, dateKey, status, extra = {}) {
 }
 
 async function refreshAttendanceDay(user, dateKey, extra = {}) {
+  if (isSundayDateKey(dateKey) && extra.forceStatus !== 'leave') {
+    await upsertAttendanceDay(user.id, dateKey, 'holiday', extra);
+    return 'holiday';
+  }
   const logs = await logsForDate(user.id, dateKey);
   const status = extra.forceStatus || computeDayStatus(logs, user, dateKey);
   const firstGood = logs.find((l) => l.status === 'verified' || l.status === 'late');
@@ -159,11 +165,14 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
         const log = byHour[row.hour_key];
         return {
           hour: row.seq,
+          seq: row.seq,
+          kind: row.kind,
           hour_key: row.hour_key,
           label: row.seq === 1 ? 'Start' : `Check ${row.seq}`,
           state: challengeSlotState(log || row, now),
           method: log?.method || null,
           checked_in_at: log?.checked_in_at || null,
+          scheduled_at: row.scheduled_at || null,
         };
       });
     return { date: dateKey, status: computeDayStatus(logs, user, dateKey, now), slots: slotStates };
@@ -191,7 +200,7 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
 }
 
 function tallyDays(days) {
-  const totals = { present: 0, late: 0, absent: 0, leave: 0, pending: 0 };
+  const totals = { present: 0, late: 0, absent: 0, leave: 0, pending: 0, holiday: 0 };
   for (const day of days) {
     if (totals[day.status] != null) totals[day.status] += 1;
   }
@@ -270,6 +279,9 @@ async function monthHistory(user, monthKey, now = new Date()) {
         : slotsForUser(dateKey, user)
       ).map((s) => ({ ...s, state: 'leave' }));
       return { date: dateKey, status: 'leave', slots: leaveSlots };
+    }
+    if (isSundayDateKey(dateKey)) {
+      return { date: dateKey, status: 'holiday', slots: [] };
     }
     return buildDayRecord(dateKey, user, logs, now, dayChallenges);
   });
