@@ -73,12 +73,6 @@ export default function AttendancePage() {
   const [modelsReady, setModelsReady] = useState(() => areFaceModelsReady());
   const [engineHint, setEngineHint] = useState('');
   const [openCheck, setOpenCheck] = useState(null);
-  const [rules, setRules] = useState({
-    start: 15,
-    late: 15,
-    absent: 40,
-    respond: 20,
-  });
   const [nowTick, setNowTick] = useState(Date.now());
 
   const isRemote = user?.employment_type === 'remote';
@@ -102,12 +96,6 @@ export default function AttendancePage() {
     );
     setCanCheckIn(Boolean(att.can_check_in ?? att.can_check_in));
     setOpenCheck(att.open_check || null);
-    setRules({
-      start: att.start_window_minutes || 15,
-      late: att.late_after_minutes || 15,
-      absent: att.absent_after_minutes || 40,
-      respond: att.respond_target_minutes || 20,
-    });
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -413,7 +401,7 @@ export default function AttendancePage() {
           <h1>My attendance</h1>
           <p className="muted">
             {isRemote
-              ? `First check-in is the first ${rules.start} minutes of your shift. Four more random email and push checks are sent during your hours. Check in within ${rules.late} minutes to be on time; after that you are late; after ${rules.absent} minutes that check is absent. Aim to respond within ${rules.respond} minutes.`
+              ? 'Within 15 minutes: on time. After 15 minutes: late. After 40 minutes: absent.'
               : 'Face check-in is only for remote employees.'}
           </p>
         </div>
