@@ -45,7 +45,7 @@ function startScheduledJobs() {
     console.error(`[cron] Invalid LOGIN_LOGS_PRUNE_CRON expression: ${pruneExpression}`);
   }
 
-  const attendanceExpression = process.env.ATTENDANCE_MISSED_CRON || '*/5 * * * *';
+  const attendanceExpression = process.env.ATTENDANCE_MISSED_CRON || '* * * * *';
   if (cron.validate(attendanceExpression)) {
     cron.schedule(
       attendanceExpression,

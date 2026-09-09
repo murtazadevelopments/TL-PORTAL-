@@ -23,6 +23,20 @@ import {
 import { hoursRangeLabel, pickHourFromPayload } from '../../utils/clockHours';
 import OnsiteAttendancePage from './OnsiteAttendancePage';
 
+function formatRemainMs(ms) {
+  const total = Math.max(0, Math.round(Number(ms) / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m <= 0) return `${s}s`;
+  return `${m}m ${String(s).padStart(2, '0')}s`;
+}
+
+function remainFromCheck(check, nowTick, field) {
+  if (!check?.[field]) return 0;
+  const end = new Date(check[field]).getTime();
+  return Math.max(0, end - nowTick);
+}
+
 function friendlyError(err) {
   const raw = err?.response?.data?.message || err?.message || '';
   if (/interrupted by a new load request|AbortError|The play\(\) request was interrupted/i.test(raw)) {
@@ -44,7 +58,6 @@ export default function AttendancePage() {
   const runningRef = useRef(false);
   const [enrollment, setEnrollment] = useState(null);
   const [timeline, setTimeline] = useState([]);
-  const [currentHour, setCurrentHour] = useState('');
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [phase, setPhase] = useState('idle');
@@ -59,6 +72,14 @@ export default function AttendancePage() {
   const [canCheckIn, setCanCheckIn] = useState(false);
   const [modelsReady, setModelsReady] = useState(() => areFaceModelsReady());
   const [engineHint, setEngineHint] = useState('');
+  const [openCheck, setOpenCheck] = useState(null);
+  const [rules, setRules] = useState({
+    start: 15,
+    late: 15,
+    absent: 40,
+    respond: 20,
+  });
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const isRemote = user?.employment_type === 'remote';
   const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
@@ -72,7 +93,6 @@ export default function AttendancePage() {
     ]);
     setEnrollment(en);
     setTimeline(att.timeline || []);
-    setCurrentHour(att.current_hour_key || att.current_hour_key || '');
     setTotals(att.totals || { present: 0, late: 0, absent: 0, leave: 0 });
     setDays(att.days || []);
     const startHour = pickHourFromPayload(att, 'start');
@@ -81,6 +101,13 @@ export default function AttendancePage() {
       hoursRangeLabel(startHour, endHour) || att.work_hours_label || att.work_hours_label || ''
     );
     setCanCheckIn(Boolean(att.can_check_in ?? att.can_check_in));
+    setOpenCheck(att.open_check || null);
+    setRules({
+      start: att.start_window_minutes || 15,
+      late: att.late_after_minutes || 15,
+      absent: att.absent_after_minutes || 40,
+      respond: att.respond_target_minutes || 20,
+    });
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -160,13 +187,17 @@ export default function AttendancePage() {
   }, [load, isRemote, startCamera, stopCamera]);
 
   useEffect(() => {
+    if (!isRemote) return undefined;
     function refreshHours() {
-      if (!isRemote) return;
       load().catch(() => {});
     }
+    const id = setInterval(refreshHours, 15000);
+    const tick = setInterval(() => setNowTick(Date.now()), 1000);
     window.addEventListener('focus', refreshHours);
     document.addEventListener('visibilitychange', refreshHours);
     return () => {
+      clearInterval(id);
+      clearInterval(tick);
       window.removeEventListener('focus', refreshHours);
       document.removeEventListener('visibilitychange', refreshHours);
     };
@@ -351,8 +382,12 @@ export default function AttendancePage() {
       setRing('success');
       setProgress(100);
       setHint('Checked in');
-      setDetail('This hour is marked present');
-      setStatus(`Checked in for ${data.hour_key || data.hour_key}.`);
+      setDetail('This check is recorded');
+      setStatus(
+        data.status === 'late'
+          ? 'Checked in late for this availability check.'
+          : 'Checked in on time for this availability check.'
+      );
       await load();
     } catch (err) {
       const msg = friendlyError(err);
@@ -378,7 +413,7 @@ export default function AttendancePage() {
           <h1>My attendance</h1>
           <p className="muted">
             {isRemote
-              ? 'Allow the camera once. You should see yourself in the circle, then tap check-in.'
+              ? `First check-in is the first ${rules.start} minutes of your shift. Four more random email and push checks are sent during your hours. Check in within ${rules.late} minutes to be on time; after that you are late; after ${rules.absent} minutes that check is absent. Aim to respond within ${rules.respond} minutes.`
               : 'Face check-in is only for remote employees.'}
           </p>
         </div>
@@ -408,7 +443,18 @@ export default function AttendancePage() {
         </div>
       </div>
       {workHoursLabel ? (
-        <p className="muted">Your working hours: {workHoursLabel}. You can still check in outside these hours for the current hour.</p>
+        <p className="muted">
+          Your working hours: {workHoursLabel}. Check-in is only open during an active availability
+          check.
+        </p>
+      ) : null}
+      {openCheck?.can_check_in ? (
+        <p className="attendance-open-banner">
+          Check {openCheck.seq} of 5 is open
+          {remainFromCheck(openCheck, nowTick, 'late_at') > 0
+            ? ` — ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'late_at'))} left to be on time.`
+            : ` — you will be marked late. Absent in ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'absent_at'))}.`}
+        </p>
       ) : null}
 
       {error && <p className="error">{error}</p>}
@@ -443,7 +489,7 @@ export default function AttendancePage() {
                   disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
                   onClick={handleCheckIn}
                 >
-                  {phase === 'checkin' ? 'Checking in…' : 'Check in this hour'}
+                  {phase === 'checkin' ? 'Checking in…' : canCheckIn ? 'Check in now' : 'Waiting for next check'}
                 </button>
                 <button type="button" className="btn btn-ghost" disabled={phase !== 'idle' || !modelsReady} onClick={handleEnroll}>
                   Re-enroll
@@ -460,15 +506,17 @@ export default function AttendancePage() {
       )}
 
       <section>
-        <h2>Today {currentHour ? `(current ${currentHour.slice(-2)}:00)` : ''}</h2>
+        <h2>This shift (5 checks)</h2>
         <ol className="attendance-timeline">
           {timeline.map((slot) => (
-            <li key={slot.hour_key || slot.hour_key} className={`attendance-slot ${slot.state}`}>
-              <span className="attendance-slot-time">{slot.label}</span>
-              <span className="attendance-slot-state">{slot.state}</span>
+            <li key={slot.hour_key || slot.seq} className={`attendance-slot ${slot.state}`}>
+              <span className="attendance-slot-time">{slot.label || `Check ${slot.seq}`}</span>
+              <span className="attendance-slot-state">{slot.state.replace('_', ' ')}</span>
             </li>
           ))}
-          {timeline.length === 0 && <li className="muted">No shift hours configured.</li>}
+          {timeline.length === 0 && (
+            <li className="muted">Checks appear at the start of your shift.</li>
+          )}
         </ol>
       </section>
 

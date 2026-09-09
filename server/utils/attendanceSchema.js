@@ -173,6 +173,9 @@ async function runEnsureAttendanceTables() {
     CREATE INDEX IF NOT EXISTS attendance_days_date_idx
       ON attendance_days (date_key, status);
   `);
+
+  const remoteChallenges = require('./remoteAttendanceChallenges');
+  await remoteChallenges.ensureChallengeTable();
 }
 
 module.exports = { ensureAttendanceTables, persistUserWorkHours };

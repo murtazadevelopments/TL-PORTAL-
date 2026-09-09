@@ -8,6 +8,8 @@ const windows = require('../utils/attendanceWindows');
 const notifications = require('../services/notifications');
 const workHours = require('../utils/workHours');
 const attendanceDays = require('../utils/attendanceDays');
+const remoteChallenges = require('../utils/remoteAttendanceChallenges');
+const { runRemoteAttendanceTick } = require('../services/remoteAttendancePings');
 const { normalizeEmploymentType } = require('../utils/employmentType');
 
 function pick(obj, name) {
@@ -113,7 +115,11 @@ async function getEnrollment(req, res) {
       employment_type: user.employment_type,
       timezone: TIMEZONE,
       threshold: MATCH_THRESHOLD,
-      grace_minutes: GRACE_MINUTES,
+      grace_minutes: remoteChallenges.LATE_AFTER_MINUTES,
+      start_window_minutes: remoteChallenges.START_ON_TIME_MINUTES,
+      absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
+      respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
+      checks_per_shift: remoteChallenges.CHECK_COUNT,
       ...enrollmentPublic(rows[0]),
     });
   } catch (err) {
@@ -187,9 +193,25 @@ async function getMyAttendance(req, res) {
     await ensureAttendanceTables();
     const user = await loadUser(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    const parts = zonedParts();
-    const dateKey = String(req.query.date || parts.dateKey).slice(0, 10);
+    const now = new Date();
+    const parts = zonedParts(now);
+    const shiftDate =
+      String(req.query.date || '').slice(0, 10) ||
+      remoteChallenges.activeShiftDate(now, user) ||
+      remoteChallenges.currentShiftDateKey(now, user) ||
+      parts.dateKey;
     const hours = workHoursFromUser(user);
+
+    if (normalizeEmploymentType(user.employment_type) === 'remote') {
+      const active = remoteChallenges.activeShiftDate(now, user);
+      if (!req.query.date && active) {
+        await remoteChallenges.ensureChallengesForUser(user, active);
+      } else if (req.query.date === shiftDate && active === shiftDate) {
+        await remoteChallenges.ensureChallengesForUser(user, shiftDate);
+      }
+    }
+
+    const challengeRows = await remoteChallenges.loadChallenges(req.user.id, shiftDate);
     const { rows } = await pool.query(
       `
         SELECT id, hour_key AS hour_key, status, method, match_score, checked_in_at, note, created_at
@@ -198,35 +220,8 @@ async function getMyAttendance(req, res) {
           AND hour_key LIKE $2
         ORDER BY hour_key ASC, created_at ASC
       `,
-      [req.user.id, `${dateKey}-%`]
+      [req.user.id, `${shiftDate}-%`]
     );
-
-    const slotMap = new Map(slotsForUser(dateKey, user).map((s) => [slotHourKey(s), s]));
-    for (const row of rows) {
-      const key = row.hour_key;
-      if (!slotMap.has(key)) {
-        const hour = Number(String(key).slice(-2));
-        if (Number.isFinite(hour)) {
-          slotMap.set(key, {
-            hour,
-            hour_key: key,
-            label: `${String(hour).padStart(2, '0')}:00`,
-          });
-        }
-      }
-    }
-    const current = currentHourKey();
-    if (!slotMap.has(current) && current.startsWith(`${dateKey}-`)) {
-      const hour = Number(String(current).slice(-2));
-      if (Number.isFinite(hour)) {
-        slotMap.set(current, {
-          hour,
-          hour_key: current,
-          label: `${String(hour).padStart(2, '0')}:00`,
-        });
-      }
-    }
-    const slots = [...slotMap.values()].sort((a, b) => a.hour - b.hour);
 
     const byHour = {};
     for (const row of rows) {
@@ -239,50 +234,44 @@ async function getMyAttendance(req, res) {
       if (better) byHour[row.hour_key] = row;
     }
 
-    const currentLog = byHour[current];
-    const slotLocked =
-      currentLog &&
-      (currentLog.status === 'verified' ||
-        currentLog.status === 'late' ||
-        currentLog.status === 'missed' ||
-        currentLog.status === 'leave' ||
-        currentLog.method === 'manual');
-    const timeline = slots.map((slot) => {
-      const key = slotHourKey(slot);
-      const log = byHour[key];
-      let state = 'pending';
-      if (log?.status === 'verified') state = 'verified';
-      else if (log?.status === 'late') state = 'late';
-      else if (log?.status === 'missed') state = 'missed';
-      else if (log?.status === 'failed') state = 'failed';
-      else if (key < current) state = 'missed';
-      return {
-        ...slot,
-        hour_key: key,
-        state,
-        log: log
-          ? {
-              id: log.id,
-              status: log.status,
-              method: log.method,
-              checked_in_at: log.checked_in_at,
-              note: log.note,
-            }
-          : null,
-      };
-    });
+    const revealAdmin = false;
+    const timeline = (challengeRows.length
+      ? challengeRows.map((row) => {
+          const pub = remoteChallenges.publicChallenge(row, { revealFuture: revealAdmin, now });
+          const log = byHour[row.hour_key];
+          return {
+            ...pub,
+            log: log
+              ? {
+                  id: log.id,
+                  status: log.status,
+                  method: log.method,
+                  checked_in_at: log.checked_in_at,
+                  note: log.note,
+                }
+              : null,
+          };
+        })
+      : []
+    );
 
-    const canCheckIn = canCheckInHourKey(current) && !slotLocked;
-    const month = await monthHistory(user, dateKey.slice(0, 7));
+    const opened = remoteChallenges.openChallenge(challengeRows, now);
+    const canCheckIn = Boolean(opened?.pub?.can_check_in);
+    const month = await monthHistory(user, shiftDate.slice(0, 7));
     return res.json({
-      date: dateKey,
+      date: shiftDate,
       timezone: TIMEZONE,
-      current_hour_key: current,
+      current_hour_key: opened?.pub?.hour_key || null,
       can_check_in: canCheckIn,
+      open_check: opened?.pub || null,
       work_start_hour: hours.start,
       work_end_hour: hours.end,
       work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
-      shift_hours: slotsForUser(dateKey, user).map((s) => s.label),
+      start_window_minutes: remoteChallenges.START_ON_TIME_MINUTES,
+      late_after_minutes: remoteChallenges.LATE_AFTER_MINUTES,
+      absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
+      respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
+      checks_per_shift: remoteChallenges.CHECK_COUNT,
       timeline,
       month: month.month,
       totals: month.totals,
@@ -300,19 +289,27 @@ async function checkIn(req, res) {
     const user = await loadUser(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
     if (normalizeEmploymentType(user.employment_type) !== 'remote') {
-      return res.status(403).json({ message: 'Hourly face check-in is only for remote employees.' });
+      return res.status(403).json({ message: 'Face check-in is only for remote employees.' });
     }
     if (rateLimited(req.user.id)) {
       return res.status(429).json({ message: 'Too many check-in attempts. Try again later.' });
     }
 
-    const hourKey = currentHourKey();
-    if (!canCheckInHourKey(hourKey)) {
+    const now = new Date();
+    const shiftDate = remoteChallenges.activeShiftDate(now, user);
+    if (!shiftDate) {
+      return res.status(400).json({ message: 'There is no open attendance check during this shift.' });
+    }
+    const challengeRows = await remoteChallenges.ensureChallengesForUser(user, shiftDate);
+    const opened = remoteChallenges.openChallenge(challengeRows, now);
+    if (!opened) {
       return res.status(400).json({
-        message: 'Check-in is only for the current hour.',
-        hour_key: hourKey,
+        message:
+          'No attendance check is open right now. Wait for your shift-start window or a random availability ping.',
       });
     }
+    const challenge = opened.row;
+    const hourKey = challenge.hour_key;
 
     const livenessOk = Boolean(pick(req.body || {}, 'livenesspassed'));
     const livenessAction = String(pick(req.body || {}, 'livenessaction') || '').trim();
@@ -348,7 +345,7 @@ async function checkIn(req, res) {
     );
     if (already[0]) {
       return res.status(409).json({
-        message: 'This hour is already recorded.',
+        message: 'This check is already recorded.',
         hour_key: hourKey,
         status: already[0].status,
       });
@@ -357,8 +354,7 @@ async function checkIn(req, res) {
     const distance = euclideanDistance(stored, probe);
     const matched = isFaceMatch(distance);
     const suspicious = rememberScore(req.user.id, distance);
-    const parts = zonedParts();
-    const late = matched && isLateCheckIn(user, parts.hour, parts.minute);
+    const late = matched && now.getTime() >= new Date(challenge.late_at).getTime();
     const status = !matched ? 'failed' : late ? 'late' : 'verified';
 
     const { rows } = await pool.query(
@@ -373,6 +369,7 @@ async function checkIn(req, res) {
     );
 
     if (matched) {
+      await remoteChallenges.markChallengeResult(challenge, status, rows[0].id);
       await refreshAttendanceDay(user, hourKey.slice(0, 10), {
         firstCheckIn: rows[0].checked_in_at,
       });
@@ -480,6 +477,7 @@ async function adminOverview(req, res) {
 
     const ids = people.map((p) => p.id);
     let logs = [];
+    let challengeRows = [];
     if (ids.length) {
       const { rows } = await pool.query(
         `
@@ -493,6 +491,17 @@ async function adminOverview(req, res) {
         [ids, `${dateKey}-%`]
       );
       logs = rows;
+      const loaded = await pool.query(
+        `
+          SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
+          FROM attendance_challenges
+          WHERE user_id = ANY($1::int[])
+            AND shift_date = $2
+          ORDER BY seq ASC
+        `,
+        [ids, dateKey]
+      );
+      challengeRows = loaded.rows;
     }
 
     const logsByUser = new Map();
@@ -501,8 +510,14 @@ async function adminOverview(req, res) {
       if (!logsByUser.has(uid)) logsByUser.set(uid, []);
       logsByUser.get(uid).push(log);
     }
+    const challengesByUser = new Map();
+    for (const row of challengeRows) {
+      const uid = String(row.user_id);
+      if (!challengesByUser.has(uid)) challengesByUser.set(uid, []);
+      challengesByUser.get(uid).push(row);
+    }
 
-    const current = currentHourKey();
+    const now = new Date();
     const { rows: dayRows } = ids.length
       ? await pool.query(
           `SELECT user_id, status FROM attendance_days WHERE date_key = $1 AND user_id = ANY($2::int[])`,
@@ -515,24 +530,36 @@ async function adminOverview(req, res) {
       .map((person) => {
         const personLogs = logsByUser.get(String(person.id)) || [];
         const latest = personLogs[0] || null;
-        const slots = slotsForUser(dateKey, person);
-        const slotStates = slots.map((slot) => {
-          const key = slotHourKey(slot);
-          const log = personLogs.find((l) => l.hour_key === key);
-          let state = 'pending';
+        const mapped = (challengesByUser.get(String(person.id)) || []).map((row) => {
+          const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now });
+          const log = personLogs.find((l) => l.hour_key === row.hour_key);
+          let state = pub.state;
           if (log?.status === 'verified') state = 'verified';
           else if (log?.status === 'late') state = 'late';
           else if (log?.status === 'missed') state = 'missed';
           else if (log?.status === 'failed') state = 'failed';
           else if (log?.status === 'leave') state = 'leave';
-          else if (key < current) state = 'missed';
-          return { ...slot, hour_key: key, state, method: log?.method || null };
+          return {
+            ...pub,
+            hour_key: row.hour_key,
+            label: pub.label,
+            state,
+            method: log?.method || null,
+          };
         });
-        const verifiedCount = slotStates.filter(
+        const slots = mapped.length
+          ? mapped
+          : [1, 2, 3, 4, 5].map((seq) => ({
+              hour_key: `${dateKey}-c${seq}`,
+              label: seq === 1 ? 'Start' : `Check ${seq}`,
+              state: 'pending',
+              method: null,
+            }));
+        const verifiedCount = slots.filter(
           (s) => s.state === 'verified' || s.state === 'late'
         ).length;
-        const missedCount = slotStates.filter((s) => s.state === 'missed').length;
-        const failedCount = slotStates.filter((s) => s.state === 'failed').length;
+        const missedCount = slots.filter((s) => s.state === 'missed').length;
+        const failedCount = slots.filter((s) => s.state === 'failed').length;
         const manualCount = personLogs.filter((l) => l.method === 'manual').length;
 
         let rowStatus = dayByUser.get(String(person.id)) || 'pending';
@@ -567,7 +594,7 @@ async function adminOverview(req, res) {
           verified_count: verifiedCount,
           missed_count: missedCount,
           manual_count: manualCount,
-          slots: slotStates,
+          slots,
           latest,
         };
       })
@@ -635,8 +662,8 @@ async function adminManualMark(req, res) {
     if (!['verified', 'missed', 'late', 'leave'].includes(status)) {
       return res.status(400).json({ message: 'status must be verified, late, missed, or leave.' });
     }
-    if (status !== 'leave' && !/^\d{4}-\d{2}-\d{2}-\d{2}$/.test(hourKey)) {
-      return res.status(400).json({ message: 'hour_key must look like YYYY-MM-DD-HH.' });
+    if (status !== 'leave' && !/^\d{4}-\d{2}-\d{2}-(?:\d{2}|c[1-5])$/.test(hourKey)) {
+      return res.status(400).json({ message: 'hour_key must look like YYYY-MM-DD-c1 (check 1–5).' });
     }
     if (status === 'leave' && !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
       return res.status(400).json({ message: 'date_key must look like YYYY-MM-DD.' });
@@ -748,6 +775,16 @@ async function adminManualMark(req, res) {
     });
 
     await refreshAttendanceDay(target, hourKey.slice(0, 10), { note, markedBy: req.user.id });
+    const { rows: challengeHit } = await pool.query(
+      `SELECT id, status FROM attendance_challenges WHERE user_id = $1 AND hour_key = $2 LIMIT 1`,
+      [targetId, hourKey]
+    );
+    if (challengeHit[0] && ['verified', 'late', 'missed'].includes(status)) {
+      await pool.query(
+        `UPDATE attendance_challenges SET status = $1, attendance_log_id = $2 WHERE id = $3`,
+        [status, log.id, challengeHit[0].id]
+      );
+    }
 
     return res.status(201).json({ message: 'Attendance updated.', log });
   } catch (err) {
@@ -757,50 +794,7 @@ async function adminManualMark(req, res) {
 }
 
 async function markMissedSlots(now = new Date()) {
-  await ensureAttendanceTables();
-  const parts = zonedParts(now);
-  const grace = Number.isFinite(GRACE_MINUTES) ? GRACE_MINUTES : 10;
-
-  const { rows: remotes } = await pool.query(
-    `
-      SELECT id, work_start_hour, work_end_hour
-      FROM users
-      WHERE is_active = true
-        AND status = 'active'
-        AND employment_type = 'remote'
-    `
-  );
-
-  let inserted = 0;
-  for (const user of remotes) {
-    const hours = hoursBetween(user.work_start_hour, user.work_end_hour);
-    const due = [];
-    for (const hour of hours) {
-      const nextHour = hour + 1;
-      const pastGrace =
-        parts.hour > nextHour || (parts.hour === nextHour && parts.minute >= grace);
-      if (pastGrace) due.push(`${parts.dateKey}-${String(hour).padStart(2, '0')}`);
-    }
-    for (const hourKey of due) {
-      const result = await pool.query(
-        `
-          INSERT INTO attendance_logs (
-            user_id, checked_in_at, hour_key, match_score, method, status, note
-          )
-          SELECT $1, NOW(), $2, NULL, 'face', 'missed', 'Auto-marked after grace period'
-          WHERE NOT EXISTS (
-            SELECT 1 FROM attendance_logs
-            WHERE user_id = $1 AND hour_key = $2
-              AND (status IN ('verified', 'missed', 'late', 'leave') OR method = 'manual')
-          )
-        `,
-        [user.id, hourKey]
-      );
-      inserted += result.rowCount || 0;
-    }
-    await refreshAttendanceDay(user, parts.dateKey);
-  }
-  return { inserted, remotes: remotes.length };
+  return runRemoteAttendanceTick(now);
 }
 
 async function adminSetHours(req, res) {
@@ -823,6 +817,14 @@ async function adminSetHours(req, res) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
     await persistUserWorkHours(targetId, hours.start, hours.end);
+    const updated = await loadUser(targetId);
+    const shiftDate =
+      remoteChallenges.activeShiftDate(new Date(), updated) ||
+      remoteChallenges.currentShiftDateKey(new Date(), updated);
+    if (shiftDate) {
+      await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
+      await remoteChallenges.ensureChallengesForUser(updated, shiftDate);
+    }
     await writeAuditLog({
       actorId: req.user.id,
       actorUsername: req.user.username,
@@ -913,11 +915,15 @@ async function adminDeleteRemoteDay(req, res) {
       `DELETE FROM attendance_logs WHERE user_id = $1 AND hour_key LIKE $2`,
       [userId, `${dateKey}-%`]
     );
+    const { rowCount: challengeCount } = await pool.query(
+      `DELETE FROM attendance_challenges WHERE user_id = $1 AND shift_date = $2`,
+      [userId, dateKey]
+    );
     const { rowCount: dayCount } = await pool.query(
       `DELETE FROM attendance_days WHERE user_id = $1 AND date_key = $2`,
       [userId, dateKey]
     );
-    if (!logCount && !dayCount) {
+    if (!logCount && !dayCount && !challengeCount) {
       return res.status(404).json({ message: 'No attendance found for that date.' });
     }
 
@@ -927,7 +933,7 @@ async function adminDeleteRemoteDay(req, res) {
       action: 'attendance.delete_day',
       targetTable: 'attendance_logs',
       targetId: userId,
-      reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${dayCount} day row(s))`,
+      reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${challengeCount} check(s), ${dayCount} day row(s))`,
     });
 
     return res.json({

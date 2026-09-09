@@ -361,7 +361,7 @@ export default function AttendanceAdminPage() {
           <p className="muted">
             {mode === 'onsite'
               ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Remote employees attendance — face check-in. Only the CEO and people granted Remote employees can open this.'}
+              : 'Remote employees attendance — five face checks per shift (start window plus four random pings). Only the CEO and people granted Remote employees can open this.'}
           </p>
         </div>
         {canRemote && canOnsite ? (
@@ -595,7 +595,7 @@ export default function AttendanceAdminPage() {
               <div className="attendance-mini-slots">
                 {row.slots.map((slot) => (
                   <span key={slot.hour_key} className={`dot ${slot.state}`} title={`${slot.label} ${slot.state}`}>
-                    {String(slot.label || '').replace(':00', '')}
+                    {slot.seq || String(slot.label || '').replace(/Availability check /i, '#')}
                   </span>
                 ))}
               </div>
@@ -673,7 +673,7 @@ export default function AttendanceAdminPage() {
             <h2>Manual attendance</h2>
             <p className="muted">{manual.user.name} — a reason is required.</p>
             <label>
-              Hour {manual.status === 'leave' ? '(not used for leave)' : ''}
+              Hour / check {manual.status === 'leave' ? '(not used for leave)' : ''}
               <select
                 value={manual.hour_key}
                 onChange={(e) => setManual((m) => ({ ...m, hour_key: e.target.value }))}

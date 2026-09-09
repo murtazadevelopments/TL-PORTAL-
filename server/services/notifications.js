@@ -405,6 +405,72 @@ async function notifyAttendanceFailed(user, hourKey) {
   return result;
 }
 
+async function notifyRemoteAttendanceCheck(user, challenge) {
+  if (!user?.email && !user?.id) return null;
+  const { frontendBaseUrl } = require('../utils/frontendUrl');
+  const {
+    START_ON_TIME_MINUTES,
+    LATE_AFTER_MINUTES,
+    ABSENT_AFTER_MINUTES,
+    RESPOND_TARGET_MINUTES,
+    formatClock,
+  } = require('../utils/remoteCheckWindows');
+  const checkUrl = `${frontendBaseUrl()}/attendance`;
+  const which =
+    Number(challenge.seq) === 1
+      ? 'shift-start check-in'
+      : `availability check ${challenge.seq} of 5`;
+  const when = formatClock(challenge.scheduled_at);
+  const subject = `Attendance check-in now (${which})`;
+  const html = `
+      <p>Hi ${escapeHtml(firstName(user.name))},</p>
+      <p>Please open the portal and complete your face check-in for this <strong>${escapeHtml(which)}</strong>${when ? ` (${escapeHtml(when)})` : ''}.</p>
+      <ul>
+        <li>Be on time if you check in within <strong>${START_ON_TIME_MINUTES} minutes</strong>.</li>
+        <li>After ${LATE_AFTER_MINUTES} minutes you are marked <strong>late</strong>.</li>
+        <li>After ${ABSENT_AFTER_MINUTES} minutes this check is <strong>absent</strong>.</li>
+        <li>Please respond within <strong>${RESPOND_TARGET_MINUTES} minutes</strong>.</li>
+      </ul>
+      <p><a href="${escapeHtml(checkUrl)}">Open My Attendance</a></p>
+    `;
+
+  let emailResult = null;
+  if (user.email) {
+    emailResult = await sendEmailSafe({
+      emailType: 'remote_attendance_check',
+      to: user.email,
+      subject,
+      html,
+    });
+    await logEmail({
+      emailType: 'remote_attendance_check',
+      recipient: user.email,
+      meta: { userId: user.id, challengeId: challenge.id, seq: challenge.seq, ok: Boolean(emailResult) },
+    });
+  }
+
+  try {
+    const { sendPushToUserSafe } = require('./pushNotifications');
+    const pushResult = await sendPushToUserSafe(
+      user.id,
+      {
+        title: 'Attendance check-in',
+        body: `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
+        url: '/attendance',
+        tag: `attendance-check-${challenge.id}`,
+      },
+      { requireEnabled: false, ttl: 40 * 60, urgency: 'high' }
+    );
+    console.log(
+      `[attendance-push] user=${user.id} sent=${pushResult?.sent || 0} skipped=${Boolean(pushResult?.skipped)} disabled=${Boolean(pushResult?.disabled)} error=${pushResult?.error || ''}`
+    );
+  } catch (err) {
+    console.warn('attendance push failed:', err.message || err);
+  }
+
+  return emailResult;
+}
+
 module.exports = {
   getAdminEmails,
   notifyAdminsNewSignup,
@@ -418,7 +484,7 @@ module.exports = {
   notifyUserLogin,
   notifyBirthday,
   notifyAttendanceFailed,
-  notifyAttendanceFailed: notifyAttendanceFailed,
+  notifyRemoteAttendanceCheck,
   summarizeChanges,
   firstName,
   formatTimestamp,
