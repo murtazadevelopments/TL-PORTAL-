@@ -13,7 +13,7 @@ function pick(obj, name) {
 const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
-const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT } = require('./remoteCheckWindows');
+const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT, sortRemoteChecks } = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
 const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
@@ -41,22 +41,21 @@ function remoteSlotLabel(seq) {
 }
 
 function slotsFromChallenges(challengeRows, logsByHour, now) {
-  return [...challengeRows]
-    .sort((a, b) => Number(a.seq) - Number(b.seq))
-    .map((row) => {
-      const log = logsByHour[row.hour_key];
-      return {
-        hour: row.seq,
-        seq: Number(row.seq),
-        kind: row.kind,
-        hour_key: row.hour_key,
-        label: remoteSlotLabel(row.seq),
-        state: challengeSlotState(log || row, now),
-        method: log?.method || null,
-        checked_in_at: log?.checked_in_at || null,
-        scheduled_at: row.scheduled_at || null,
-      };
-    });
+  return sortRemoteChecks(challengeRows).map((row, i) => {
+    const seq = i + 1;
+    const log = logsByHour[row.hour_key];
+    return {
+      hour: seq,
+      seq,
+      kind: row.kind,
+      hour_key: row.hour_key,
+      label: remoteSlotLabel(seq),
+      state: challengeSlotState(log || row, now),
+      method: log?.method || null,
+      checked_in_at: log?.checked_in_at || null,
+      scheduled_at: row.scheduled_at || null,
+    };
+  });
 }
 
 function plannedRemoteSlots(dateKey, user, now) {
@@ -310,24 +309,6 @@ async function monthHistory(user, monthKey, now = new Date()) {
       [user.id, `${monthKey}-%`]
     ).catch(() => ({ rows: [] }))
   ).rows;
-  if (isRemoteUser(user) && challengeRows.length) {
-    const { realignRandomSeqs } = require('./remoteAttendanceChallenges');
-    const dates = [...new Set(challengeRows.map((row) => row.shift_date))];
-    for (const dateKey of dates) {
-      await realignRandomSeqs(user.id, dateKey);
-    }
-    const reloaded = await pool.query(
-      `
-        SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
-        FROM attendance_challenges
-        WHERE user_id = $1
-          AND shift_date LIKE $2
-        ORDER BY seq ASC
-      `,
-      [user.id, `${monthKey}-%`]
-    ).catch(() => ({ rows: challengeRows }));
-    challengeRows = reloaded.rows;
-  }
   const challengesByDate = new Map();
   for (const row of challengeRows) {
     if (!challengesByDate.has(row.shift_date)) challengesByDate.set(row.shift_date, []);

@@ -9,6 +9,7 @@ const {
   currentShiftDateKey,
   planChallengeTimes,
   formatClock,
+  sortRemoteChecks,
   windowsForScheduled,
   shiftBounds,
   isWithinShift,
@@ -189,45 +190,11 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
     });
     if (futurePlan.length) await insertPlan(user, shiftDate, futurePlan);
   }
-  await realignRandomSeqs(user.id, shiftDate);
   return loadChallenges(user.id, shiftDate);
 }
 
-async function realignRandomSeqs(userId, shiftDate) {
-  const rows = await loadChallenges(userId, shiftDate);
-  const randoms = rows.filter((r) => Number(r.seq) > 1);
-  if (randoms.length < 2) return;
-  const locked = randoms.filter((r) => ['verified', 'late', 'missed'].includes(r.status));
-  const movable = randoms.filter((r) => !['verified', 'late', 'missed'].includes(r.status));
-  if (movable.length < 2) return;
-  const lockedSeq = new Set(locked.map((r) => Number(r.seq)));
-  const freeSeq = [];
-  for (let seq = 2; seq <= CHECK_COUNT; seq += 1) {
-    if (!lockedSeq.has(seq)) freeSeq.push(seq);
-  }
-  const byTime = [...movable].sort(
-    (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
-  );
-  const alreadyOrdered = byTime.every((row, i) => Number(row.seq) === freeSeq[i]);
-  if (alreadyOrdered) return;
-  for (const row of byTime) {
-    await pool.query(`UPDATE attendance_challenges SET hour_key = $2 WHERE id = $1`, [
-      row.id,
-      `__tmp-${row.id}`,
-    ]);
-  }
-  for (let i = 0; i < byTime.length; i += 1) {
-    const seq = freeSeq[i];
-    if (!seq) break;
-    await pool.query(
-      `
-        UPDATE attendance_challenges
-        SET seq = $2, hour_key = $3
-        WHERE id = $1
-      `,
-      [byTime[i].id, seq, hourKeyForSeq(shiftDate, seq)]
-    );
-  }
+async function realignRandomSeqs() {
+  return undefined;
 }
 
 async function dropOpenChallenges(userId, shiftDate) {
@@ -371,4 +338,6 @@ module.exports = {
   currentShiftDateKey,
   shiftBounds,
   workHoursFromUser,
+  formatClock,
+  sortRemoteChecks,
 };

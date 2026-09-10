@@ -276,6 +276,19 @@ function formatClock(date) {
   }
 }
 
+function sortRemoteChecks(rows) {
+  const list = [...(rows || [])];
+  const start = list.filter((row) => Number(row.seq) === 1 || row.kind === 'start');
+  const rest = list
+    .filter((row) => Number(row.seq) !== 1 && row.kind !== 'start')
+    .sort((a, b) => {
+      const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
+      const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+      return ta - tb;
+    });
+  return [...start, ...rest];
+}
+
 module.exports = {
   CHECK_COUNT,
   RANDOM_COUNT,
@@ -299,4 +312,5 @@ module.exports = {
   isWithinShift,
   seededRandom,
   formatClock,
+  sortRemoteChecks,
 };

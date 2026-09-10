@@ -238,13 +238,19 @@ async function getMyAttendance(req, res) {
 
     const revealAdmin = false;
     const timeline = (challengeRows.length
-      ? [...challengeRows]
-          .sort((a, b) => Number(a.seq) - Number(b.seq))
-          .map((row) => {
+      ? remoteChallenges.sortRemoteChecks(challengeRows).map((row, i) => {
           const pub = remoteChallenges.publicChallenge(row, { revealFuture: revealAdmin, now });
+          const seq = i + 1;
           const log = byHour[row.hour_key];
           return {
             ...pub,
+            seq,
+            label:
+              seq === 1
+                ? `Shift start (${remoteChallenges.formatClock(row.scheduled_at)})`
+                : pub.state === 'upcoming'
+                  ? `Availability check ${seq}`
+                  : `Check ${seq} (${remoteChallenges.formatClock(row.scheduled_at)})`,
             log: log
               ? {
                   id: log.id,
@@ -500,9 +506,6 @@ async function adminOverview(req, res) {
         [ids, `${dateKey}-%`]
       );
       logs = rows;
-      for (const id of ids) {
-        await remoteChallenges.realignRandomSeqs(id, dateKey);
-      }
       const loaded = await pool.query(
         `
           SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
@@ -542,8 +545,9 @@ async function adminOverview(req, res) {
       .map((person) => {
         const personLogs = logsByUser.get(String(person.id)) || [];
         const latest = personLogs[0] || null;
-        const mapped = (challengesByUser.get(String(person.id)) || []).map((row) => {
+        const mapped = remoteChallenges.sortRemoteChecks(challengesByUser.get(String(person.id)) || []).map((row, i) => {
           const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now });
+          const seq = i + 1;
           const log = personLogs.find((l) => l.hour_key === row.hour_key);
           let state = pub.state;
           if (log?.status === 'verified') state = 'verified';
@@ -553,8 +557,9 @@ async function adminOverview(req, res) {
           else if (log?.status === 'leave') state = 'leave';
           return {
             ...pub,
+            seq,
             hour_key: row.hour_key,
-            label: pub.label,
+            label: seq === 1 ? 'Start' : `Check ${seq}`,
             state,
             method: log?.method || null,
           };
@@ -563,7 +568,7 @@ async function adminOverview(req, res) {
         const slots = sundayHoliday
           ? []
           : mapped.length
-            ? mapped.sort((a, b) => Number(a.seq) - Number(b.seq))
+            ? mapped
             : [1, 2, 3, 4, 5].map((seq) => ({
                 seq,
                 hour_key: `${dateKey}-c${seq}`,
