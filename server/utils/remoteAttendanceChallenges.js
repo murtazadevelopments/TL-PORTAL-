@@ -11,6 +11,7 @@ const {
   formatClock,
   windowsForScheduled,
   shiftBounds,
+  isWithinShift,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
   ABSENT_AFTER_MINUTES,
@@ -80,13 +81,24 @@ async function minuteTaken(userId, at) {
 }
 
 async function insertPlan(user, shiftDate, plan) {
+  const { start, end } = shiftBounds(shiftDate, user);
   for (const row of plan) {
     let at = new Date(row.scheduled_at);
     if (row.kind !== 'start') {
+      if (!isWithinShift(at, start, end)) continue;
       for (let n = 0; n < 40; n += 1) {
         if (!(await minuteTaken(user.id, at))) break;
-        at = new Date(at.getTime() + 2 * 60 * 1000);
+        const next = new Date(at.getTime() + 2 * 60 * 1000);
+        if (!isWithinShift(next, start, end)) {
+          const prev = new Date(at.getTime() - 2 * 60 * 1000);
+          if (isWithinShift(prev, start, end) && !(await minuteTaken(user.id, prev))) {
+            at = prev;
+          }
+          break;
+        }
+        at = next;
       }
+      if (!isWithinShift(at, start, end)) continue;
     }
     const windows = windowsForScheduled(at);
     await pool.query(
@@ -141,7 +153,18 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
     `,
     [user.id, shiftDate, now]
   );
-  const { start } = shiftBounds(shiftDate, user);
+  const { start, end } = shiftBounds(shiftDate, user);
+  await pool.query(
+    `
+      DELETE FROM attendance_challenges
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND kind = 'random'
+        AND status IN ('pending', 'notified')
+        AND (scheduled_at < $3 OR scheduled_at >= $4)
+    `,
+    [user.id, shiftDate, start, end]
+  );
   const firstWindows = windowsForScheduled(start);
   await pool.query(
     `

@@ -109,33 +109,96 @@ function personSeed(user, shiftDate, extra) {
   ].join('|');
 }
 
-function pickRandomInstants(from, until, count, minGapMs, rng = Math.random) {
+function randomBounds(start, end) {
+  const earliest = new Date(start.getTime() + MIN_CHECK_GAP_MINUTES * 60 * 1000);
+  let latest = new Date(end.getTime() - ABSENT_AFTER_MINUTES * 60 * 1000);
+  if (latest.getTime() < earliest.getTime()) {
+    latest = new Date(end.getTime() - 60 * 1000);
+  }
+  return { earliest, latest };
+}
+
+function isWithinShift(at, start, end) {
+  const t = new Date(at).getTime();
+  return Number.isFinite(t) && t >= start.getTime() && t < end.getTime();
+}
+
+function freeRanges(fromMs, untilMs, occupiedMs, gap) {
+  const blocked = [...occupiedMs].filter(Number.isFinite).sort((a, b) => a - b);
+  const ranges = [];
+  let cursor = fromMs;
+  for (const t of blocked) {
+    const rangeEnd = t - gap;
+    if (rangeEnd >= cursor) ranges.push([cursor, rangeEnd]);
+    cursor = Math.max(cursor, t + gap);
+  }
+  if (untilMs >= cursor) ranges.push([cursor, untilMs]);
+  return ranges.filter(([a, b]) => b >= a);
+}
+
+function pickRandomInstants(from, until, count, minGapMs, rng = Math.random, occupied = []) {
   const fromMs = alignMinute(from.getTime());
   const untilMs = alignMinute(until.getTime());
-  if (count <= 0) return [];
+  if (count <= 0 || untilMs < fromMs) return [];
   let gap = Math.max(60 * 1000, Number(minGapMs) || MIN_CHECK_GAP_MINUTES * 60 * 1000);
-  if (untilMs <= fromMs) {
-    return Array.from({ length: count }, (_, i) => new Date(fromMs + i * gap));
+  const occupiedMs = occupied
+    .map((value) => alignMinute(value instanceof Date ? value.getTime() : new Date(value).getTime()))
+    .filter((t) => Number.isFinite(t));
+
+  function clampTimes(raw) {
+    const times = raw.map((t) => alignMinute(t)).sort((a, b) => a - b);
+    for (let i = 1; i < times.length; i += 1) {
+      const minNext = times[i - 1] + gap;
+      if (times[i] < minNext) times[i] = minNext;
+    }
+    if (times.length && times[times.length - 1] > untilMs) {
+      times[times.length - 1] = untilMs;
+      for (let i = times.length - 2; i >= 0; i -= 1) {
+        times[i] = Math.min(times[i], times[i + 1] - gap);
+      }
+    }
+    return times.filter((t) => t >= fromMs && t <= untilMs).map((t) => new Date(t));
   }
-  const span = untilMs - fromMs;
-  if (count > 1 && (count - 1) * gap > span) {
-    gap = Math.max(15 * 60 * 1000, Math.floor(span / count));
+
+  if (!occupiedMs.length) {
+    const span = untilMs - fromMs;
+    if (count > 1 && (count - 1) * gap > span) {
+      gap = Math.max(60 * 1000, Math.floor(span / Math.max(1, count - 1)));
+    }
+    const slot = Math.max(gap, Math.floor(span / count));
+    const times = [];
+    for (let i = 0; i < count; i += 1) {
+      const slotFrom = fromMs + i * slot;
+      const slotTo = i === count - 1 ? untilMs : Math.min(untilMs, fromMs + (i + 1) * slot);
+      const inner = Math.max(0, slotTo - slotFrom);
+      const pick = slotFrom + Math.floor(rng() * (inner + 1));
+      times.push(Math.min(untilMs, Math.max(fromMs, pick)));
+    }
+    return clampTimes(times);
   }
-  const slot = Math.max(gap, Math.floor(span / count));
+
+  const ranges = freeRanges(fromMs, untilMs, occupiedMs, gap);
+  const weights = ranges.map(([a, b]) => Math.max(0, b - a));
+  const total = weights.reduce((s, w) => s + w, 0);
+  if (!ranges.length || total <= 0) return [];
   const times = [];
   for (let i = 0; i < count; i += 1) {
-    const slotFrom = fromMs + i * slot;
-    const slotTo = i === count - 1 ? untilMs : Math.min(untilMs, fromMs + (i + 1) * slot);
-    const inner = Math.max(60 * 1000, slotTo - slotFrom);
-    const pick = slotFrom + Math.floor(rng() * inner);
-    times.push(new Date(alignMinute(pick)));
+    let pick = rng() * total;
+    let chosen = ranges[ranges.length - 1];
+    for (let r = 0; r < ranges.length; r += 1) {
+      pick -= weights[r];
+      if (pick <= 0) {
+        chosen = ranges[r];
+        break;
+      }
+    }
+    const inner = Math.max(0, chosen[1] - chosen[0]);
+    const at = chosen[0] + Math.floor(rng() * (inner + 1));
+    times.push(Math.min(chosen[1], Math.max(chosen[0], at)));
   }
-  times.sort((a, b) => a.getTime() - b.getTime());
-  for (let i = 1; i < times.length; i += 1) {
-    const minNext = times[i - 1].getTime() + gap;
-    if (times[i].getTime() < minNext) times[i] = new Date(alignMinute(minNext));
-  }
-  return times;
+  return clampTimes(times).filter((at) =>
+    occupiedMs.every((o) => Math.abs(at.getTime() - o) >= gap)
+  ).slice(0, count);
 }
 
 function randomWindowStart(start, now, existing = [], firstAt = null) {
@@ -155,34 +218,38 @@ function randomWindowStart(start, now, existing = [], firstAt = null) {
 
 function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
   const { start, end } = shiftBounds(shiftDate, user);
+  const { earliest, latest } = randomBounds(start, end);
   const first = {
     seq: 1,
     kind: 'start',
     scheduled_at: start,
     ...windowsForScheduled(start),
   };
-  const haveRandom = existing.filter((r) => Number(r.seq) > 1).length;
+  const inWindow = existing.filter((row) => {
+    if (Number(row.seq) === 1) return true;
+    return isWithinShift(row.scheduled_at, start, end);
+  });
+  const haveRandom = inWindow.filter((r) => Number(r.seq) > 1).length;
   const count = Math.max(0, RANDOM_COUNT - haveRandom);
-  const rng = seededRandom(personSeed(user, shiftDate, 'randoms-v3'));
-  const randomFrom = randomWindowStart(start, now, existing, start);
-  const randomUntil = new Date(end.getTime() - ABSENT_AFTER_MINUTES * 60 * 1000);
-  const until =
-    randomUntil > randomFrom
-      ? randomUntil
-      : new Date(
-          Math.max(
-            randomFrom.getTime() + MIN_CHECK_GAP_MINUTES * 60 * 1000,
-            end.getTime() - RESPOND_TARGET_MINUTES * 60 * 1000
-          )
-        );
+  if (count <= 0 || latest.getTime() < earliest.getTime()) return [first];
+  let from = earliest;
+  if (now.getTime() > start.getTime()) {
+    from = new Date(Math.max(earliest.getTime(), now.getTime() + 5 * 60 * 1000));
+  }
+  if (from.getTime() > latest.getTime()) return [first];
+  const occupied = inWindow
+    .filter((r) => Number(r.seq) > 1)
+    .map((r) => r.scheduled_at);
+  const rng = seededRandom(personSeed(user, shiftDate, 'randoms-v4'));
   const instants = pickRandomInstants(
-    randomFrom,
-    until,
+    from,
+    latest,
     count,
     MIN_CHECK_GAP_MINUTES * 60 * 1000,
-    rng
-  );
-  const usedSeq = new Set(existing.map((r) => Number(r.seq)));
+    rng,
+    occupied
+  ).filter((at) => isWithinShift(at, start, end) && at.getTime() <= latest.getTime());
+  const usedSeq = new Set(inWindow.map((r) => Number(r.seq)));
   const seqs = [];
   for (let seq = 2; seq <= CHECK_COUNT; seq += 1) {
     if (!usedSeq.has(seq)) seqs.push(seq);
@@ -228,6 +295,8 @@ module.exports = {
   pickRandomInstants,
   planChallengeTimes,
   randomWindowStart,
+  randomBounds,
+  isWithinShift,
   seededRandom,
   formatClock,
 };

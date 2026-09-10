@@ -73,12 +73,12 @@ function formatKarachiTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return '—';
-  return new Intl.DateTimeFormat('en-GB', {
+  return new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Karachi',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
     second: '2-digit',
-    hourCycle: 'h23',
+    hour12: true,
   }).format(d);
 }
 
@@ -617,7 +617,11 @@ export default function AttendanceAdminPage() {
               </header>
               <div className="attendance-mini-slots">
                 {row.slots.map((slot) => (
-                  <span key={slot.hour_key} className={`dot ${slot.state}`} title={`${slot.label} ${slot.state}`}>
+                  <span
+                    key={slot.hour_key}
+                    className={`dot ${slot.state}`}
+                    title={`${slot.label}${slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''} · ${slot.state}`}
+                  >
                     {slot.seq || String(slot.label || '').replace(/Availability check /i, '#')}
                   </span>
                 ))}
@@ -871,7 +875,14 @@ export default function AttendanceAdminPage() {
                       <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
                     </div>
                     <ul className="attendance-check-list">
-                      {(day.slots || []).map((slot) => (
+                      {(day.slots || [])
+                        .slice()
+                        .sort((a, b) => {
+                          const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number(a.seq) || 0;
+                          const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number(b.seq) || 0;
+                          return ta - tb;
+                        })
+                        .map((slot) => (
                         <li key={slot.hour_key || slot.seq}>
                           <span>
                             {slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`}
