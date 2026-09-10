@@ -13,8 +13,9 @@ function pick(obj, name) {
 const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
-const { shiftBounds } = require('./remoteCheckWindows');
+const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT } = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
+const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
 const slotsForWorkHours = pick(workHours, 'slotsforworkhours');
@@ -31,12 +32,70 @@ function slotsForUser(dateKey, user) {
   return slotsForWorkHours(dateKey, hours.start, hours.end, hourKeyFor);
 }
 
-function hourFromKey(hourKey) {
-  return Number(String(hourKey || '').slice(-2));
+function isRemoteUser(user) {
+  return normalizeEmploymentType(user?.employment_type) === 'remote';
+}
+
+function remoteSlotLabel(seq) {
+  return Number(seq) === 1 ? 'Start' : `Check ${Number(seq)}`;
+}
+
+function slotsFromChallenges(challengeRows, logsByHour, now) {
+  return [...challengeRows]
+    .sort((a, b) => Number(a.seq) - Number(b.seq))
+    .map((row) => {
+      const log = logsByHour[row.hour_key];
+      return {
+        hour: row.seq,
+        seq: Number(row.seq),
+        kind: row.kind,
+        hour_key: row.hour_key,
+        label: remoteSlotLabel(row.seq),
+        state: challengeSlotState(log || row, now),
+        method: log?.method || null,
+        checked_in_at: log?.checked_in_at || null,
+        scheduled_at: row.scheduled_at || null,
+      };
+    });
+}
+
+function plannedRemoteSlots(dateKey, user, now) {
+  return planChallengeTimes(dateKey, user, now, []).map((row) => ({
+    hour: row.seq,
+    seq: row.seq,
+    kind: row.kind,
+    hour_key: hourKeyForSeq(dateKey, row.seq),
+    label: remoteSlotLabel(row.seq),
+    state: 'pending',
+    method: null,
+    checked_in_at: null,
+    scheduled_at: row.scheduled_at,
+  }));
+}
+
+function emptyRemoteSlots(dateKey) {
+  return Array.from({ length: CHECK_COUNT }, (_, i) => {
+    const seq = i + 1;
+    return {
+      hour: seq,
+      seq,
+      kind: seq === 1 ? 'start' : 'random',
+      hour_key: hourKeyForSeq(dateKey, seq),
+      label: remoteSlotLabel(seq),
+      state: 'pending',
+      method: null,
+      checked_in_at: null,
+      scheduled_at: null,
+    };
+  });
 }
 
 function isChallengeKey(hourKey) {
   return /-c[1-5]$/.test(String(hourKey || ''));
+}
+
+function hourFromKey(hourKey) {
+  return Number(String(hourKey || '').slice(-2));
 }
 
 function computeDayStatus(logs, user, dateKey, now = new Date()) {
@@ -65,6 +124,8 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
     if (good.length) return good.some((l) => l.status === 'late') || startLog?.status === 'late' ? 'late' : 'pending';
     return 'pending';
   }
+
+  if (isRemoteUser(user)) return 'pending';
 
   const good = logs.filter((l) => l.status === 'verified' || l.status === 'late');
   if (good.length) {
@@ -158,24 +219,21 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
     if (!prev || ['verified', 'late', 'leave'].includes(log.status)) byHour[log.hour_key] = log;
   }
 
+  if (isRemoteUser(user)) {
+    const slots = challengeRows.length
+      ? slotsFromChallenges(challengeRows, byHour, now)
+      : dateKey >= zonedParts(now).dateKey
+        ? plannedRemoteSlots(dateKey, user, now)
+        : emptyRemoteSlots(dateKey);
+    return { date: dateKey, status: computeDayStatus(logs, user, dateKey, now), slots };
+  }
+
   if (challengeRows.length) {
-    const slotStates = [...challengeRows]
-      .sort((a, b) => Number(a.seq) - Number(b.seq))
-      .map((row) => {
-        const log = byHour[row.hour_key];
-        return {
-          hour: row.seq,
-          seq: row.seq,
-          kind: row.kind,
-          hour_key: row.hour_key,
-          label: row.seq === 1 ? 'Start' : `Check ${row.seq}`,
-          state: challengeSlotState(log || row, now),
-          method: log?.method || null,
-          checked_in_at: log?.checked_in_at || null,
-          scheduled_at: row.scheduled_at || null,
-        };
-      });
-    return { date: dateKey, status: computeDayStatus(logs, user, dateKey, now), slots: slotStates };
+    return {
+      date: dateKey,
+      status: computeDayStatus(logs, user, dateKey, now),
+      slots: slotsFromChallenges(challengeRows, byHour, now),
+    };
   }
 
   const slots = slotsForUser(dateKey, user);
@@ -240,16 +298,36 @@ async function monthHistory(user, monthKey, now = new Date()) {
     dayRows.filter((d) => d.status === 'leave').map((d) => [d.date_key, d])
   );
 
-  const { rows: challengeRows } = await pool.query(
-    `
-      SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
-      FROM attendance_challenges
-      WHERE user_id = $1
-        AND shift_date LIKE $2
-      ORDER BY seq ASC
-    `,
-    [user.id, `${monthKey}-%`]
-  ).catch(() => ({ rows: [] }));
+  let challengeRows = (
+    await pool.query(
+      `
+        SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
+        FROM attendance_challenges
+        WHERE user_id = $1
+          AND shift_date LIKE $2
+        ORDER BY seq ASC
+      `,
+      [user.id, `${monthKey}-%`]
+    ).catch(() => ({ rows: [] }))
+  ).rows;
+  if (isRemoteUser(user) && challengeRows.length) {
+    const { realignRandomSeqs } = require('./remoteAttendanceChallenges');
+    const dates = [...new Set(challengeRows.map((row) => row.shift_date))];
+    for (const dateKey of dates) {
+      await realignRandomSeqs(user.id, dateKey);
+    }
+    const reloaded = await pool.query(
+      `
+        SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
+        FROM attendance_challenges
+        WHERE user_id = $1
+          AND shift_date LIKE $2
+        ORDER BY seq ASC
+      `,
+      [user.id, `${monthKey}-%`]
+    ).catch(() => ({ rows: challengeRows }));
+    challengeRows = reloaded.rows;
+  }
   const challengesByDate = new Map();
   for (const row of challengeRows) {
     if (!challengesByDate.has(row.shift_date)) challengesByDate.set(row.shift_date, []);
@@ -275,8 +353,10 @@ async function monthHistory(user, monthKey, now = new Date()) {
     const dayChallenges = challengesByDate.get(dateKey) || [];
     if (leaveByDate.has(dateKey)) {
       const leaveSlots = (dayChallenges.length
-        ? dayChallenges.map((c) => ({ hour_key: c.hour_key, label: c.seq === 1 ? 'Start' : `Check ${c.seq}` }))
-        : slotsForUser(dateKey, user)
+        ? slotsFromChallenges(dayChallenges, {}, now)
+        : isRemoteUser(user)
+          ? emptyRemoteSlots(dateKey)
+          : slotsForUser(dateKey, user)
       ).map((s) => ({ ...s, state: 'leave' }));
       return { date: dateKey, status: 'leave', slots: leaveSlots };
     }

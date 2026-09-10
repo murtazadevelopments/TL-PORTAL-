@@ -238,7 +238,9 @@ async function getMyAttendance(req, res) {
 
     const revealAdmin = false;
     const timeline = (challengeRows.length
-      ? challengeRows.map((row) => {
+      ? [...challengeRows]
+          .sort((a, b) => Number(a.seq) - Number(b.seq))
+          .map((row) => {
           const pub = remoteChallenges.publicChallenge(row, { revealFuture: revealAdmin, now });
           const log = byHour[row.hour_key];
           return {
@@ -498,6 +500,9 @@ async function adminOverview(req, res) {
         [ids, `${dateKey}-%`]
       );
       logs = rows;
+      for (const id of ids) {
+        await remoteChallenges.realignRandomSeqs(id, dateKey);
+      }
       const loaded = await pool.query(
         `
           SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
@@ -558,8 +563,9 @@ async function adminOverview(req, res) {
         const slots = sundayHoliday
           ? []
           : mapped.length
-            ? mapped
+            ? mapped.sort((a, b) => Number(a.seq) - Number(b.seq))
             : [1, 2, 3, 4, 5].map((seq) => ({
+                seq,
                 hour_key: `${dateKey}-c${seq}`,
                 label: seq === 1 ? 'Start' : `Check ${seq}`,
                 state: 'pending',

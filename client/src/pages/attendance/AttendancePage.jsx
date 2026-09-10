@@ -514,7 +514,10 @@ export default function AttendancePage() {
       <section>
         <h2>This shift (5 checks)</h2>
         <ol className="attendance-timeline">
-          {timeline.map((slot) => (
+          {timeline
+            .slice()
+            .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
+            .map((slot) => (
             <li key={slot.hour_key || slot.seq} className={`attendance-slot ${slot.state}`}>
               <span className="attendance-slot-time">{slot.label || `Check ${slot.seq}`}</span>
               <span className="attendance-slot-state">{slot.state.replace('_', ' ')}</span>

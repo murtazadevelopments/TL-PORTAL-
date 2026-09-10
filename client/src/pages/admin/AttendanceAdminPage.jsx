@@ -616,7 +616,9 @@ export default function AttendanceAdminPage() {
                 <span className={`badge ${row.row_status}`}>{row.row_status}</span>
               </header>
               <div className="attendance-mini-slots">
-                {row.slots.map((slot) => (
+                {[...row.slots]
+                  .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
+                  .map((slot) => (
                   <span
                     key={slot.hour_key}
                     className={`dot ${slot.state}`}
@@ -877,11 +879,7 @@ export default function AttendanceAdminPage() {
                     <ul className="attendance-check-list">
                       {(day.slots || [])
                         .slice()
-                        .sort((a, b) => {
-                          const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Number(a.seq) || 0;
-                          const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Number(b.seq) || 0;
-                          return ta - tb;
-                        })
+                        .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
                         .map((slot) => (
                         <li key={slot.hour_key || slot.seq}>
                           <span>
