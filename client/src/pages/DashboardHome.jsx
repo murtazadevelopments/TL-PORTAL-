@@ -5,7 +5,7 @@ import { withAuthDocumentUrl } from '../utils/documentUrls';
 import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 
 export default function DashboardHome() {
-  const { user, loading, error } = useAuthUser();
+  const { user, error } = useAuthUser();
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   const missingFields = user
@@ -32,7 +32,6 @@ export default function DashboardHome() {
       <h1>Dashboard</h1>
       <p className="muted">Welcome to Textured Lab Portal</p>
 
-      {loading && <p className="muted">Loading…</p>}
       {error && <p className="error">{error}</p>}
 
       {user && missingFields.length > 0 && (
