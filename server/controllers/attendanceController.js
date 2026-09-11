@@ -39,6 +39,7 @@ const canCheckInHourKey = pick(windows, 'cancheckinhourkey');
 const TIMEZONE = pick(windows, 'timezone');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
 const notifyAttendanceFailed = pick(notifications, 'notifyattendancefailed');
+const notifyRemoteAttendanceCheck = pick(notifications, 'notifyremoteattendancecheck');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
 const formatHourLabel = pick(workHours, 'formathourlabel');
@@ -79,7 +80,7 @@ async function loadUser(userId) {
     `
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift,
-             work_start_hour, work_end_hour
+             work_start_hour, work_end_hour, remote_check_request_at
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -461,6 +462,24 @@ async function resolveAttendanceScope(req, permissionKey) {
   );
 }
 
+const CHECK_REQUEST_COOLDOWN_MS = 60 * 60 * 1000;
+const CHECK_DONE_STATES = new Set(['verified', 'late', 'missed']);
+
+function checkInRequestGate(now, lastRequestAt, completedCount) {
+  if (Number(completedCount) >= remoteChallenges.CHECK_COUNT) {
+    return { allowed: false, reason: 'complete', available_at: null };
+  }
+  const last = lastRequestAt ? new Date(lastRequestAt).getTime() : 0;
+  if (Number.isFinite(last) && last > 0 && now.getTime() - last < CHECK_REQUEST_COOLDOWN_MS) {
+    return {
+      allowed: false,
+      reason: 'cooldown',
+      available_at: new Date(last + CHECK_REQUEST_COOLDOWN_MS).toISOString(),
+    };
+  }
+  return { allowed: true, reason: null, available_at: null };
+}
+
 async function adminOverview(req, res) {
   try {
     await ensureAttendanceTables();
@@ -479,7 +498,8 @@ async function adminOverview(req, res) {
     const { rows: people } = await pool.query(
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
-               profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour
+               profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour,
+               remote_check_request_at
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -491,6 +511,12 @@ async function adminOverview(req, res) {
     );
 
     const ids = people.map((p) => p.id);
+    const now = new Date();
+    const challengeDates = new Set([dateKey]);
+    for (const person of people) {
+      const activeDate = remoteChallenges.activeShiftDate(now, person);
+      if (activeDate) challengeDates.add(activeDate);
+    }
     let logs = [];
     let challengeRows = [];
     if (ids.length) {
@@ -511,10 +537,10 @@ async function adminOverview(req, res) {
           SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
           FROM attendance_challenges
           WHERE user_id = ANY($1::int[])
-            AND shift_date = $2
+            AND shift_date = ANY($2::text[])
           ORDER BY seq ASC
         `,
-        [ids, dateKey]
+        [ids, [...challengeDates]]
       );
       challengeRows = loaded.rows;
     }
@@ -532,7 +558,6 @@ async function adminOverview(req, res) {
       challengesByUser.get(uid).push(row);
     }
 
-    const now = new Date();
     const { rows: dayRows } = ids.length
       ? await pool.query(
           `SELECT user_id, status FROM attendance_days WHERE date_key = $1 AND user_id = ANY($2::int[])`,
@@ -545,7 +570,11 @@ async function adminOverview(req, res) {
       .map((person) => {
         const personLogs = logsByUser.get(String(person.id)) || [];
         const latest = personLogs[0] || null;
-        const mapped = remoteChallenges.sortRemoteChecks(challengesByUser.get(String(person.id)) || []).map((row, i) => {
+        const mapped = remoteChallenges
+          .sortRemoteChecks(
+            (challengesByUser.get(String(person.id)) || []).filter((row) => String(row.shift_date).slice(0, 10) === dateKey)
+          )
+          .map((row, i) => {
           const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now });
           const seq = i + 1;
           const log = personLogs.find((l) => l.hour_key === row.hour_key);
@@ -591,6 +620,18 @@ async function adminOverview(req, res) {
         }
         if (sundayHoliday && rowStatus !== 'leave') rowStatus = 'holiday';
 
+        const activeDate = remoteChallenges.activeShiftDate(now, person);
+        const activeRows = (challengesByUser.get(String(person.id)) || []).filter(
+          (row) => String(row.shift_date).slice(0, 10) === String(activeDate || '')
+        );
+        const doneCount = activeRows.filter((row) => CHECK_DONE_STATES.has(row.status)).length;
+        let requestGate = { allowed: false, reason: 'no_shift', available_at: null };
+        if (activeDate && isSundayDateKey(activeDate)) {
+          requestGate = { allowed: false, reason: 'holiday', available_at: null };
+        } else if (activeDate) {
+          requestGate = checkInRequestGate(now, person.remote_check_request_at, doneCount);
+        }
+
         const hours = workHoursFromUser(person);
         return {
           id: person.id,
@@ -618,6 +659,9 @@ async function adminOverview(req, res) {
           manual_count: manualCount,
           slots,
           latest,
+          can_check_in_request: Boolean(requestGate.allowed),
+          check_in_request_reason: requestGate.reason,
+          check_in_request_available_at: requestGate.available_at,
         };
       })
       .filter((row) => {
@@ -815,6 +859,94 @@ async function adminManualMark(req, res) {
   }
 }
 
+async function adminRequestCheckIn(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Check-in requests are only for remote employees.' });
+    }
+    const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+      return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+    }
+
+    const now = new Date();
+    const shiftDate = remoteChallenges.activeShiftDate(now, target);
+    if (!shiftDate || isSundayDateKey(shiftDate)) {
+      return res.status(400).json({
+        message: 'This employee is not in an active shift right now.',
+      });
+    }
+
+    await remoteChallenges.ensureChallengesForUser(target, shiftDate, now);
+    const rows = await remoteChallenges.loadChallenges(targetId, shiftDate);
+    const doneCount = rows.filter((row) => CHECK_DONE_STATES.has(row.status)).length;
+    const gate = checkInRequestGate(now, target.remote_check_request_at, doneCount);
+    if (!gate.allowed && gate.reason === 'complete') {
+      return res.status(409).json({
+        message: 'All five checks for this shift are already recorded. The button opens again on the next shift day.',
+      });
+    }
+    if (!gate.allowed && gate.reason === 'cooldown') {
+      return res.status(429).json({
+        message: 'Wait at least 1 hour after a check-in request before sending another.',
+        available_at: gate.available_at,
+      });
+    }
+
+    const openable = rows.filter((row) => ['pending', 'notified'].includes(row.status));
+    if (!openable.length) {
+      return res.status(409).json({
+        message: 'All five checks for this shift are already recorded. The button opens again on the next shift day.',
+      });
+    }
+
+    const inWindow = openable.find((row) => {
+      const startAt = new Date(row.scheduled_at).getTime();
+      const absentAt = new Date(row.absent_at).getTime();
+      return startAt <= now.getTime() && now.getTime() < absentAt;
+    });
+    const chosen =
+      inWindow ||
+      [...openable].sort((a, b) => Number(a.seq) - Number(b.seq))[0];
+
+    const opened = inWindow
+      ? chosen
+      : await remoteChallenges.reopenForImmediateCheck(chosen, now);
+    if (!opened) {
+      return res.status(409).json({ message: 'Could not open a check for this employee.' });
+    }
+
+    await notifyRemoteAttendanceCheck(target, opened);
+    await remoteChallenges.markNotified(opened.id, now);
+    await pool.query(`UPDATE users SET remote_check_request_at = $2 WHERE id = $1`, [target.id, now]);
+
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'attendance.check_in_request',
+      targetTable: 'attendance_challenges',
+      targetId: opened.id,
+      reason: `Sent check-in request to employee id ${target.id} for shift ${shiftDate} check ${opened.seq}`,
+    });
+
+    return res.json({
+      message: 'Check-in request sent. The employee will get the usual attendance notification.',
+    });
+  } catch (err) {
+    console.error('adminRequestCheckIn error:', err);
+    return res.status(500).json({ message: 'Server error sending check-in request.' });
+  }
+}
+
 async function markMissedSlots(now = new Date()) {
   return runRemoteAttendanceTick(now);
 }
@@ -977,6 +1109,7 @@ module.exports = {
   checkIn,
   adminOverview,
   adminManualMark,
+  adminRequestCheckIn,
   adminSetHours,
   adminEmployeeDays,
   adminDeleteRemoteDay,

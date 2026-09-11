@@ -142,18 +142,6 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
     );
     return [];
   }
-  await pool.query(
-    `
-      DELETE FROM attendance_challenges
-      WHERE user_id = $1
-        AND shift_date = $2
-        AND kind = 'random'
-        AND notified_at IS NULL
-        AND status = 'pending'
-        AND scheduled_at < $3
-    `,
-    [user.id, shiftDate, now]
-  );
   const { start, end } = shiftBounds(shiftDate, user);
   await pool.query(
     `
@@ -195,6 +183,25 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
 
 async function realignRandomSeqs() {
   return undefined;
+}
+
+async function reopenForImmediateCheck(challenge, now = new Date()) {
+  const windows = windowsForScheduled(now);
+  await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET scheduled_at = $2,
+          late_at = $3,
+          absent_at = $4,
+          notified_at = NULL,
+          status = 'pending'
+      WHERE id = $1
+        AND status IN ('pending', 'notified')
+    `,
+    [challenge.id, now, windows.late_at, windows.absent_at]
+  );
+  const rows = await loadChallenges(challenge.user_id, challenge.shift_date);
+  return rows.find((row) => Number(row.id) === Number(challenge.id)) || null;
 }
 
 async function dropOpenChallenges(userId, shiftDate) {
@@ -274,10 +281,6 @@ async function dueNotifications(now = new Date()) {
         AND c.status = 'pending'
         AND c.scheduled_at <= $1
         AND c.absent_at > $1
-        AND (
-          c.kind = 'start'
-          OR c.scheduled_at >= $1::timestamptz - INTERVAL '5 minutes'
-        )
         AND u.is_active = true
         AND u.status = 'active'
         AND u.employment_type = 'remote'
@@ -327,6 +330,7 @@ module.exports = {
   loadChallenges,
   ensureChallengesForUser,
   dropOpenChallenges,
+  reopenForImmediateCheck,
   realignRandomSeqs,
   publicChallenge,
   openChallenge,

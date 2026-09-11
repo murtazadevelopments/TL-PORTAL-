@@ -59,6 +59,7 @@ const { employmentFormUpload, lowerStaffUpload } = require('../middleware/upload
 const {
   adminOverview,
   adminManualMark,
+  adminRequestCheckIn,
   adminSetHours,
   adminEmployeeDays,
   adminDeleteRemoteDay,
@@ -262,6 +263,12 @@ router.put(
   requireRole('admin'),
   requireCeoOrAnyPermission('employees:remote'),
   adminSetHours
+);
+router.post(
+  '/attendance/:userId/check-in-request',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:remote'),
+  adminRequestCheckIn
 );
 router.post(
   '/attendance/:userId/manual',

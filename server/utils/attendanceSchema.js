@@ -187,6 +187,9 @@ async function runEnsureAttendanceTables() {
 
   const remoteChallenges = require('./remoteAttendanceChallenges');
   await remoteChallenges.ensureChallengeTable();
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS remote_check_request_at TIMESTAMPTZ
+  `);
 }
 
 module.exports = { ensureAttendanceTables, persistUserWorkHours };

@@ -69,6 +69,34 @@ function datetimeLocalForDay(dateKey, source = new Date(), ceo = false) {
   return `${day}T09:00`;
 }
 
+function formatKarachiClock(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Karachi',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(d);
+}
+
+function checkInRequestButton(row) {
+  if (row.check_in_request_reason === 'complete') {
+    return { label: 'All 5 checks done', title: 'Opens again on the next shift day.' };
+  }
+  if (row.check_in_request_reason === 'cooldown' && row.check_in_request_available_at) {
+    const when = formatKarachiClock(row.check_in_request_available_at);
+    return { label: `Available ${when}`, title: `Wait at least 1 hour after a check-in request (${when}).` };
+  }
+  if (row.check_in_request_reason === 'holiday') {
+    return { label: 'Check in Request', title: 'Sunday is a holiday.' };
+  }
+  if (row.check_in_request_reason === 'no_shift') {
+    return { label: 'Check in Request', title: 'Employee is not in an active shift.' };
+  }
+  return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
+}
+
 function formatKarachiTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -139,6 +167,8 @@ export default function AttendanceAdminPage() {
   const [branchOptions, setBranchOptions] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [requestingId, setRequestingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [manual, setManual] = useState(EMPTY_MANUAL);
   const [hoursEdit, setHoursEdit] = useState(EMPTY_HOURS);
@@ -356,6 +386,22 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function sendCheckInRequest(row) {
+    if (!row?.id || row.can_check_in_request === false) return;
+    setRequestingId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.post(`/api/admin/attendance/${row.id}/check-in-request`);
+      await load();
+      setNotice(payload?.message || `Check-in request sent to ${row.name}.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not send check-in request.');
+    } finally {
+      setRequestingId(null);
+    }
+  }
+
   const summary =
     mode === 'onsite'
       ? onsite?.summary || { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 }
@@ -507,6 +553,7 @@ export default function AttendanceAdminPage() {
       </form>
 
       {error && <p className="error">{error}</p>}
+      {notice && mode === 'remote' && <p className="success">{notice}</p>}
       {loading && <p className="muted">Loading…</p>}
 
       {mode === 'onsite' ? (
@@ -648,6 +695,15 @@ export default function AttendanceAdminPage() {
                   </button>
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
                     This month
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={requestingId === row.id || row.can_check_in_request === false}
+                    title={checkInRequestButton(row).title}
+                    onClick={() => sendCheckInRequest(row)}
+                  >
+                    {requestingId === row.id ? 'Sending…' : checkInRequestButton(row).label}
                   </button>
                   <button
                     type="button"
