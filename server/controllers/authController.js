@@ -17,6 +17,7 @@ const {
   ensureEmploymentTypeColumn,
   normalizeEmploymentType,
 } = require('../utils/employmentType');
+const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -71,6 +72,7 @@ function getFile(req, field) {
 async function signup(req, res) {
   try {
     await ensureEmploymentTypeColumn();
+    await ensureUsersTextColumns();
 
     const {
       username,
@@ -268,6 +270,12 @@ async function signup(req, res) {
     }
 
     console.error('signup error:', err);
+    if (err.code === '22001') {
+      return res.status(400).json({
+        message:
+          'One of the fields is too long for the database. Please shorten the text and try again, or contact an administrator.',
+      });
+    }
     return res.status(err.status || 500).json({
       message: 'Unable to create account. Please try again or contact your admin.',
     });
