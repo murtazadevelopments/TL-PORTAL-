@@ -85,6 +85,8 @@ async function signup(req, res) {
       education,
       last_job_status,
       employment_type,
+      team,
+      department,
       bank_name,
       account_title,
       account_number,
@@ -114,6 +116,18 @@ async function signup(req, res) {
       return res.status(400).json({
         message:
           'username, name, email, password, contact_number, address, education, last_job_status, employment_type, bank_name, account_title, account_number, and iban are required.',
+      });
+    }
+
+    const teamName = String(team || department || '').trim();
+    if (!teamName) {
+      return res.status(400).json({
+        message: 'Team is required.',
+      });
+    }
+    if (teamName.length > 120) {
+      return res.status(400).json({
+        message: 'Team must be 120 characters or fewer.',
       });
     }
 
@@ -191,7 +205,7 @@ async function signup(req, res) {
       String(address).trim(),
       normalizedCnic,
       'employee',
-      null,
+      teamName,
       String(education).trim(),
       String(last_job_status).trim(),
       normalizedEmploymentType,

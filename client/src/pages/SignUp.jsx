@@ -29,6 +29,7 @@ const INITIAL = {
   education: '',
   last_job_status: '',
   employment_type: '',
+  team: '',
   bank_name: '',
   account_title: '',
   account_number: '',
@@ -238,6 +239,20 @@ function SignUp() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label>
+            <LabelText required>Team</LabelText>
+            <input
+              type="text"
+              name="team"
+              value={form.team}
+              onChange={handleChange}
+              required
+              maxLength={120}
+              placeholder="e.g. Production"
+              autoComplete="organization-title"
+            />
           </label>
 
           <label>
