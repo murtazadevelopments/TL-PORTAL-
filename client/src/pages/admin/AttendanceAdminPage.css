@@ -165,6 +165,10 @@
   border: 2px solid rgba(126, 203, 255, 0.35);
 }
 
+.attendance-admin-card header .photo-open-btn {
+  flex-shrink: 0;
+}
+
 .attendance-admin-card .avatar {
   display: grid;
   place-items: center;

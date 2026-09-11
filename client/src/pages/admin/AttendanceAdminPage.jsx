@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
+import PhotoLightbox from '../../components/PhotoLightbox';
 import { useAuthUser } from '../../context/AuthUserContext';
 import {
   canViewOnsiteTeamAttendance,
@@ -144,13 +145,22 @@ function attendancePhotoUrl(row) {
   );
 }
 
-function AttendancePhoto({ row }) {
+function AttendancePhoto({ row, onOpen }) {
   const [failed, setFailed] = useState(false);
   const src = attendancePhotoUrl(row);
   if (!src || failed) {
     return <div className="avatar placeholder">{(row.name || '?')[0]}</div>;
   }
-  return <img src={src} alt="" onError={() => setFailed(true)} />;
+  return (
+    <button
+      type="button"
+      className="photo-open-btn"
+      aria-label={`View photo of ${row.name || 'employee'}`}
+      onClick={() => onOpen?.({ src, alt: row.name || '' })}
+    >
+      <img src={src} alt="" onError={() => setFailed(true)} />
+    </button>
+  );
 }
 
 export default function AttendanceAdminPage() {
@@ -181,6 +191,7 @@ export default function AttendanceAdminPage() {
   const [overrideRow, setOverrideRow] = useState(null);
   const [overrideStatus, setOverrideStatus] = useState('on_time');
   const [deletingId, setDeletingId] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
@@ -566,7 +577,7 @@ export default function AttendanceAdminPage() {
               return (
                 <article key={row.id} className="attendance-admin-card">
                   <header>
-                    <AttendancePhoto row={row} />
+                    <AttendancePhoto row={row} onOpen={setPhotoPreview} />
                     <div>
                       <strong>{row.name}</strong>
                       <p className="muted">
@@ -650,7 +661,7 @@ export default function AttendanceAdminPage() {
           return (
             <article key={row.id} className="attendance-admin-card">
               <header>
-                <AttendancePhoto row={row} />
+                <AttendancePhoto row={row} onOpen={setPhotoPreview} />
                 <div>
                   <strong>{row.name}</strong>
                   <p className="muted">
@@ -1062,6 +1073,12 @@ export default function AttendanceAdminPage() {
           </form>
         </div>
       )}
+      <PhotoLightbox
+        open={Boolean(photoPreview?.src)}
+        src={photoPreview?.src}
+        alt={photoPreview?.alt}
+        onClose={() => setPhotoPreview(null)}
+      />
     </div>
   );
 }

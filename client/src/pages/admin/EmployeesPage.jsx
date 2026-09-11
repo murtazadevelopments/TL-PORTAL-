@@ -7,6 +7,7 @@ import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import CnicProtectedViewer from '../../components/CnicProtectedViewer';
+import PhotoLightbox from '../../components/PhotoLightbox';
 import {
   missingEmployeePortalFields,
   missingEmployeePortalFieldsUnion,
@@ -360,6 +361,7 @@ function EmployeesPage() {
   const [composeToast, setComposeToast] = useState('');
   const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
   const [cnicView, setCnicView] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState(EMPTY_ADD);
   const [addError, setAddError] = useState('');
@@ -1858,11 +1860,30 @@ function EmployeesPage() {
                       )}
                       <td>
                         {row.profile_picture_url ? (
-                          <img
-                            className="thumb"
-                            src={withAuthDocumentUrl(row.profile_picture_url, row.updated_at || row.id)}
-                            alt=""
-                          />
+                          <button
+                            type="button"
+                            className="photo-open-btn"
+                            aria-label={`View photo of ${fullName(row)}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPhotoPreview({
+                                src: withAuthDocumentUrl(
+                                  row.profile_picture_url,
+                                  row.updated_at || row.id
+                                ),
+                                alt: fullName(row),
+                              });
+                            }}
+                          >
+                            <img
+                              className="thumb"
+                              src={withAuthDocumentUrl(
+                                row.profile_picture_url,
+                                row.updated_at || row.id
+                              )}
+                              alt=""
+                            />
+                          </button>
                         ) : (
                           <div className="thumb">
                             {(row.name || '?').charAt(0).toUpperCase()}
@@ -2014,6 +2035,13 @@ function EmployeesPage() {
       </div>
 
       {composeToast && <p className="success">{composeToast}</p>}
+
+      <PhotoLightbox
+        open={Boolean(photoPreview?.src)}
+        src={photoPreview?.src}
+        alt={photoPreview?.alt}
+        onClose={() => setPhotoPreview(null)}
+      />
 
       <CnicProtectedViewer
         open={Boolean(cnicView)}
@@ -2200,11 +2228,29 @@ function EmployeesPage() {
 
                 <div className="detail-hero">
                   {detail.profile_picture_url ? (
-                    <img
-                      className="thumb large"
-                      src={withAuthDocumentUrl(detail.profile_picture_url, detail.updated_at || detail.id)}
-                      alt=""
-                    />
+                    <button
+                      type="button"
+                      className="photo-open-btn"
+                      aria-label={`View photo of ${fullName(detail)}`}
+                      onClick={() =>
+                        setPhotoPreview({
+                          src: withAuthDocumentUrl(
+                            detail.profile_picture_url,
+                            detail.updated_at || detail.id
+                          ),
+                          alt: fullName(detail),
+                        })
+                      }
+                    >
+                      <img
+                        className="thumb large"
+                        src={withAuthDocumentUrl(
+                          detail.profile_picture_url,
+                          detail.updated_at || detail.id
+                        )}
+                        alt=""
+                      />
+                    </button>
                   ) : (
                     <div className="thumb large">
                       {(detail.name || '?').charAt(0).toUpperCase()}
