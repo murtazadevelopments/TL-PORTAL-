@@ -721,6 +721,41 @@ button.doc-preview:not(:disabled):hover {
   margin: 0;
 }
 
+.designation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.designation-field-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.designation-field-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.designation-field-actions-row input[type='text'] {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.designation-field-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 .edit-box label {
   display: flex;
   flex-direction: column;

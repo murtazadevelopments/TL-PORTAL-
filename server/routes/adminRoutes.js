@@ -45,6 +45,12 @@ const {
   deleteShift,
 } = require('../controllers/shiftsController');
 const {
+  listDesignations,
+  createDesignation,
+  updateDesignation,
+  deleteDesignation,
+} = require('../controllers/designationsController');
+const {
   adminListOnsite,
   adminGetOnsiteMonth,
   adminManualOnsite,
@@ -158,6 +164,26 @@ router.delete(
   requireRole('admin'),
   requirePermission('hr:add_employee'),
   deleteShift
+);
+
+router.get('/designations', requireRole('admin'), listDesignations);
+router.post(
+  '/designations',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee'),
+  createDesignation
+);
+router.patch(
+  '/designations/:id',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee'),
+  updateDesignation
+);
+router.delete(
+  '/designations/:id',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee'),
+  deleteDesignation
 );
 
 // CEO role-assignment helpers (register before /employees/:id)

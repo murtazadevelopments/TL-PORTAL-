@@ -17,6 +17,7 @@ import {
 } from '../../utils/profileCompleteness';
 import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
 import ClockHourSelect from '../../components/ClockHourSelect';
+import DesignationField from '../../components/DesignationField';
 import './AdminDashboard.css';
 
 const FALLBACK_SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -342,6 +343,7 @@ function EmployeesPage() {
 
   const [branches, setBranches] = useState([]);
   const [shifts, setShifts] = useState([]);
+  const [designations, setDesignations] = useState([]);
   const [showAddBranch, setShowAddBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [creatingBranch, setCreatingBranch] = useState(false);
@@ -529,6 +531,15 @@ function EmployeesPage() {
     }
   }
 
+  async function loadDesignations() {
+    try {
+      const { data } = await api.get('/api/admin/designations');
+      setDesignations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to load designations:', err.response?.data?.message || err.message);
+    }
+  }
+
   useEffect(() => {
     if (!role) return;
     if (
@@ -540,6 +551,7 @@ function EmployeesPage() {
       loadTeams();
       loadBranches();
       loadShifts();
+      loadDesignations();
     }
   }, [role, permissions]);
 
@@ -974,6 +986,51 @@ function EmployeesPage() {
       setBranchError(err.response?.data?.message || 'Failed to create branch.');
     } finally {
       setCreatingBranch(false);
+    }
+  }
+
+  async function handleCreateDesignation({ name, tl_dashboard_access }) {
+    try {
+      const { data } = await api.post('/api/admin/designations', {
+        name,
+        tl_dashboard_access,
+      });
+      setDesignations((prev) => {
+        const next = prev.some((d) => d.id === data.id)
+          ? prev.map((d) => (d.id === data.id ? data : d))
+          : [...prev, data];
+        return next.sort((a, b) => {
+          if (a.tl_dashboard_access !== b.tl_dashboard_access) {
+            return a.tl_dashboard_access ? -1 : 1;
+          }
+          return String(a.name).localeCompare(String(b.name));
+        });
+      });
+      setEditForm((prev) => ({ ...prev, designation: data.name }));
+      setAddForm((prev) => ({ ...prev, designation: data.name }));
+      setFieldErrors((prev) => {
+        if (!prev.designation) return prev;
+        const next = { ...prev };
+        delete next.designation;
+        return next;
+      });
+    } catch (err) {
+      throw new Error(err.response?.data?.message || 'Failed to add designation.');
+    }
+  }
+
+  async function handleRemoveDesignation(row) {
+    try {
+      await api.delete(`/api/admin/designations/${row.id}`);
+      setDesignations((prev) => prev.filter((d) => d.id !== row.id));
+      setEditForm((prev) =>
+        prev.designation === row.name ? { ...prev, designation: '' } : prev
+      );
+      setAddForm((prev) =>
+        prev.designation === row.name ? { ...prev, designation: '' } : prev
+      );
+    } catch (err) {
+      throw new Error(err.response?.data?.message || 'Failed to remove designation.');
     }
   }
 
@@ -2593,18 +2650,16 @@ function EmployeesPage() {
                     )}
                   </div>
 
-                  <label className={fieldErrors.designation ? 'has-error' : ''}>
-                    Designation
-                    <input
-                      type="text"
-                      name="designation"
-                      value={editForm.designation}
-                      onChange={handleEditChange}
-                    />
-                    {fieldErrors.designation && (
-                      <span className="field-error">{fieldErrors.designation}</span>
-                    )}
-                  </label>
+                  <DesignationField
+                    name="designation"
+                    value={editForm.designation}
+                    onChange={handleEditChange}
+                    designations={designations}
+                    canManage={canEditEmployees}
+                    error={fieldErrors.designation}
+                    onCreated={handleCreateDesignation}
+                    onRemoved={handleRemoveDesignation}
+                  />
 
                   <label className={fieldErrors.date_of_joining ? 'has-error' : ''}>
                     Date of joining
@@ -2978,15 +3033,16 @@ function EmployeesPage() {
                     ))}
                   </select>
                 </label>
-                <label>
-                  Designation <span className="req-star" aria-hidden="true">*</span>
-                  <input
-                    name="designation"
-                    value={addForm.designation}
-                    onChange={handleAddChange}
-                    required
-                  />
-                </label>
+                <DesignationField
+                  name="designation"
+                  value={addForm.designation}
+                  onChange={handleAddChange}
+                  required
+                  designations={designations}
+                  canManage={canAddEmployees}
+                  onCreated={handleCreateDesignation}
+                  onRemoved={handleRemoveDesignation}
+                />
                 <label>
                   Branch <span className="req-star" aria-hidden="true">*</span>
                   <select name="branch" value={addForm.branch} onChange={handleAddChange} required>

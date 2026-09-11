@@ -2,6 +2,8 @@
  * Shared role helpers for Team Leader Dashboard access.
  */
 
+const { designationHasTlAccess } = require('./designationsSchema');
+
 function normalizeRole(role) {
   return String(role || '')
     .trim()
@@ -18,7 +20,7 @@ function isTeamLeaderRole(role) {
 
 /** Designation fallback when role has not been set to team_leader yet. */
 function designationLooksLikeTeamLeader(designation) {
-  return /team[\s_-]*leader/i.test(String(designation || ''));
+  return designationHasTlAccess(designation);
 }
 
 function hasTeamLeaderDashboardAccess({ role, designation, assigned = false } = {}) {

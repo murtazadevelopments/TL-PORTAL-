@@ -18,6 +18,7 @@ const {
   parseAlertFields,
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
+const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -96,6 +97,7 @@ async function getMe(req, res) {
   try {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
+    await ensureDesignationsSchema();
     const { rows } = await pool.query(
       `SELECT ${USER_PUBLIC_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [req.user.id]

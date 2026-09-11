@@ -22,6 +22,8 @@ function isCeo(req) {
 }
 
 async function loadUserAccessFlags(userId) {
+  const { ensureDesignationsSchema } = require('../utils/designationsSchema');
+  await ensureDesignationsSchema();
   const { rows } = await pool.query(
     `
       SELECT role, designation, t_pin_hash IS NOT NULL AS t_pin_configured

@@ -80,6 +80,7 @@ export function buildSidebarGroups(
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
+    adminItems.push({ to: '/admin/designations', label: 'Manage Designations' });
     adminItems.push({ to: '/admin/branches', label: 'Manage Branches' });
     if (hasPermission(permissions, 'hr:add_employee', role)) {
       adminItems.push({ to: '/admin/shifts', label: 'Manage Shifts' });

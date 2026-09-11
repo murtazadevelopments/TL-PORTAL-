@@ -37,6 +37,7 @@ const {
 const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const { normalizeWorkHours } = require('../utils/workHours');
 const { findShiftName } = require('./shiftsController');
+const { findDesignationName } = require('./designationsController');
 const {
   ensureStaffKindColumn,
   ensureLowerStaffExtraColumns,
@@ -692,6 +693,12 @@ async function createEmployee(req, res) {
         message: 'Employee ID, department, designation, branch, and shift are required.',
       });
     }
+    const catalogDesignation = await findDesignationName(designation);
+    if (!catalogDesignation) {
+      return res.status(400).json({
+        message: 'Designation must be chosen from the list.',
+      });
+    }
     const catalogShift = await findShiftName(shift);
     if (!catalogShift) {
       return res.status(400).json({
@@ -762,7 +769,7 @@ async function createEmployee(req, res) {
         String(body.address || '').trim() || null,
         String(body.cnic_number || '').trim() || null,
         department,
-        designation,
+        catalogDesignation,
         status,
         branch,
         catalogShift,
@@ -913,6 +920,16 @@ async function updateEmployee(req, res) {
     if (!['active', 'inactive'].includes(next.status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
     }
+
+    const catalogDesignation = await findDesignationName(next.designation, {
+      current: before.designation,
+    });
+    if (!catalogDesignation) {
+      return res.status(400).json({
+        message: 'Designation must be chosen from the list.',
+      });
+    }
+    next.designation = catalogDesignation;
 
     if (!next.employee_id) {
       return res.status(400).json({ message: 'Employee ID is required.' });

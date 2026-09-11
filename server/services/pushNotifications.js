@@ -112,16 +112,22 @@ async function sendPushToUser(userId, payload, opts = {}) {
       sent += 1;
     } catch (err) {
       const status = err.statusCode || err.status;
-      console.error(
-        `[push] fail user=${userId} sub=${sub.id} status=${status}:`,
-        err.message || err
-      );
+      // 404/410 = browser/FCM dropped the endpoint (uninstalled PWA, cleared
+      // site data, revoked permission). That is expected cleanup, not an outage.
       if (status === 404 || status === 410) {
+        console.warn(
+          `[push] dropped stale sub user=${userId} sub=${sub.id} status=${status}`
+        );
         try {
           await pool.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
         } catch {
           /* ignore */
         }
+      } else {
+        console.error(
+          `[push] fail user=${userId} sub=${sub.id} status=${status}:`,
+          err.message || err
+        );
       }
     }
   }
