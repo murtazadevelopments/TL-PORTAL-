@@ -149,8 +149,6 @@ async function findShiftName(value) {
       [trimmed]
     );
     if (rows[0]?.name) return rows[0].name;
-    const { rows: any } = await pool.query(`SELECT 1 FROM shifts LIMIT 1`);
-    if (any.length) return undefined;
   } catch (err) {
     if (err.code !== '42P01') throw err;
   }

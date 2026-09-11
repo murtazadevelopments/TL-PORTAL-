@@ -699,12 +699,7 @@ async function createEmployee(req, res) {
         message: 'Designation must be chosen from the list.',
       });
     }
-    const catalogShift = await findShiftName(shift);
-    if (!catalogShift) {
-      return res.status(400).json({
-        message: 'Shift must match a shift in Manage Shifts.',
-      });
-    }
+    const catalogShift = (await findShiftName(shift)) || String(shift || '').trim();
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
     }
@@ -949,13 +944,7 @@ async function updateEmployee(req, res) {
       });
     }
 
-    const catalogShift = await findShiftName(next.shift);
-    if (!catalogShift) {
-      return res.status(400).json({
-        message: 'Shift must match a shift in Manage Shifts.',
-      });
-    }
-    next.shift = catalogShift;
+    next.shift = (await findShiftName(next.shift)) || String(next.shift || '').trim();
 
     const { rows } = await pool.query(
       `
