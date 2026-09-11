@@ -38,6 +38,19 @@ export function missingEmployeePortalFields(row) {
   return EMPLOYEE_PORTAL_FIELDS.filter((field) => isPortalFieldMissing(row, field));
 }
 
+export function missingEmployeePortalFieldsUnion(...rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    for (const field of missingEmployeePortalFields(row)) {
+      if (seen.has(field.key)) continue;
+      seen.add(field.key);
+      out.push(field);
+    }
+  }
+  return out;
+}
+
 export function missingAdminAssignFields(row) {
   if (!row) return [];
   if (String(row.staff_kind || '').toLowerCase() === 'lower') return [];
@@ -45,6 +58,8 @@ export function missingAdminAssignFields(row) {
 }
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+export const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
+export const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
 function lastProfileAlertAt(row) {
   return row?.profile_alert_sent_at || row?.profile_alert_at || null;
@@ -60,8 +75,7 @@ function formatCooldownRemaining(ms) {
   return `${Math.max(1, minutes)}m`;
 }
 
-export function profileAlertCooldown(row, now = Date.now()) {
-  const sentAt = lastProfileAlertAt(row);
+function cooldownFromSentAt(sentAt, now = Date.now()) {
   if (!sentAt) {
     return { active: false, remainingMs: 0, remainingLabel: '', retryAt: null };
   }
@@ -79,4 +93,12 @@ export function profileAlertCooldown(row, now = Date.now()) {
     remainingLabel: formatCooldownRemaining(remainingMs),
     retryAt: new Date(sentMs + PROFILE_ALERT_COOLDOWN_MS),
   };
+}
+
+export function profileAlertCooldown(row, now = Date.now()) {
+  return cooldownFromSentAt(lastProfileAlertAt(row), now);
+}
+
+export function photoAlertCooldown(row, now = Date.now()) {
+  return cooldownFromSentAt(row?.photo_alert_sent_at, now);
 }

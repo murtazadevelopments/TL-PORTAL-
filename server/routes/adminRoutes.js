@@ -17,6 +17,7 @@ const {
   blockAccount,
   unblockAccount,
   sendProfileAlert,
+  sendPhotoAlert,
 } = require('../controllers/adminController');
 const {
   getPermissionsCatalog,
@@ -242,6 +243,12 @@ router.post(
   requireRole('admin'),
   requireCeoOrAnyPermission('messages:send', 'employees:edit'),
   sendProfileAlert
+);
+router.post(
+  '/employees/:id/photo-alert',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('messages:send', 'employees:edit'),
+  sendPhotoAlert
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);

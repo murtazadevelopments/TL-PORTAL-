@@ -1,18 +1,22 @@
 const pool = require('../config/db');
 
 let ensured = false;
+let ensurePromise = null;
 
 async function denyAnon(table) {
   await pool.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
-  await pool.query(`DROP POLICY IF EXISTS ${table}_no_anon ON ${table}`);
   await pool.query(`
-    CREATE POLICY ${table}_no_anon ON ${table}
-      FOR ALL TO anon USING (false) WITH CHECK (false)
+    DO $$
+    BEGIN
+      CREATE POLICY ${table}_no_anon ON ${table}
+        FOR ALL TO anon USING (false) WITH CHECK (false);
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$
   `);
 }
 
-async function ensureOnsiteAttendanceSchema() {
-  if (ensured) return;
+async function runEnsureOnsiteAttendanceSchema() {
 
   await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS ip_address TEXT`);
   await pool.query(`ALTER TABLE branches ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION`);
@@ -111,6 +115,17 @@ async function ensureOnsiteAttendanceSchema() {
   await denyAnon('onsite_attendance');
 
   ensured = true;
+}
+
+async function ensureOnsiteAttendanceSchema() {
+  if (ensured) return;
+  if (!ensurePromise) {
+    ensurePromise = runEnsureOnsiteAttendanceSchema().catch((err) => {
+      ensurePromise = null;
+      throw err;
+    });
+  }
+  await ensurePromise;
 }
 
 module.exports = { ensureOnsiteAttendanceSchema };

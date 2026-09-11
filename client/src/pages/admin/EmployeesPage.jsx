@@ -7,7 +7,14 @@ import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import CnicProtectedViewer from '../../components/CnicProtectedViewer';
-import { missingEmployeePortalFields, profileAlertCooldown } from '../../utils/profileCompleteness';
+import {
+  missingEmployeePortalFields,
+  missingEmployeePortalFieldsUnion,
+  profileAlertCooldown,
+  photoAlertCooldown,
+  PHOTO_ALERT_SUBJECT,
+  PHOTO_ALERT_BODY,
+} from '../../utils/profileCompleteness';
 import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import './AdminDashboard.css';
@@ -274,6 +281,10 @@ function employmentStatusLabel(status) {
   return status || 'unset';
 }
 
+function isApprovedEmployee(row) {
+  return String(row?.status || '').toLowerCase() === 'active';
+}
+
 function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
@@ -339,6 +350,8 @@ function EmployeesPage() {
   const [unlockingId, setUnlockingId] = useState(null);
   const [blockingId, setBlockingId] = useState(null);
   const [alertingId, setAlertingId] = useState(null);
+  const [photoAlertingId, setPhotoAlertingId] = useState(null);
+  const [photoConfirm, setPhotoConfirm] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeRecipient, setComposeRecipient] = useState(null);
@@ -561,7 +574,14 @@ function EmployeesPage() {
     event?.stopPropagation?.();
     if (!canSendProfileAlert || !userId) return;
     const target = employees.find((e) => String(e.id) === String(userId)) || detail;
-    const missing = missingEmployeePortalFields(target);
+    if (!isApprovedEmployee(target)) {
+      setSaveError('Approve this account before sending a profile alert. Pending people cannot sign in yet.');
+      return;
+    }
+    const missing = missingEmployeePortalFieldsUnion(
+      target,
+      detail && String(detail.id) === String(userId) ? detail : null
+    );
     if (!missing.length) {
       setSaveError('This employee has already filled their portal fields.');
       return;
@@ -590,6 +610,38 @@ function EmployeesPage() {
       setSaveError(err.response?.data?.message || 'Failed to send profile alert.');
     } finally {
       setAlertingId(null);
+    }
+  }
+
+  function openPhotoAlertConfirm(row, event) {
+    event?.stopPropagation?.();
+    if (!canSendProfileAlert || !row?.id || isLowerStaffRow(row)) return;
+    const cooldown = photoAlertCooldown(row);
+    if (cooldown.active) {
+      setSaveError(`Photo alert already sent. You can send another after ${cooldown.remainingLabel}.`);
+      return;
+    }
+    setSaveError('');
+    setPhotoConfirm(row);
+  }
+
+  async function confirmSendPhotoAlert() {
+    const target = photoConfirm;
+    if (!target?.id) return;
+    setPhotoAlertingId(target.id);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      const { data } = await api.post(`/api/admin/employees/${target.id}/photo-alert`);
+      const sentAt = data?.photoAlertSentAt || new Date().toISOString();
+      applyAccountPatch(target.id, { photo_alert_sent_at: sentAt });
+      setNowMs(Date.now());
+      setPhotoConfirm(null);
+      setSaveSuccess(data?.message || 'Photo alert sent.');
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to send photo alert.');
+    } finally {
+      setPhotoAlertingId(null);
     }
   }
 
@@ -738,18 +790,39 @@ function EmployeesPage() {
     });
   }, [portalEmployees, lowerStaff, search, filters, statusTab]);
 
+  const selectedListRow = useMemo(
+    () => employees.find((e) => String(e.id) === String(selectedId)) || null,
+    [employees, selectedId]
+  );
   const detailMissingAdmin = useMemo(
     () => missingAdminFields(detail).map((key) => ADMIN_FIELD_LABELS[key]),
     [detail]
   );
   const detailMissingEmployee = useMemo(
-    () => missingEmployeePortalFields(detail).map((f) => f.label),
-    [detail]
+    () => missingEmployeePortalFieldsUnion(detail, selectedListRow).map((f) => f.label),
+    [detail, selectedListRow]
   );
 
+  function mergeDocumentPresence(primary, fallback) {
+    const keys = [
+      'profile_picture_on_file',
+      'cnic_front_on_file',
+      'cnic_back_on_file',
+      'cv_on_file',
+    ];
+    const next = { ...fallback, ...primary };
+    for (const key of keys) {
+      if (fallback?.[key] === false || primary?.[key] === false) next[key] = false;
+      else if (typeof primary?.[key] === 'boolean') next[key] = primary[key];
+      else if (typeof fallback?.[key] === 'boolean') next[key] = fallback[key];
+    }
+    return next;
+  }
+
   async function openDetail(id) {
+    const preview = employees.find((e) => String(e.id) === String(id)) || null;
     setSelectedId(id);
-    setDetail(null);
+    setDetail(preview);
     setDetailLoading(true);
     setSaveError('');
     setSaveSuccess('');
@@ -757,7 +830,7 @@ function EmployeesPage() {
 
     try {
       const { data } = await api.get(`/api/admin/employees/${id}`);
-      setDetail(data);
+      setDetail(mergeDocumentPresence(data, preview));
       setEditForm({
         employee_id: data.employee_id || '',
         status: data.status === 'inactive' ? 'inactive' : data.status === 'active' ? 'active' : 'inactive',
@@ -1675,7 +1748,7 @@ function EmployeesPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  {canSendProfileAlert && <th>Alert</th>}
+                  {canSendProfileAlert && statusTab !== 'pending' && <th>Alert</th>}
                   <th>Photo</th>
                   <th>Full Name</th>
                   <th>Username</th>
@@ -1696,9 +1769,9 @@ function EmployeesPage() {
                   const alertCooldown = profileAlertCooldown(row, nowMs);
                   return (
                     <tr key={row.id} onClick={() => openDetail(row.id)}>
-                      {canSendProfileAlert && (
+                      {canSendProfileAlert && statusTab !== 'pending' && (
                         <td className="cell-alert">
-                          {missingEmployee.length > 0 ? (
+                          {isApprovedEmployee(row) && missingEmployee.length > 0 ? (
                             <button
                               type="button"
                               className="btn btn-ghost alert-row-btn"
@@ -1908,6 +1981,62 @@ function EmployeesPage() {
         }}
       />
 
+      {photoConfirm && (
+        <div
+          className="modal-backdrop modal-backdrop-stack"
+          onClick={() => !photoAlertingId && setPhotoConfirm(null)}
+        >
+          <aside
+            className="modal-panel modal-panel-center"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm photo alert"
+          >
+            <div className="modal-header">
+              <div>
+                <h2>Send photo alert?</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  This message will be sent from your admin account to {fullName(photoConfirm)}.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setPhotoConfirm(null)}
+                aria-label="Close"
+                disabled={Boolean(photoAlertingId)}
+              >
+                ×
+              </button>
+            </div>
+            <p className="muted" style={{ margin: '0 0 0.45rem' }}>
+              Subject: {PHOTO_ALERT_SUBJECT}
+            </p>
+            <blockquote className="photo-alert-preview">{PHOTO_ALERT_BODY}</blockquote>
+            {saveError && <p className="error">{saveError}</p>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setPhotoConfirm(null)}
+                disabled={Boolean(photoAlertingId)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={confirmSendPhotoAlert}
+                disabled={Boolean(photoAlertingId)}
+              >
+                {photoAlertingId ? 'Sending…' : 'Send alert'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       {selectedId && (
         <div className="modal-backdrop" onClick={closeDetail}>
           <aside
@@ -1924,9 +2053,34 @@ function EmployeesPage() {
                   Review documents and update admin fields
                 </p>
               </div>
-              <button type="button" className="icon-btn" onClick={closeDetail} aria-label="Close">
-                ×
-              </button>
+              <div className="modal-header-actions">
+                {canSendProfileAlert &&
+                  isApprovedEmployee(detail) &&
+                  detailMissingEmployee.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost alert-row-btn"
+                    title={
+                      profileAlertCooldown(detail, nowMs).active
+                        ? `Already sent. Try again in ${profileAlertCooldown(detail, nowMs).remainingLabel}`
+                        : `Ask them to fill: ${detailMissingEmployee.join(', ')}`
+                    }
+                    disabled={
+                      alertingId === detail.id || profileAlertCooldown(detail, nowMs).active
+                    }
+                    onClick={(e) => handleSendProfileAlert(detail.id, e)}
+                  >
+                    {alertingId === detail.id
+                      ? 'Sending…'
+                      : profileAlertCooldown(detail, nowMs).active
+                        ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
+                        : 'Alert'}
+                  </button>
+                )}
+                <button type="button" className="icon-btn" onClick={closeDetail} aria-label="Close">
+                  ×
+                </button>
+              </div>
             </div>
 
             {detailLoading && (
@@ -1959,16 +2113,18 @@ function EmployeesPage() {
                           You must assign: {detailMissingAdmin.join(', ')}
                         </p>
                       )}
-                      {profileAlertCooldown(detail, nowMs).active && (
+                      {profileAlertCooldown(detail, nowMs).active && isApprovedEmployee(detail) && (
                         <p className="muted" style={{ margin: '0.35rem 0 0' }}>
                           Next alert available in {profileAlertCooldown(detail, nowMs).remainingLabel}.
                         </p>
                       )}
                     </div>
-                    {canSendProfileAlert && detailMissingEmployee.length > 0 && (
+                    {canSendProfileAlert &&
+                      isApprovedEmployee(detail) &&
+                      detailMissingEmployee.length > 0 && (
                       <button
                         type="button"
-                        className="btn btn-primary"
+                        className="btn btn-ghost alert-row-btn"
                         disabled={
                           alertingId === detail.id ||
                           profileAlertCooldown(detail, nowMs).active
@@ -1979,7 +2135,7 @@ function EmployeesPage() {
                           ? 'Sending…'
                           : profileAlertCooldown(detail, nowMs).active
                             ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
-                            : 'Alert employee'}
+                            : 'Alert'}
                       </button>
                     )}
                   </div>
@@ -2004,6 +2160,25 @@ function EmployeesPage() {
                     <div className="muted" style={{ margin: 0 }}>
                       @{detail.username}
                     </div>
+                    {canSendProfileAlert && !isLowerStaffRow(detail) && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost alert-row-btn"
+                        style={{ marginTop: '0.65rem' }}
+                        title="Ask them to upload a clear face photo"
+                        disabled={
+                          photoAlertingId === detail.id ||
+                          photoAlertCooldown(detail, nowMs).active
+                        }
+                        onClick={(e) => openPhotoAlertConfirm(detail, e)}
+                      >
+                        {photoAlertingId === detail.id
+                          ? 'Sending…'
+                          : photoAlertCooldown(detail, nowMs).active
+                            ? `Photo wait ${photoAlertCooldown(detail, nowMs).remainingLabel}`
+                            : 'Alert photo'}
+                      </button>
+                    )}
                     <div className="status-stack" style={{ marginTop: '0.45rem' }}>
                       <span className={`status-pill ${statusClass(detail.status)}`}>
                         {employmentStatusLabel(detail.status)}
@@ -2593,10 +2768,12 @@ function EmployeesPage() {
                         Message
                       </button>
                     )}
-                    {canSendProfileAlert && detailMissingEmployee.length > 0 && (
+                    {canSendProfileAlert &&
+                      isApprovedEmployee(detail) &&
+                      detailMissingEmployee.length > 0 && (
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn btn-ghost alert-row-btn"
                         disabled={
                           alertingId === detail.id ||
                           saving ||
@@ -2609,7 +2786,7 @@ function EmployeesPage() {
                           ? 'Sending…'
                           : profileAlertCooldown(detail, nowMs).active
                             ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
-                            : 'Alert profile'}
+                            : 'Alert'}
                       </button>
                     )}
                     {canUnlockAccounts && isAccountLocked(detail) && (

@@ -63,23 +63,14 @@ function formatFieldList(fields) {
 }
 
 const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
+const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
 function lastProfileAlertAt(row) {
   return row?.profile_alert_sent_at || row?.profile_alert_at || null;
 }
 
-function formatCooldownRemaining(ms) {
-  if (ms <= 0) return '';
-  const hours = Math.floor(ms / (60 * 60 * 1000));
-  const minutes = Math.ceil((ms % (60 * 60 * 1000)) / (60 * 1000));
-  if (hours >= 1) {
-    return minutes > 0 && hours < 24 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  return `${Math.max(1, minutes)}m`;
-}
-
-function profileAlertCooldown(row, now = Date.now()) {
-  const sentAt = lastProfileAlertAt(row);
+function cooldownFromSentAt(sentAt, now = Date.now()) {
   if (!sentAt) {
     return { active: false, remainingMs: 0, remainingLabel: '', retryAt: null };
   }
@@ -99,6 +90,24 @@ function profileAlertCooldown(row, now = Date.now()) {
   };
 }
 
+function formatCooldownRemaining(ms) {
+  if (ms <= 0) return '';
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  const minutes = Math.ceil((ms % (60 * 60 * 1000)) / (60 * 1000));
+  if (hours >= 1) {
+    return minutes > 0 && hours < 24 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${Math.max(1, minutes)}m`;
+}
+
+function profileAlertCooldown(row, now = Date.now()) {
+  return cooldownFromSentAt(lastProfileAlertAt(row), now);
+}
+
+function photoAlertCooldown(row, now = Date.now()) {
+  return cooldownFromSentAt(row?.photo_alert_sent_at, now);
+}
+
 let profileAlertColumnsReady = false;
 
 async function ensureProfileAlertColumns() {
@@ -108,6 +117,7 @@ async function ensureProfileAlertColumns() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_fields TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_sent_at TIMESTAMPTZ;
     UPDATE users
     SET profile_alert_sent_at = profile_alert_at
     WHERE profile_alert_sent_at IS NULL
@@ -141,5 +151,8 @@ module.exports = {
   ensureProfileAlertColumns,
   parseAlertFields,
   PROFILE_ALERT_COOLDOWN_MS,
+  PHOTO_ALERT_SUBJECT,
+  PHOTO_ALERT_BODY,
   profileAlertCooldown,
+  photoAlertCooldown,
 };

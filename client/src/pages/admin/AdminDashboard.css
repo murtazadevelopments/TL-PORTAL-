@@ -543,6 +543,24 @@
   margin-bottom: 1.1rem;
 }
 
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
+.photo-alert-preview {
+  margin: 0 0 1.1rem;
+  padding: 0.9rem 1rem;
+  border-left: 3px solid var(--green);
+  border-radius: 0 12px 12px 0;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--text-h);
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
 .modal-header h2 {
   margin: 0;
   font-family: var(--display);

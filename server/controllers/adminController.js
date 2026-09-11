@@ -25,6 +25,9 @@ const {
   formatFieldList,
   ensureProfileAlertColumns,
   profileAlertCooldown,
+  photoAlertCooldown,
+  PHOTO_ALERT_SUBJECT,
+  PHOTO_ALERT_BODY,
   withDocumentPresence,
 } = require('../utils/profileCompleteness');
 const {
@@ -60,7 +63,7 @@ const LIST_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_sent_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url,
   cnic_front_url, cnic_back_url, cv_url
@@ -77,7 +80,7 @@ const DETAIL_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason,
-  profile_alert_at, profile_alert_sent_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
 `;
@@ -325,10 +328,15 @@ async function getEmployeeById(req, res) {
       });
     }
 
+    const withDocs = withDocumentPresence(await attachReadableUrls(rows[0]));
     const employee = redactSalary(
-      withDocumentPresence(await attachReadableUrls(rows[0])),
+      withDocs,
       isLowerStaff(rows[0]) && canManageLowerStaff(req)
     );
+    employee.profile_picture_on_file = Boolean(withDocs.profile_picture_on_file);
+    employee.cnic_front_on_file = Boolean(withDocs.cnic_front_on_file);
+    employee.cnic_back_on_file = Boolean(withDocs.cnic_back_on_file);
+    employee.cv_on_file = Boolean(withDocs.cv_on_file);
 
     // Redact CNIC/CV unless CEO or admin has documents:view
     const role = String(req.user?.role || '').toLowerCase();
@@ -347,9 +355,6 @@ async function getEmployeeById(req, res) {
       employee.employment_form_url = null;
       employee.documents_redacted = true;
     } else if (!isLowerStaff(rows[0])) {
-      // CNIC streaming is blocked for all roles; expose presence only for admin UI.
-      employee.cnic_front_on_file = Boolean(employee.cnic_front_url);
-      employee.cnic_back_on_file = Boolean(employee.cnic_back_url);
       employee.cnic_front_url = null;
       employee.cnic_back_url = null;
     }
@@ -1498,14 +1503,30 @@ async function sendProfileAlert(req, res) {
     }
 
     const scopes = await resolvePermissionScopes(req);
-    const viewScope = scopeForPermission(scopes, 'employees:view');
+    const access = directoryAccess(req);
+    const remote = isRemoteEmployment(target.employment_type);
+    if (remote && !access.canRemoteDirectory) {
+      return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
+    }
+    if (!remote && !access.canOnsiteDirectory) {
+      return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
+    }
+    const viewScope = remote
+      ? scopeForPermission(scopes, 'employees:remote')
+      : scopeForPermission(scopes, 'employees:view');
     if (!employeeMatchesScope(target, viewScope)) {
       return res.status(403).json({
         message: 'This employee is outside your assigned scope.',
       });
     }
 
-    const missing = missingEmployeePortalFields(target);
+    if (String(target.status || '').toLowerCase() !== 'active') {
+      return res.status(400).json({
+        message: 'Approve this account before sending a profile alert. Pending people cannot sign in yet.',
+      });
+    }
+
+    const missing = missingEmployeePortalFields(withDocumentPresence(target));
     if (!missing.length) {
       return res.status(400).json({
         message: 'This employee has already filled their portal fields.',
@@ -1614,6 +1635,142 @@ async function sendProfileAlert(req, res) {
   }
 }
 
+async function sendPhotoAlert(req, res) {
+  try {
+    await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
+    const { id } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT ${DETAIL_COLUMNS}
+        FROM users
+        WHERE id = $1 AND is_active = true
+        LIMIT 1
+      `,
+      [id]
+    );
+    const target = existingRows[0];
+    if (!target) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (isLowerStaff(target)) {
+      return res.status(400).json({ message: 'Photo alerts are for portal employees.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const access = directoryAccess(req);
+    const remote = isRemoteEmployment(target.employment_type);
+    if (remote && !access.canRemoteDirectory) {
+      return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
+    }
+    if (!remote && !access.canOnsiteDirectory) {
+      return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
+    }
+    const viewScope = remote
+      ? scopeForPermission(scopes, 'employees:remote')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(target, viewScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    const cooldown = photoAlertCooldown(target);
+    if (cooldown.active) {
+      return res.status(429).json({
+        message: `Photo alert already sent. You can send another after ${cooldown.remainingLabel}.`,
+        retryAfterMs: cooldown.remainingMs,
+        retryAt: cooldown.retryAt,
+        code: 'PHOTO_ALERT_COOLDOWN',
+      });
+    }
+
+    const firstName = String(target.name || target.username || 'there').split(' ')[0];
+    const subject = PHOTO_ALERT_SUBJECT;
+    const messageBody =
+      `Hi ${firstName},\n\n` +
+      `${PHOTO_ALERT_BODY}\n\n` +
+      'Open My Account → Profile and upload a new photo.\n\n' +
+      '— Textured Lab Portal';
+
+    const { rows: senderRows } = await pool.query(
+      `
+        SELECT id, name, username, role
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const sender = senderRows[0] || {
+      id: req.user.id,
+      name: req.user.name,
+      username: req.user.username,
+      role: req.user.role,
+    };
+
+    const result = await deliverOneMessage({
+      sender,
+      recipient: target,
+      subject,
+      messageBody,
+      deliveryMethod: 'portal',
+      emailIfPushUndelivered: true,
+      pushPayload: {
+        title: PHOTO_ALERT_SUBJECT,
+        body: PHOTO_ALERT_BODY,
+        url: '/account',
+        tag: 'photo-alert',
+        urgency: 'high',
+        pushOpts: { requireEnabled: false, urgency: 'high' },
+      },
+    });
+
+    await pool.query(
+      `
+        UPDATE users
+        SET photo_alert_sent_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [id]
+    );
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'photo_alert_sent',
+        targetTable: 'users',
+        targetId: target.id,
+        reason: `Asked ${target.username || target.name} to update their profile picture`,
+      });
+    } catch (auditErr) {
+      console.warn('photo_alert_sent audit failed:', auditErr.message || auditErr);
+    }
+
+    const viaPush = Number(result?.pushSent) > 0;
+    const viaEmail = Boolean(result?.emailSent);
+    const channel = viaPush
+      ? 'They got a phone notification.'
+      : viaEmail
+        ? 'They do not have the app, so the alert was emailed.'
+        : 'They will see the message in the portal. Email could not be sent.';
+
+    return res.json({
+      message: `Photo alert sent. ${channel}`,
+      emailSent: viaEmail,
+      pushSent: viaPush,
+      emailError: result?.emailError || null,
+      photoAlertSentAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('sendPhotoAlert error:', err);
+    return res.status(500).json({ message: 'Server error sending photo alert.' });
+  }
+}
+
 module.exports = {
   listEmployees,
   getEmployeeById,
@@ -1630,4 +1787,5 @@ module.exports = {
   blockAccount,
   unblockAccount,
   sendProfileAlert,
+  sendPhotoAlert,
 };
