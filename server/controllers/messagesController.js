@@ -383,6 +383,18 @@ async function sendAdminMessage(req, res) {
         subject,
         messageBody,
         deliveryMethod,
+        emailIfPushUndelivered: deliveryMethod === 'portal',
+        pushPayload: {
+          title: subject || 'New portal message',
+          body: String(messageBody || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120),
+          url: '/account/messages',
+          tag: 'admin-message',
+          urgency: 'high',
+          pushOpts: { requireEnabled: false, urgency: 'high' },
+        },
       });
       created.push(result.message);
       if (result.emailSent) emailsSent += 1;

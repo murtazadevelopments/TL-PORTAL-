@@ -58,7 +58,7 @@ export async function requestPushPermission() {
 
 /**
  * Subscribe this device to Web Push and register with the API.
- * Requires: installed PWA, notification permission, active service worker.
+ * Works in the installed app and in a mobile/desktop browser that supports push.
  */
 export async function enablePushNotifications() {
   if (typeof window === 'undefined') {
@@ -66,9 +66,6 @@ export async function enablePushNotifications() {
   }
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     throw new Error('Push notifications are not supported in this browser.');
-  }
-  if (!isInstalledPwa()) {
-    throw new Error('Install the app on your phone first, then open it from the home screen.');
   }
 
   const permission = await requestPushPermission();
@@ -109,8 +106,8 @@ export async function enablePushNotificationsSafe() {
     try {
       if (hasPushOptOut()) return false;
       if (!localStorage.getItem('token')) return false;
-      if (!isInstalledPwa()) return false;
       if (!('Notification' in window) || Notification.permission === 'denied') return false;
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
       await enablePushNotifications();
       return true;
     } catch {

@@ -87,14 +87,13 @@ export default function SettingsPage() {
         <section style={{ marginTop: '1.75rem' }}>
           <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Mobile notifications</h2>
           <p className="muted">
-            Get a phone alert for new portal messages and when someone signs in to your account
-            (backup if login email does not arrive). Notifications turn on automatically when you
-            open the installed app. You can turn them off here if you do not want alerts.
+            Get a phone alert for messages, profile alerts, photo alerts, and attendance check-in
+            requests. Notifications turn on when you allow them in this browser or the installed app.
           </p>
 
           {!isInstalledPwa() && (
             <p className="muted" style={{ marginTop: '0.5rem' }}>
-              Install the app first. Notifications turn on when you open it.
+              On iPhone, install the app and open it from the home screen so notifications can be delivered.
             </p>
           )}
 

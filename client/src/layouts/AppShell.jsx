@@ -19,6 +19,7 @@ function ShellInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
+  const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const portalGaps = user ? missingEmployeePortalFields(user) : [];
   const missingDocs = portalGaps.some((field) => field.document);
@@ -79,6 +80,11 @@ function ShellInner() {
       if (event.data?.type === 'PORTAL_PUSH') {
         refreshUser?.();
         refreshUnread();
+        setLiveNotice({
+          title: event.data.title || 'New notification',
+          body: event.data.body || '',
+          url: event.data.url || '/account/messages',
+        });
       }
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
@@ -165,6 +171,22 @@ function ShellInner() {
       </aside>
 
       <main className="app-main">
+        {liveNotice && (
+          <div className="portal-live-notice" role="status">
+            <div>
+              <strong>{liveNotice.title}</strong>
+              {liveNotice.body ? <p>{liveNotice.body}</p> : null}
+            </div>
+            <div className="portal-live-notice-actions">
+              <Link to={liveNotice.url} className="btn btn-primary" onClick={() => setLiveNotice(null)}>
+                Open
+              </Link>
+              <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setLiveNotice(null)}>
+                ×
+              </button>
+            </div>
+          </div>
+        )}
         {user?.profile_alert_at &&
           !dismissProfileAlert &&
           (Array.isArray(user.profile_alert_fields)

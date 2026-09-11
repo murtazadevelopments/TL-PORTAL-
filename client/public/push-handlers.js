@@ -36,7 +36,12 @@ self.addEventListener('push', (event) => {
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
         for (const client of clients) {
           try {
-            client.postMessage({ type: 'PORTAL_PUSH', url: data.url || '/account' });
+            client.postMessage({
+              type: 'PORTAL_PUSH',
+              url: data.url || '/account',
+              title: data.title || 'Textured Lab Portal',
+              body: data.body || '',
+            });
           } catch {
             /* ignore */
           }

@@ -449,6 +449,32 @@
   }
 }
 
+.portal-live-notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm, 10px);
+  border: 1px solid rgba(61, 255, 122, 0.45);
+  background: rgba(61, 255, 122, 0.1);
+}
+
+.portal-live-notice p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.portal-live-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 .portal-profile-alert {
   display: flex;
   justify-content: space-between;

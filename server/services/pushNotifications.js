@@ -60,7 +60,7 @@ function isPushConfigured() {
 async function sendPushToUser(userId, payload, opts = {}) {
   if (!isPushConfigured()) return { sent: 0, skipped: true };
 
-  const requireEnabled = opts.requireEnabled !== false;
+  const requireEnabled = opts.requireEnabled === true;
   const { rows: prefs } = await pool.query(
     `
       SELECT push_notifications_enabled
