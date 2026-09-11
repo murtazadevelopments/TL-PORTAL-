@@ -762,7 +762,7 @@ export default function AttendanceAdminPage() {
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setManual(EMPTY_MANUAL)}>
           <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitManual}>
             <h2>Manual attendance</h2>
-            <p className="muted">{manual.user.name} — a reason is required.</p>
+            <p className="muted">{manual.user.name} — reason is optional.</p>
             <label>
               Hour / check {manual.status === 'leave' ? '(not used for leave)' : ''}
               <select
@@ -791,14 +791,12 @@ export default function AttendanceAdminPage() {
               </select>
             </label>
             <label>
-              Reason
+              Reason (optional)
               <textarea
-                required
-                minLength={8}
                 rows={3}
                 value={manual.note}
                 onChange={(e) => setManual((m) => ({ ...m, note: e.target.value }))}
-                placeholder="Why are you overriding this slot?"
+                placeholder="Why are you overriding this slot? (optional)"
               />
             </label>
             <div className="modal-actions">

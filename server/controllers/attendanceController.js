@@ -750,9 +750,6 @@ async function adminManualMark(req, res) {
     if (!isCeoRole(req.user?.role) && stampDay < yesterday) {
       return res.status(400).json({ message: 'Manual attendance can only be saved for today or yesterday.' });
     }
-    if (note.length < 8) {
-      return res.status(400).json({ message: 'A reason of at least 8 characters is required.' });
-    }
 
     const target = await loadUser(targetId);
     if (!target || target.is_active === false) {
