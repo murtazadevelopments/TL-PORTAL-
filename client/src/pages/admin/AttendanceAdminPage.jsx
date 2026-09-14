@@ -15,6 +15,16 @@ import './AttendanceAdminPage.css';
 const EMPTY_MANUAL = { user: null, hour_key: '', status: 'verified', note: '' };
 const EMPTY_HOURS = { user: null, work_start_hour: 9, work_end_hour: 18 };
 const EMPTY_ONSITE_MANUAL = { user: null, checked_in_at: '', note: '' };
+const EMPTY_TIME_EDIT = {
+  userId: null,
+  name: '',
+  label: '',
+  challengeId: null,
+  hourKey: '',
+  scheduled_at: '',
+  checked_in_at: '',
+  hasCheckIn: false,
+};
 
 function karachiDateKey(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -39,7 +49,17 @@ function shiftKarachiDateKey(dateKey, delta) {
 
 function attendanceDateWindow() {
   const today = karachiDateKey();
-  return { today, yesterday: shiftKarachiDateKey(today, -1) };
+  return {
+    today,
+    yesterday: shiftKarachiDateKey(today, -1),
+    tomorrow: shiftKarachiDateKey(today, 1),
+  };
+}
+
+function canEditCheckTime(dateKey) {
+  const { yesterday, today, tomorrow } = attendanceDateWindow();
+  const key = String(dateKey || '').slice(0, 10);
+  return key === yesterday || key === today || key === tomorrow;
 }
 
 function clampAttendanceDate(value) {
@@ -96,6 +116,34 @@ function checkInRequestButton(row) {
     return { label: 'Check in Request', title: 'Employee is not in an active shift.' };
   }
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
+}
+
+function toKarachiDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(d)
+      .filter((p) => p.type !== 'literal')
+      .map((p) => [p.type, p.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+function karachiLocalToIso(local) {
+  if (!local) return null;
+  const value = String(local).length === 16 ? `${local}:00` : local;
+  const d = new Date(`${value}+05:00`);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 }
 
 function formatKarachiTime(iso) {
@@ -191,6 +239,7 @@ export default function AttendanceAdminPage() {
   const [overrideRow, setOverrideRow] = useState(null);
   const [overrideStatus, setOverrideStatus] = useState('on_time');
   const [deletingId, setDeletingId] = useState(null);
+  const [timeEdit, setTimeEdit] = useState(EMPTY_TIME_EDIT);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
@@ -311,6 +360,62 @@ export default function AttendanceAdminPage() {
       setHistory(payload);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load attendance history.');
+    }
+  }
+
+  function openTimeEdit(slot, dateKey) {
+    if (!history?.employee?.id) return;
+    if (!canEditCheckTime(dateKey)) return;
+    if (!slot?.id && !slot?.hour_key) return;
+    const label =
+      slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`;
+    setTimeEdit({
+      userId: history.employee.id,
+      name: history.employee.name || '',
+      label,
+      challengeId: slot.id || null,
+      hourKey: slot.hour_key || '',
+      scheduled_at: toKarachiDatetimeLocal(slot.scheduled_at) || toKarachiDatetimeLocal(new Date().toISOString()),
+      checked_in_at: toKarachiDatetimeLocal(slot.checked_in_at),
+      hasCheckIn: Boolean(slot.checked_in_at),
+    });
+  }
+
+  async function submitTimeEdit(e) {
+    e.preventDefault();
+    if (!timeEdit.userId || (!timeEdit.challengeId && !timeEdit.hourKey)) return;
+    const scheduledIso = karachiLocalToIso(timeEdit.scheduled_at);
+    if (!scheduledIso) {
+      setError('Enter a valid check time.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const payload = { scheduled_at: scheduledIso, hour_key: timeEdit.hourKey };
+      if (timeEdit.hasCheckIn && timeEdit.checked_in_at) {
+        const checkInIso = karachiLocalToIso(timeEdit.checked_in_at);
+        if (!checkInIso) {
+          setError('Enter a valid check-in time.');
+          setSaving(false);
+          return;
+        }
+        payload.checked_in_at = checkInIso;
+      }
+      await api.patch(
+        `/api/admin/attendance/${timeEdit.userId}/challenges/${timeEdit.challengeId || 0}`,
+        payload
+      );
+      setTimeEdit(EMPTY_TIME_EDIT);
+      const { data: next } = await api.get(`/api/admin/attendance/${timeEdit.userId}/days`, {
+        params: { month: date.slice(0, 7) },
+      });
+      setHistory(next);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save check time.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -951,6 +1056,17 @@ export default function AttendanceAdminPage() {
                             {slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`}
                             {slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''}
                           </span>
+                          {day.status !== 'holiday' &&
+                          canEditCheckTime(day.date) &&
+                          (slot.hour_key || slot.scheduled_at) ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost attendance-time-edit"
+                              onClick={() => openTimeEdit(slot, day.date)}
+                            >
+                              Edit time
+                            </button>
+                          ) : null}
                           <span>
                             {checkStateLabel(slot.state)}
                             {slot.checked_in_at ? ` · in ${formatKarachiTime(slot.checked_in_at)}` : ''}
@@ -985,6 +1101,52 @@ export default function AttendanceAdminPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {timeEdit.userId && (
+        <div
+          className="modal-backdrop modal-backdrop-stack"
+          onClick={() => setTimeEdit(EMPTY_TIME_EDIT)}
+        >
+          <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitTimeEdit}>
+            <h2>Edit check time</h2>
+            <p className="muted">
+              {timeEdit.name} — {timeEdit.label}. Times are Pakistan time.
+            </p>
+            {error && <p className="error">{error}</p>}
+            <label>
+              Scheduled time
+              <input
+                type="datetime-local"
+                required
+                value={timeEdit.scheduled_at}
+                onChange={(e) => setTimeEdit((m) => ({ ...m, scheduled_at: e.target.value }))}
+              />
+            </label>
+            {timeEdit.hasCheckIn && (
+              <label>
+                Check-in time
+                <input
+                  type="datetime-local"
+                  value={timeEdit.checked_in_at}
+                  onChange={(e) => setTimeEdit((m) => ({ ...m, checked_in_at: e.target.value }))}
+                />
+              </label>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setTimeEdit(EMPTY_TIME_EDIT)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save time'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

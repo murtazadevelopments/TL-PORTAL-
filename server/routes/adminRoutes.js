@@ -68,6 +68,7 @@ const {
   adminManualMark,
   adminRequestCheckIn,
   adminSetHours,
+  adminUpdateCheckTime,
   adminEmployeeDays,
   adminDeleteRemoteDay,
 } = require('../controllers/attendanceController');
@@ -296,6 +297,12 @@ router.put(
   requireRole('admin'),
   requireCeoOrAnyPermission('employees:remote'),
   adminSetHours
+);
+router.patch(
+  '/attendance/:userId/challenges/:challengeId',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:remote'),
+  adminUpdateCheckTime
 );
 router.post(
   '/attendance/:userId/check-in-request',

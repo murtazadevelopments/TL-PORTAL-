@@ -11,6 +11,7 @@ const attendanceDays = require('../utils/attendanceDays');
 const remoteChallenges = require('../utils/remoteAttendanceChallenges');
 const { runRemoteAttendanceTick } = require('../services/remoteAttendancePings');
 const { normalizeEmploymentType } = require('../utils/employmentType');
+const { addDaysKey } = require('../utils/remoteCheckWindows');
 const { isSundayDateKey } = require('../utils/workWeek');
 
 function pick(obj, name) {
@@ -996,6 +997,114 @@ async function adminSetHours(req, res) {
   }
 }
 
+async function adminUpdateCheckTime(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    const challengeId = Number(req.params.challengeId);
+    const hourKey = String(req.body?.hour_key || '').trim();
+    if (!Number.isFinite(targetId)) {
+      return res.status(400).json({ message: 'Invalid employee or check id.' });
+    }
+    const scheduledAt = new Date(req.body?.scheduled_at);
+    if (!Number.isFinite(scheduledAt.getTime())) {
+      return res.status(400).json({ message: 'Enter a valid check time.' });
+    }
+
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Check times are only for remote employees.' });
+    }
+    const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+      return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+    }
+
+    let resolvedId = Number.isFinite(challengeId) && challengeId > 0 ? challengeId : 0;
+    if (!resolvedId && hourKey) {
+      const { rows } = await pool.query(
+        `SELECT id FROM attendance_challenges WHERE user_id = $1 AND hour_key = $2 LIMIT 1`,
+        [targetId, hourKey]
+      );
+      resolvedId = Number(rows[0]?.id) || 0;
+    }
+    if (!resolvedId) {
+      return res.status(404).json({ message: 'That attendance check was not found.' });
+    }
+
+    const { rows: challengeMeta } = await pool.query(
+      `SELECT shift_date FROM attendance_challenges WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [resolvedId, targetId]
+    );
+    const rawShift = challengeMeta[0]?.shift_date;
+    const shiftDate =
+      rawShift instanceof Date
+        ? rawShift.toISOString().slice(0, 10)
+        : String(rawShift || '').slice(0, 10);
+    const todayKey = zonedParts().dateKey;
+    const yesterdayKey = addDaysKey(todayKey, -1);
+    const tomorrowKey = addDaysKey(todayKey, 1);
+    if (shiftDate !== yesterdayKey && shiftDate !== todayKey && shiftDate !== tomorrowKey) {
+      return res.status(400).json({
+        message: 'Check times can only be edited for yesterday, today, or tomorrow.',
+      });
+    }
+
+    const updated = await remoteChallenges.updateChallengeSchedule(targetId, resolvedId, scheduledAt);
+    if (!updated) {
+      return res.status(404).json({ message: 'That attendance check was not found.' });
+    }
+
+    const checkInRaw = req.body?.checked_in_at;
+    if (checkInRaw !== undefined && checkInRaw !== null && String(checkInRaw).trim() !== '') {
+      const checkedInAt = new Date(checkInRaw);
+      if (!Number.isFinite(checkedInAt.getTime())) {
+        return res.status(400).json({ message: 'Enter a valid check-in time.' });
+      }
+      if (updated.attendance_log_id) {
+        await pool.query(
+          `UPDATE attendance_logs SET checked_in_at = $1 WHERE id = $2 AND user_id = $3`,
+          [checkedInAt, updated.attendance_log_id, targetId]
+        );
+      } else {
+        await pool.query(
+          `
+            UPDATE attendance_logs
+            SET checked_in_at = $1
+            WHERE id = (
+              SELECT id FROM attendance_logs
+              WHERE user_id = $2 AND hour_key = $3
+              ORDER BY created_at DESC
+              LIMIT 1
+            )
+          `,
+          [checkedInAt, targetId, updated.hour_key]
+        );
+      }
+    }
+
+    await refreshAttendanceDay(target, updated.shift_date, { markedBy: req.user.id });
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'attendance_check_time',
+      targetTable: 'attendance_challenges',
+      targetId: resolvedId,
+      reason: `Set ${updated.hour_key} scheduled time to ${scheduledAt.toISOString()}`,
+    });
+    return res.json({
+      message: 'Check time updated.',
+      challenge: updated,
+    });
+  } catch (err) {
+    console.error('adminUpdateCheckTime error:', err);
+    return res.status(500).json({ message: 'Server error saving check time.' });
+  }
+}
+
 async function adminEmployeeDays(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1108,6 +1217,7 @@ module.exports = {
   adminManualMark,
   adminRequestCheckIn,
   adminSetHours,
+  adminUpdateCheckTime,
   adminEmployeeDays,
   adminDeleteRemoteDay,
   markMissedSlots,

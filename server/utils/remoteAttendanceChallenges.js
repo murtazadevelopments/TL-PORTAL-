@@ -204,6 +204,28 @@ async function reopenForImmediateCheck(challenge, now = new Date()) {
   return rows.find((row) => Number(row.id) === Number(challenge.id)) || null;
 }
 
+async function updateChallengeSchedule(userId, challengeId, scheduledAt) {
+  const at = scheduledAt instanceof Date ? scheduledAt : new Date(scheduledAt);
+  if (!Number.isFinite(at.getTime())) {
+    throw new Error('Invalid scheduled time.');
+  }
+  const windows = windowsForScheduled(at);
+  const { rows } = await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET scheduled_at = $3,
+          late_at = $4,
+          absent_at = $5
+      WHERE id = $1
+        AND user_id = $2
+      RETURNING id, user_id, shift_date, seq, kind, hour_key,
+                scheduled_at, late_at, absent_at, notified_at, status, attendance_log_id
+    `,
+    [challengeId, userId, at, windows.late_at, windows.absent_at]
+  );
+  return rows[0] || null;
+}
+
 async function dropOpenChallenges(userId, shiftDate) {
   await pool.query(
     `
@@ -330,6 +352,7 @@ module.exports = {
   loadChallenges,
   ensureChallengesForUser,
   dropOpenChallenges,
+  updateChallengeSchedule,
   reopenForImmediateCheck,
   realignRandomSeqs,
   publicChallenge,

@@ -13,7 +13,7 @@ function pick(obj, name) {
 const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
-const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT, sortRemoteChecks } = require('./remoteCheckWindows');
+const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT, sortRemoteChecks, addDaysKey } = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
 const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
@@ -54,6 +54,7 @@ function slotsFromChallenges(challengeRows, logsByHour, now) {
       method: log?.method || null,
       checked_in_at: log?.checked_in_at || null,
       scheduled_at: row.scheduled_at || null,
+      id: row.id || null,
     };
   });
 }
@@ -300,7 +301,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
   let challengeRows = (
     await pool.query(
       `
-        SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
+        SELECT id, user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
         FROM attendance_challenges
         WHERE user_id = $1
           AND shift_date LIKE $2
@@ -323,6 +324,10 @@ async function monthHistory(user, monthKey, now = new Date()) {
   }
 
   const dateKeys = [...pastOrToday];
+  const tomorrow = addDaysKey(today, 1);
+  if (tomorrow.startsWith(`${monthKey}-`) && !dateKeys.includes(tomorrow)) {
+    dateKeys.push(tomorrow);
+  }
   const extra = new Set([...logsByDate.keys(), ...leaveByDate.keys(), ...challengesByDate.keys()]);
   for (const key of extra) {
     if (String(key).startsWith(monthKey) && !dateKeys.includes(key)) dateKeys.push(key);
@@ -332,9 +337,14 @@ async function monthHistory(user, monthKey, now = new Date()) {
   const days = dateKeys.map((dateKey) => {
     const logs = logsByDate.get(dateKey) || [];
     const dayChallenges = challengesByDate.get(dateKey) || [];
+    const byHour = {};
+    for (const log of logs) {
+      const prev = byHour[log.hour_key];
+      if (!prev || ['verified', 'late', 'leave'].includes(log.status)) byHour[log.hour_key] = log;
+    }
     if (leaveByDate.has(dateKey)) {
       const leaveSlots = (dayChallenges.length
-        ? slotsFromChallenges(dayChallenges, {}, now)
+        ? slotsFromChallenges(dayChallenges, byHour, now)
         : isRemoteUser(user)
           ? emptyRemoteSlots(dateKey)
           : slotsForUser(dateKey, user)
