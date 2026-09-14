@@ -121,8 +121,8 @@ function SignUp() {
       setTimeout(() => navigate('/'), 2500);
     } catch (err) {
       const status = err.response?.status;
-      const apiMsg = err.response?.data?.message;
-      if (apiMsg) setError(apiMsg);
+      if (status === 409) setError('account already exists');
+      else if (err.response?.data?.message) setError(err.response.data.message);
       else if (status === 503 || !err.response)
         setError('Server unavailable. Please contact your admin.');
       else setError('Unable to create account.');

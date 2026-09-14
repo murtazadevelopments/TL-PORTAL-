@@ -65,6 +65,34 @@ function getFile(req, field) {
   return req.files?.[field]?.[0] || null;
 }
 
+function digitsOnly(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+async function signupIdentityTaken({ username, email, contactNumber, cnicNumber }) {
+  const contactDigits = digitsOnly(contactNumber);
+  const cnicDigits = digitsOnly(cnicNumber);
+  const { rows } = await pool.query(
+    `
+      SELECT 1
+      FROM users
+      WHERE LOWER(TRIM(username)) = $1
+         OR LOWER(TRIM(COALESCE(email, ''))) = $2
+         OR (
+           $3 <> ''
+           AND regexp_replace(COALESCE(contact_number, ''), '[^0-9]', '', 'g') = $3
+         )
+         OR (
+           $4 <> ''
+           AND regexp_replace(COALESCE(cnic_number, ''), '[^0-9]', '', 'g') = $4
+         )
+      LIMIT 1
+    `,
+    [username, email, contactDigits, cnicDigits]
+  );
+  return rows.length > 0;
+}
+
 /**
  * POST /api/auth/signup
  * employee_id is NOT set here — admin assigns it later in the admin panel.
@@ -172,7 +200,18 @@ async function signup(req, res) {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedContact = String(contact_number).trim();
     const normalizedCnic = cnic_number ? String(cnic_number).trim() : null;
+    if (
+      await signupIdentityTaken({
+        username: normalizedUsername,
+        email: normalizedEmail,
+        contactNumber: normalizedContact,
+        cnicNumber: normalizedCnic,
+      })
+    ) {
+      return res.status(409).json({ message: 'account already exists' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Insert first (null file paths) so we can store under u{id}/
@@ -201,7 +240,7 @@ async function signup(req, res) {
       String(name).trim(),
       normalizedEmail,
       hashedPassword,
-      String(contact_number).trim(),
+      normalizedContact,
       String(address).trim(),
       normalizedCnic,
       'employee',
@@ -265,22 +304,7 @@ async function signup(req, res) {
     });
   } catch (err) {
     if (err.code === '23505') {
-      const detail = String(err.detail || err.message || '').toLowerCase();
-      if (detail.includes('username')) {
-        return res.status(409).json({ message: 'This username is already taken.' });
-      }
-      if (detail.includes('cnic')) {
-        return res.status(409).json({ message: 'An account with this CNIC number already exists.' });
-      }
-      if (detail.includes('email')) {
-        return res.status(409).json({ message: 'An account with this email already exists.' });
-      }
-      if (detail.includes('employee_id')) {
-        return res.status(409).json({ message: 'This employee ID is already in use.' });
-      }
-      return res.status(409).json({
-        message: 'Duplicate value — username, email, CNIC, or employee ID already registered.',
-      });
+      return res.status(409).json({ message: 'account already exists' });
     }
 
     console.error('signup error:', err);
