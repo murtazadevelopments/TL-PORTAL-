@@ -15,6 +15,7 @@ export default function DesignationsPage() {
   const [success, setSuccess] = useState('');
   const [newName, setNewName] = useState('');
   const [tlAccess, setTlAccess] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -65,6 +66,30 @@ export default function DesignationsPage() {
     if (!checking && role) load();
   }, [checking, role, load]);
 
+  function sortRows(list) {
+    return [...list].sort((a, b) => {
+      if (a.tl_dashboard_access !== b.tl_dashboard_access) {
+        return a.tl_dashboard_access ? -1 : 1;
+      }
+      return String(a.name).localeCompare(String(b.name));
+    });
+  }
+
+  function clearForm() {
+    setEditingId(null);
+    setNewName('');
+    setTlAccess(false);
+  }
+
+  function startEdit(row) {
+    if (!canManage || !row?.id) return;
+    setEditingId(row.id);
+    setNewName(row.name || '');
+    setTlAccess(Boolean(row.tl_dashboard_access));
+    setError('');
+    setSuccess('');
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     const name = newName.trim();
@@ -80,27 +105,29 @@ export default function DesignationsPage() {
     setError('');
     setSuccess('');
     try {
-      const { data } = await api.post('/api/admin/designations', {
-        name,
-        tl_dashboard_access: tlAccess,
-      });
-      setRows((prev) =>
-        [...prev, data].sort((a, b) => {
-          if (a.tl_dashboard_access !== b.tl_dashboard_access) {
-            return a.tl_dashboard_access ? -1 : 1;
-          }
-          return String(a.name).localeCompare(String(b.name));
-        })
-      );
-      setNewName('');
-      setTlAccess(false);
-      setSuccess(
-        data.tl_dashboard_access
-          ? `Added “${data.name}” with Team Lead access.`
-          : `Added “${data.name}”.`
-      );
+      if (editingId) {
+        const { data } = await api.patch(`/api/admin/designations/${editingId}`, {
+          name,
+          tl_dashboard_access: tlAccess,
+        });
+        setRows((prev) => sortRows(prev.map((item) => (item.id === data.id ? data : item))));
+        clearForm();
+        setSuccess(`Updated “${data.name}”.`);
+      } else {
+        const { data } = await api.post('/api/admin/designations', {
+          name,
+          tl_dashboard_access: tlAccess,
+        });
+        setRows((prev) => sortRows([...prev, data]));
+        clearForm();
+        setSuccess(
+          data.tl_dashboard_access
+            ? `Added “${data.name}” with Team Lead access.`
+            : `Added “${data.name}”.`
+        );
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add designation.');
+      setError(err.response?.data?.message || 'Failed to save designation.');
     } finally {
       setCreating(false);
     }
@@ -140,6 +167,7 @@ export default function DesignationsPage() {
     try {
       const { data } = await api.delete(`/api/admin/designations/${row.id}`);
       setRows((prev) => prev.filter((item) => item.id !== row.id));
+      if (editingId === row.id) clearForm();
       setSuccess(data.message || `Removed “${row.name}”.`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to remove designation.');
@@ -174,7 +202,7 @@ export default function DesignationsPage() {
       {canManage && (
         <form className="form branches-add-form" onSubmit={handleCreate}>
           <label>
-            New designation
+            {editingId ? 'Edit designation' : 'New designation'}
             <input
               type="text"
               value={newName}
@@ -193,8 +221,13 @@ export default function DesignationsPage() {
             Team Lead access
           </label>
           <button type="submit" className="btn btn-primary" disabled={creating}>
-            {creating ? 'Adding…' : 'Add designation'}
+            {creating ? 'Saving…' : editingId ? 'Save designation' : 'Add designation'}
           </button>
+          {editingId && (
+            <button type="button" className="btn btn-ghost" disabled={creating} onClick={clearForm}>
+              Cancel edit
+            </button>
+          )}
         </form>
       )}
 
@@ -223,6 +256,14 @@ export default function DesignationsPage() {
                   <td>{row.tl_dashboard_access ? 'Yes' : 'No'}</td>
                   {canManage && (
                     <td>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={busyId === row.id || creating}
+                        onClick={() => startEdit(row)}
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         className="btn btn-ghost"

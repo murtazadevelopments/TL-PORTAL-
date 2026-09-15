@@ -122,6 +122,16 @@ async function updateDesignation(req, res) {
       `,
       [id, nextName, nextTl]
     );
+    if (String(existing[0].name) !== String(nextName)) {
+      await pool.query(
+        `
+          UPDATE users
+          SET designation = $1, updated_at = NOW()
+          WHERE lower(trim(COALESCE(designation, ''))) = lower(trim($2))
+        `,
+        [nextName, existing[0].name]
+      );
+    }
     await refreshDesignationCache();
     return res.json(serialize(rows[0]));
   } catch (err) {
