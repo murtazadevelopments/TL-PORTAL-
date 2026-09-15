@@ -39,6 +39,23 @@ const upload = multer({
   fileFilter,
 });
 
+function isInterruptedUpload(err) {
+  const raw = String(err?.message || err?.code || '');
+  return /unexpected (end of )?form|unexpected form error|aborted|econnreset|request aborted/i.test(
+    raw
+  );
+}
+
+function sendUploadError(res, err, sizeMessage) {
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ message: sizeMessage });
+  }
+  if (isInterruptedUpload(err)) {
+    return res.status(400).json({ message: 'Check your internet connection.' });
+  }
+  return res.status(400).json({ message: err?.message || 'Invalid upload.' });
+}
+
 /**
  * Signup multipart parser:
  * text fields + cnic_front, cnic_back, cv, profile_picture
@@ -51,15 +68,7 @@ function signupUpload(req, res, next) {
     { name: 'profile_picture', maxCount: 1 },
   ])(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
-      }
-      return res.status(400).json({ message: err.message });
-    }
-
-    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+    return sendUploadError(res, err, 'Each file must be 5MB or smaller.');
   });
 }
 
@@ -75,15 +84,7 @@ function extFromFile(file, fallback) {
 function profilePictureUpload(req, res, next) {
   upload.single('profile_picture')(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
-      }
-      return res.status(400).json({ message: err.message });
-    }
-
-    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+    return sendUploadError(res, err, 'Each file must be 5MB or smaller.');
   });
 }
 
@@ -97,15 +98,7 @@ function documentUpload(req, res, next) {
     { name: 'cv', maxCount: 1 },
   ])(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
-      }
-      return res.status(400).json({ message: err.message });
-    }
-
-    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+    return sendUploadError(res, err, 'Each file must be 5MB or smaller.');
   });
 }
 
@@ -137,18 +130,13 @@ function employmentFormUpload(req, res, next) {
     { name: 'images', maxCount: 10 },
   ])(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each file must be 8MB or smaller.' });
-      }
-      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
-        return res.status(400).json({ message: 'Maximum 10 images (or 1 PDF) allowed.' });
-      }
-      return res.status(400).json({ message: err.message });
+    if (
+      err instanceof multer.MulterError &&
+      (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE')
+    ) {
+      return res.status(400).json({ message: 'Maximum 10 images (or 1 PDF) allowed.' });
     }
-
-    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+    return sendUploadError(res, err, 'Each file must be 8MB or smaller.');
   });
 }
 
@@ -163,15 +151,7 @@ function lowerStaffUpload(req, res, next) {
     { name: 'extra_2_file', maxCount: 1 },
   ])(req, res, (err) => {
     if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ message: 'Each file must be 5MB or smaller.' });
-      }
-      return res.status(400).json({ message: err.message });
-    }
-
-    return res.status(400).json({ message: err.message || 'Invalid upload.' });
+    return sendUploadError(res, err, 'Each file must be 5MB or smaller.');
   });
 }
 

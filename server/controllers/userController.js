@@ -492,7 +492,7 @@ async function updateDocuments(req, res) {
   } catch (err) {
     console.error('updateDocuments error:', err);
     return res.status(err.status || 500).json({
-      message: 'Unable to update documents. Please try again or contact your admin.',
+      message: 'Unable to update documents. Check your internet connection and try again.',
     });
   }
 }

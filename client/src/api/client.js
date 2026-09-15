@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { sanitizePublicError, sanitizePublicPayload } from '../utils/sanitizePublicError';
+import { sanitizePublicError, sanitizePublicPayload, attachNetworkErrorMessage } from '../utils/sanitizePublicError';
 
 /**
  * Backend origin from Vite env (no trailing slash).
@@ -46,6 +46,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    attachNetworkErrorMessage(error);
     const status = error.response?.status;
     const code = error.response?.data?.code;
     const url = String(error.config?.url || '');

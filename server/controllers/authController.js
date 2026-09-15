@@ -315,7 +315,7 @@ async function signup(req, res) {
       });
     }
     return res.status(err.status || 500).json({
-      message: 'Unable to create account. Please try again or contact your admin.',
+      message: 'Unable to create account. Check your internet connection and try again.',
     });
   }
 }

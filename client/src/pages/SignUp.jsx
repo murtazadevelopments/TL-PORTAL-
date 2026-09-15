@@ -124,7 +124,7 @@ function SignUp() {
       if (status === 409) setError('account already exists');
       else if (err.response?.data?.message) setError(err.response.data.message);
       else if (status === 503 || !err.response)
-        setError('Server unavailable. Please contact your admin.');
+        setError('Check your internet connection.');
       else setError('Unable to create account.');
     } finally {
       setLoading(false);

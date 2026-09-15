@@ -88,7 +88,7 @@ function SignIn() {
       const apiMsg = err.response?.data?.message;
       if (apiMsg) setError(apiMsg);
       else if (status === 503 || !err.response)
-        setError('Server unavailable. Please contact your admin');
+        setError('Check your internet connection.');
       else setError('Unable to sign in.');
     } finally {
       setLoading(false);

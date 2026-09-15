@@ -159,7 +159,7 @@ try {
   console.error('API failed to load (check Hostinger env vars):', err.message);
   app.use('/api', (req, res) => {
     res.status(503).json({
-      message: 'Server unavailable. Please contact your admin.',
+      message: 'Check your internet connection.',
     });
   });
 }

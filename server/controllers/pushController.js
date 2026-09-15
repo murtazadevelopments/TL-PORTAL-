@@ -62,7 +62,7 @@ async function getStatus(req, res) {
     subscriptionCount,
     schemaReady,
     message: !configured || !schemaReady
-      ? 'Notifications are unavailable. Please contact your admin.'
+      ? 'Notifications are unavailable. Check your internet connection and try again.'
       : undefined,
   });
 }

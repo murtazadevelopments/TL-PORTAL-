@@ -100,7 +100,7 @@ export default function SettingsPage() {
           {pushStatus && !pushStatus.configured && (
             <p className="error" style={{ marginTop: '0.75rem' }}>
               {pushStatus.message ||
-                'Notifications are unavailable. Please contact your admin.'}
+                'Notifications are unavailable. Check your internet connection and try again.'}
             </p>
           )}
 
