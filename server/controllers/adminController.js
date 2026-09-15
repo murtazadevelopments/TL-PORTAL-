@@ -44,6 +44,7 @@ const {
   isLowerStaff,
 } = require('../utils/staffKind');
 const { deliverOneMessage } = require('./messagesController');
+const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 const LAST_JOB_STATUSES = new Set([
@@ -983,9 +984,6 @@ async function updateEmployee(req, res) {
 
     const employee = await attachReadableUrls(rows[0]);
     const changed = summarizeChanges(before, employee, ALLOWED_UPDATE_FIELDS);
-    if (changed.length) {
-      await notifyEmployeeAdminUpdated(employee, changed);
-    }
 
     const beforeStatus = String(before.status || '')
       .trim()
@@ -993,9 +991,9 @@ async function updateEmployee(req, res) {
     const afterStatus = String(employee.status || '')
       .trim()
       .toLowerCase();
-    if (beforeStatus !== 'active' && afterStatus === 'active') {
+    const becameActive = beforeStatus !== 'active' && afterStatus === 'active';
+    if (becameActive) {
       try {
-        await notifyAccountApproved(employee);
         await writeAuditLog({
           actorId: req.user.id,
           actorUsername: req.user.username,
@@ -1004,15 +1002,23 @@ async function updateEmployee(req, res) {
           targetId: employee.id,
           reason: `Status changed from ${beforeStatus || 'unset'} to active`,
         });
-      } catch (notifyErr) {
-        console.warn(
-          '[account_approved] notify/audit failed:',
-          notifyErr.message || notifyErr
-        );
+      } catch (auditErr) {
+        console.warn('[account_approved] audit failed:', auditErr.message || auditErr);
       }
     }
 
-    return res.json(redactSalary(employee, false));
+    res.json(redactSalary(employee, false));
+    if (changed.length) {
+      void notifyAfterResponse('employee-admin-updated', employee.id, () =>
+        notifyEmployeeAdminUpdated(employee, changed)
+      );
+    }
+    if (becameActive) {
+      void notifyAfterResponse('account-approved', employee.id, () =>
+        notifyAccountApproved(employee)
+      );
+    }
+    return;
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Employee ID is already in use.' });

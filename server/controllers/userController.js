@@ -19,6 +19,7 @@ const {
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
+const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -346,11 +347,13 @@ async function updateMe(req, res) {
     const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
 
     const changed = summarizeChanges(current, user, EMPLOYEE_UPDATE_WHITELIST);
+    res.json(user);
     if (changed.length) {
-      await notifyAdminsEmployeeSelfUpdate(user, changed);
+      void notifyAfterResponse('profile-self-update', user.id, () =>
+        notifyAdminsEmployeeSelfUpdate(user, changed)
+      );
     }
-
-    return res.json(user);
+    return;
   } catch (err) {
     if (err.code === '23505') {
       const detail = String(err.detail || err.message || '').toLowerCase();
@@ -409,9 +412,11 @@ async function updateProfilePicture(req, res) {
     );
 
     const user = hideSalary(await attachReadableUrls(rows[0]));
-    await notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)']);
-
-    return res.json(user);
+    res.json(user);
+    void notifyAfterResponse('profile-photo-update', user.id, () =>
+      notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)'])
+    );
+    return;
   } catch (err) {
     console.error('updateProfilePicture error:', err);
     return res.status(500).json({ message: 'Server error updating profile picture.' });
@@ -481,14 +486,17 @@ async function updateDocuments(req, res) {
     if (cnicFront) changed.push('CNIC front (updated)');
     if (cnicBack) changed.push('CNIC back (updated)');
     if (cv) changed.push('CV (updated)');
-    if (changed.length) {
-      await notifyAdminsEmployeeSelfUpdate(user, changed);
-    }
 
-    return res.json({
+    res.json({
       message: 'Documents updated.',
       user,
     });
+    if (changed.length) {
+      void notifyAfterResponse('profile-documents-update', user.id, () =>
+        notifyAdminsEmployeeSelfUpdate(user, changed)
+      );
+    }
+    return;
   } catch (err) {
     console.error('updateDocuments error:', err);
     return res.status(err.status || 500).json({

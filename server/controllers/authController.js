@@ -18,6 +18,7 @@ const {
   normalizeEmploymentType,
 } = require('../utils/employmentType');
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
+const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -63,6 +64,12 @@ function omitPassword(row) {
 
 function getFile(req, field) {
   return req.files?.[field]?.[0] || null;
+}
+
+function sendSignupNotifications(user) {
+  return notifyAfterResponse('signup-notify', user?.id, () =>
+    Promise.all([notifyUserSignup(user), notifyDesignatedNewSignup(user)])
+  );
 }
 
 function digitsOnly(value) {
@@ -285,23 +292,16 @@ async function signup(req, res) {
 
     const user = await attachReadableUrls(userRow);
 
-    // Best-effort emails — never fail signup if Resend/settings misconfigured
-    try {
-      await Promise.all([
-        notifyUserSignup(user),
-        notifyDesignatedNewSignup(user),
-      ]);
-    } catch (emailErr) {
-      console.error('[signup] notification emails failed:', emailErr.message || emailErr);
-    }
-
-    // Pending approval — do not issue a JWT
-    return res.status(201).json({
+    // Pending approval — do not issue a JWT. Respond before email so a hanging
+    // Resend call cannot block the client (Hostinger may not flush until the handler returns).
+    res.status(201).json({
       user,
       pendingApproval: true,
       message:
         'Your account has been created and is pending admin approval. You will be able to sign in once an administrator activates your account.',
     });
+    void sendSignupNotifications(user);
+    return;
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'account already exists' });
@@ -486,11 +486,12 @@ async function forgotUsername(req, res) {
       console.log(
         `[forgot-username] email=${email} matches=${rows.length} usernames=${rows.map((r) => r.username).join(',')}`
       );
-      await notifyUsernameReminder(rows);
-    } else {
-      console.warn(`[forgot-username] no account with a username for email=${email}`);
+      res.json(generic);
+      void notifyAfterResponse('forgot-username', rows[0].id, () => notifyUsernameReminder(rows));
+      return;
     }
 
+    console.warn(`[forgot-username] no account with a username for email=${email}`);
     return res.json(generic);
   } catch (err) {
     console.error('forgotUsername error:', err);
@@ -521,6 +522,7 @@ async function forgotPassword(req, res) {
     );
 
     const user = rows[0];
+    let sendResetMail = null;
     if (user && user.is_active !== false && !user.blocked_at) {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -533,10 +535,14 @@ async function forgotPassword(req, res) {
       );
 
       const resetUrl = `${frontendBaseUrl()}/reset-password?token=${rawToken}`;
-      await notifyPasswordReset(user, resetUrl);
+      sendResetMail = () => notifyPasswordReset(user, resetUrl);
     }
 
-    return res.json(generic);
+    res.json(generic);
+    if (sendResetMail) {
+      void notifyAfterResponse('forgot-password', user.id, sendResetMail);
+    }
+    return;
   } catch (err) {
     console.error('forgotPassword error:', err);
     return res.json(generic);
