@@ -7,6 +7,7 @@ const {
   notifyEmployeeAdminUpdated,
   notifyAccountApproved,
   summarizeChanges,
+  queueCeoBranchManagerNotice,
 } = require('../services/notifications');
 const { writeAuditLog } = require('../utils/auditLog');
 const {
@@ -472,7 +473,13 @@ async function createLowerStaff(req, res, body) {
     console.warn('lower_staff_created audit failed:', auditErr.message || auditErr);
   }
 
-  return res.status(201).json(employee);
+  res.status(201).json(employee);
+  queueCeoBranchManagerNotice(req, {
+    action: 'Added subordinate staff',
+    targetName: employee.name || employee.username,
+    targetId: employee.id,
+  });
+  return;
 }
 
 async function updateLowerStaff(req, res) {
@@ -584,7 +591,13 @@ async function updateLowerStaff(req, res) {
       console.warn('lower_staff_updated audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json(employee);
+    res.json(employee);
+    queueCeoBranchManagerNotice(req, {
+      action: 'Updated subordinate staff',
+      targetName: employee.name || employee.username,
+      targetId: employee.id,
+    });
+    return;
   } catch (err) {
     console.error('updateLowerStaff error:', err);
     return res.status(500).json({ message: 'Server error updating subordinate staff.' });
@@ -636,7 +649,13 @@ async function deleteLowerStaff(req, res) {
       console.warn('lower_staff_deleted audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({ message: 'Subordinate staff record deleted.' });
+    res.json({ message: 'Subordinate staff record deleted.' });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Deleted subordinate staff',
+      targetName: existing.name || existing.username,
+      targetId: existing.id,
+    });
+    return;
   } catch (err) {
     console.error('deleteLowerStaff error:', err);
     return res.status(500).json({ message: 'Server error deleting subordinate staff.' });
@@ -800,7 +819,13 @@ async function createEmployee(req, res) {
       console.warn('employee_created audit failed:', auditErr.message || auditErr);
     }
 
-    return res.status(201).json(employee);
+    res.status(201).json(employee);
+    queueCeoBranchManagerNotice(req, {
+      action: 'Created employee',
+      targetName: employee.name || employee.username,
+      targetId: employee.id,
+    });
+    return;
   } catch (err) {
     if (err.code === '23505') {
       const detail = String(err.detail || err.message || '').toLowerCase();
@@ -1018,6 +1043,12 @@ async function updateEmployee(req, res) {
         notifyAccountApproved(employee)
       );
     }
+    queueCeoBranchManagerNotice(req, {
+      action: becameActive ? 'Approved employee' : 'Edited employee profile',
+      targetName: employee.name || employee.username,
+      targetId: employee.id,
+      details: changed,
+    });
     return;
   } catch (err) {
     if (err.code === '23505') {
@@ -1098,10 +1129,16 @@ async function deactivateEmployee(req, res) {
       return res.status(404).json({ message: 'Employee not found or already deactivated.' });
     }
 
-    return res.json({
+    res.json({
       message: 'Employee deactivated.',
       user: rows[0],
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Deactivated employee',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
   } catch (err) {
     console.error('deactivateEmployee error:', err);
     return res.status(500).json({ message: 'Server error deactivating employee.' });
@@ -1166,10 +1203,16 @@ async function restoreEmployee(req, res) {
       console.warn('restore audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({
+    res.json({
       message: 'Employee restored.',
       user: rows[0],
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Restored employee',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
   } catch (err) {
     console.error('restoreEmployee error:', err);
     return res.status(500).json({ message: 'Server error restoring employee.' });
@@ -1222,7 +1265,13 @@ async function purgeEmployee(req, res) {
 
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
 
-    return res.json({ message: 'Employee permanently purged.' });
+    res.json({ message: 'Employee permanently purged.' });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Permanently deleted employee',
+      targetName: employee.name || employee.username,
+      targetId: employee.id,
+    });
+    return;
   } catch (err) {
     console.error('purgeEmployee error:', err);
     return res.status(500).json({ message: 'Server error purging employee.' });
@@ -1324,10 +1373,16 @@ async function unlockAccount(req, res) {
       console.warn('account_unlocked audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({
+    res.json({
       message: 'Account unlocked.',
       user: rows[0],
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Unlocked account',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
   } catch (err) {
     console.error('unlockAccount error:', err);
     return res.status(500).json({ message: 'Server error unlocking account.' });
@@ -1412,10 +1467,16 @@ async function blockAccount(req, res) {
       console.warn('account_blocked audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({
+    res.json({
       message: 'Account blocked. They are signed out and cannot sign in.',
       user: rows[0],
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Blocked account',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
   } catch (err) {
     console.error('blockAccount error:', err);
     return res.status(500).json({ message: 'Server error blocking account.' });
@@ -1479,10 +1540,16 @@ async function unblockAccount(req, res) {
       console.warn('account_unblocked audit failed:', auditErr.message || auditErr);
     }
 
-    return res.json({
+    res.json({
       message: 'Account unblocked. They can sign in again.',
       user: rows[0],
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Unblocked account',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
   } catch (err) {
     console.error('unblockAccount error:', err);
     return res.status(500).json({ message: 'Server error unblocking account.' });
@@ -1633,7 +1700,7 @@ async function sendProfileAlert(req, res) {
         ? 'They do not have the app, so the alert was emailed.'
         : 'They will see a banner in the portal. Email could not be sent.';
 
-    return res.json({
+    res.json({
       message: `Alert sent. ${channel} Next alert is available after 24 hours.`,
       missingFields: labels,
       emailSent: viaEmail,
@@ -1641,6 +1708,12 @@ async function sendProfileAlert(req, res) {
       emailError: result?.emailError || null,
       profileAlertSentAt: new Date().toISOString(),
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Sent profile alert',
+      targetName: target.name || target.username,
+      targetId: target.id,
+    });
+    return;
   } catch (err) {
     console.error('sendProfileAlert error:', err);
     return res.status(500).json({ message: 'Server error sending profile alert.' });
@@ -1770,13 +1843,19 @@ async function sendPhotoAlert(req, res) {
         ? 'They do not have the app, so the alert was emailed.'
         : 'They will see the message in the portal. Email could not be sent.';
 
-    return res.json({
+    res.json({
       message: `Photo alert sent. ${channel}`,
       emailSent: viaEmail,
       pushSent: viaPush,
       emailError: result?.emailError || null,
       photoAlertSentAt: new Date().toISOString(),
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Sent photo alert',
+      targetName: target.name || target.username,
+      targetId: target.id,
+    });
+    return;
   } catch (err) {
     console.error('sendPhotoAlert error:', err);
     return res.status(500).json({ message: 'Server error sending photo alert.' });

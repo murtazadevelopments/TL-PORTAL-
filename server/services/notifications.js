@@ -4,6 +4,8 @@ const {
   resolveNewSignupRecipientEmail,
   logEmail,
 } = require('./notificationSettings');
+const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
+const { isBranchManagerDesignation } = require('../constants/designations');
 
 async function getAdminEmails() {
   const fromEnv = String(process.env.ADMIN_NOTIFY_EMAILS || '')
@@ -17,6 +19,84 @@ async function getAdminEmails() {
   const fromDb = rows.map((r) => String(r.email).trim().toLowerCase()).filter(Boolean);
 
   return [...new Set([...fromEnv, ...fromDb])];
+}
+
+async function getCeoEmails() {
+  const { rows } = await pool.query(
+    `
+      SELECT email
+      FROM users
+      WHERE LOWER(TRIM(role)) = 'ceo'
+        AND is_active IS NOT FALSE
+        AND NULLIF(TRIM(email), '') IS NOT NULL
+    `
+  );
+  return [
+    ...new Set(rows.map((r) => String(r.email).trim().toLowerCase()).filter(Boolean)),
+  ];
+}
+
+async function notifyCeoIfBranchManagerWork(
+  actorId,
+  { action, targetName, targetId, details } = {}
+) {
+  if (!actorId) return null;
+  const { rows } = await pool.query(
+    `
+      SELECT id, name, username, email, designation, branch, department, role
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [actorId]
+  );
+  const actor = rows[0];
+  if (!actor) return null;
+  if (String(actor.role || '').trim().toLowerCase() === 'ceo') return null;
+  if (!isBranchManagerDesignation(actor.designation)) return null;
+
+  const actorEmail = String(actor.email || '').trim().toLowerCase();
+  const to = (await getCeoEmails()).filter((email) => email && email !== actorEmail);
+  if (!to.length) {
+    console.warn('[branch-manager-ceo] SKIP — no CEO email on file');
+    return null;
+  }
+
+  const who = actor.name || actor.username || `User ${actor.id}`;
+  const actionLabel = action || 'updated employee data';
+  const target = targetName || (targetId ? `employee #${targetId}` : 'an employee');
+  const detailHtml =
+    Array.isArray(details) && details.length
+      ? `<ul>${details.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : '';
+
+  return sendEmailSafe({
+    emailType: 'branch_manager_activity',
+    to,
+    subject: `Branch Manager update: ${who} — ${actionLabel}`,
+    html: `
+      <p>A Branch Manager changed employee data on Textured Lab Portal.</p>
+      <ul>
+        <li><strong>Branch Manager:</strong> ${escapeHtml(who)}</li>
+        <li><strong>Username:</strong> ${escapeHtml(actor.username || '')}</li>
+        <li><strong>Designation:</strong> ${escapeHtml(actor.designation || 'Branch Manager')}</li>
+        <li><strong>Office:</strong> ${escapeHtml(actor.branch || '—')}</li>
+        <li><strong>Team:</strong> ${escapeHtml(actor.department || '—')}</li>
+        <li><strong>Action:</strong> ${escapeHtml(actionLabel)}</li>
+        <li><strong>Employee:</strong> ${escapeHtml(target)}</li>
+      </ul>
+      ${detailHtml}
+      <p>Sent ${escapeHtml(formatTimestamp())}.</p>
+    `,
+  });
+}
+
+function queueCeoBranchManagerNotice(req, payload) {
+  const actorId = req?.user?.id;
+  if (!actorId) return;
+  void notifyAfterResponse('branch-manager-ceo', actorId, () =>
+    notifyCeoIfBranchManagerWork(actorId, payload)
+  );
 }
 
 function escapeHtml(value) {
@@ -510,6 +590,9 @@ async function notifyRemoteAttendanceCheck(user, challenge) {
 
 module.exports = {
   getAdminEmails,
+  getCeoEmails,
+  notifyCeoIfBranchManagerWork,
+  queueCeoBranchManagerNotice,
   notifyAdminsNewSignup,
   notifyDesignatedNewSignup,
   notifyUserSignup,

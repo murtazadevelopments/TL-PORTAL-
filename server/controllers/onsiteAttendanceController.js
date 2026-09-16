@@ -13,6 +13,7 @@ const {
 const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
 const { getShiftByName } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
+const { queueCeoBranchManagerNotice } = require('../services/notifications');
 const { sundayKeysInMonth, isSundayDateKey } = require('../utils/workWeek');
 
 const ONSITE_SELECT = `
@@ -741,11 +742,18 @@ async function adminManualOnsite(req, res) {
         reason: `Manual onsite check-in for ${user.name || user.username} (${user.employee_id || user.id}) at ${checkedInAt.toISOString()} → ${calc.status} (${row.branch_name})`,
       });
 
-      return res.status(201).json({
+      res.status(201).json({
         message: 'Attendance recorded.',
         status: calc.status,
         record: publicRow(row),
       });
+      queueCeoBranchManagerNotice(req, {
+        action: 'Manually marked onsite attendance',
+        targetName: user.name || user.username,
+        targetId: user.id,
+        details: [`Status: ${calc.status}`],
+      });
+      return;
     } catch (err) {
       if (err.code === '23505') {
         return res.status(409).json({
@@ -821,10 +829,17 @@ async function adminOverrideOnsite(req, res) {
       reason: `Changed onsite attendance for ${user.name || user.username} (${user.employee_id || user.id}) ${rec.status} → ${nextStatus}`,
     });
 
-    return res.json({
+    res.json({
       message: 'Status updated.',
       record: publicRow(updated[0]),
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Changed onsite attendance status',
+      targetName: user.name || user.username,
+      targetId: user.id,
+      details: [`${rec.status} → ${nextStatus}`],
+    });
+    return;
   } catch (err) {
     console.error('adminOverrideOnsite error:', err);
     return res.status(500).json({ message: 'Server error updating status.' });
@@ -865,10 +880,17 @@ async function adminDeleteOnsite(req, res) {
       reason: `Deleted onsite attendance for ${user?.name || user?.username || rec.user_id} (${user?.employee_id || rec.user_id}) on ${pgDateKey(rec.work_date)} (was ${rec.status}, ${rec.method})`,
     });
 
-    return res.json({
+    res.json({
       message: `Deleted attendance for ${pgDateKey(rec.work_date)}.`,
       record: publicRow(rec),
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Deleted onsite attendance',
+      targetName: user?.name || user?.username,
+      targetId: user?.id || rec.user_id,
+      details: [`Date: ${pgDateKey(rec.work_date)}`],
+    });
+    return;
   } catch (err) {
     console.error('adminDeleteOnsite error:', err);
     return res.status(500).json({ message: 'Server error deleting attendance.' });

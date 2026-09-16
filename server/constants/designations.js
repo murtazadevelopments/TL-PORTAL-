@@ -36,6 +36,11 @@ const TEAM_LEAD_LIKE_NORMALIZED = new Set(
   TEAM_LEAD_LIKE_DESIGNATIONS.map((label) => normalizeDesignation(label))
 );
 
+function isBranchManagerDesignation(value) {
+  const n = normalizeDesignation(value);
+  return n === 'branch manager' || n.includes('branch manager');
+}
+
 function isCatalogDesignation(value) {
   const n = normalizeDesignation(value);
   if (!n) return false;
@@ -66,4 +71,5 @@ module.exports = {
   isCatalogDesignation,
   catalogDesignationLabel,
   isAllowedDesignation,
+  isBranchManagerDesignation,
 };

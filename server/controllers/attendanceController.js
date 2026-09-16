@@ -41,6 +41,7 @@ const TIMEZONE = pick(windows, 'timezone');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
 const notifyAttendanceFailed = pick(notifications, 'notifyattendancefailed');
 const notifyRemoteAttendanceCheck = pick(notifications, 'notifyremoteattendancecheck');
+const queueCeoBranchManagerNotice = pick(notifications, 'queueceobranchmanagernotice');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
 const formatHourLabel = pick(workHours, 'formathourlabel');
@@ -850,7 +851,14 @@ async function adminManualMark(req, res) {
       );
     }
 
-    return res.status(201).json({ message: 'Attendance updated.', log });
+    res.status(201).json({ message: 'Attendance updated.', log });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Manually marked remote attendance',
+      targetName: target.name || target.username,
+      targetId: target.id,
+      details: [`Status: ${status}`, `Check: ${hourKey}`],
+    });
+    return;
   } catch (err) {
     console.error('adminManualMark error:', err);
     return res.status(500).json({ message: 'Server error saving manual attendance.' });
@@ -936,9 +944,15 @@ async function adminRequestCheckIn(req, res) {
       reason: `Sent check-in request to employee id ${target.id} for shift ${shiftDate} check ${opened.seq}`,
     });
 
-    return res.json({
+    res.json({
       message: 'Check-in request sent. The employee will get the usual attendance notification.',
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Sent remote check-in request',
+      targetName: target.name || target.username,
+      targetId: target.id,
+    });
+    return;
   } catch (err) {
     console.error('adminRequestCheckIn error:', err);
     return res.status(500).json({ message: 'Server error sending check-in request.' });
@@ -985,12 +999,19 @@ async function adminSetHours(req, res) {
       targetId: targetId,
       reason: `Set working hours ${hours.start}:00–${hours.end}:00`,
     });
-    return res.json({
+    res.json({
       message: 'Working hours updated.',
       work_start_hour: hours.start,
       work_end_hour: hours.end,
       work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Updated remote working hours',
+      targetName: target.name || target.username,
+      targetId: target.id,
+      details: [`Hours: ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`],
+    });
+    return;
   } catch (err) {
     console.error('adminSetHours error:', err);
     return res.status(500).json({ message: 'Server error saving working hours.' });
@@ -1095,10 +1116,17 @@ async function adminUpdateCheckTime(req, res) {
       targetId: resolvedId,
       reason: `Set ${updated.hour_key} scheduled time to ${scheduledAt.toISOString()}`,
     });
-    return res.json({
+    res.json({
       message: 'Check time updated.',
       challenge: updated,
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Edited remote check time',
+      targetName: target.name || target.username,
+      targetId: target.id,
+      details: [`Check: ${updated.hour_key}`],
+    });
+    return;
   } catch (err) {
     console.error('adminUpdateCheckTime error:', err);
     return res.status(500).json({ message: 'Server error saving check time.' });
@@ -1196,11 +1224,18 @@ async function adminDeleteRemoteDay(req, res) {
       reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${challengeCount} check(s), ${dayCount} day row(s))`,
     });
 
-    return res.json({
+    res.json({
       message: `Deleted attendance for ${dateKey}.`,
       logs_deleted: logCount,
       day_deleted: dayCount,
     });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Deleted remote attendance day',
+      targetName: user.name || user.username,
+      targetId: user.id,
+      details: [`Date: ${dateKey}`],
+    });
+    return;
   } catch (err) {
     console.error('adminDeleteRemoteDay error:', err);
     return res.status(500).json({ message: 'Server error deleting attendance.' });
