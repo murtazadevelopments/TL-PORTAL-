@@ -17,6 +17,7 @@ const {
   missingEmployeePortalFields,
   parseAlertFields,
   profileAlertCount,
+  isProfileIncompleteLocked,
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
@@ -100,8 +101,7 @@ async function decorateProfileAlert(user) {
     user.profile_alert_count = 0;
     user.profile_incomplete_locked_at = null;
   }
-  user.profile_incomplete_locked =
-    Boolean(user.profile_incomplete_locked_at) && missing.length > 0;
+  user.profile_incomplete_locked = isProfileIncompleteLocked(user);
   return user;
 }
 

@@ -1618,7 +1618,7 @@ async function sendProfileAlert(req, res) {
     if (currentCount >= PROFILE_ALERT_MAX) {
       return res.status(400).json({
         message:
-          'This employee already had 5 profile alerts. Their portal is limited to incomplete employee fields until they finish.',
+          `This employee already had ${PROFILE_ALERT_MAX} profile alerts. Their portal is limited to incomplete employee fields until they finish.`,
         code: 'PROFILE_ALERT_LIMIT',
         profileAlertCount: currentCount,
       });
@@ -1646,7 +1646,7 @@ async function sendProfileAlert(req, res) {
       'These are fields you fill yourself (not assigned by admin):\n\n' +
       labels.map((l) => `• ${l}`).join('\n') +
       (lockNow
-        ? '\n\nThis was the 5th reminder. Until these employee fields are complete, you will only see the missing items — not the dashboard.\n\n'
+        ? `\n\nThis was reminder ${PROFILE_ALERT_MAX} of ${PROFILE_ALERT_MAX}. Until these employee fields are complete, you will only see the missing items — not the dashboard.\n\n`
         : '\n\nOpen My Account → Profile and save the missing details.\n\n') +
       '— Textured Lab Portal';
 

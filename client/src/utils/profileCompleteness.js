@@ -58,7 +58,7 @@ export function missingAdminAssignFields(row) {
 }
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-export const PROFILE_ALERT_MAX = 5;
+export const PROFILE_ALERT_MAX = 3;
 export const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 export const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -104,8 +104,9 @@ export function profileAlertCount(row) {
 
 export function isProfileIncompleteLocked(row) {
   if (!row) return false;
-  if (!row.profile_incomplete_locked_at && row.profile_incomplete_locked !== true) return false;
-  return missingEmployeePortalFields(row).length > 0;
+  if (missingEmployeePortalFields(row).length === 0) return false;
+  if (row.profile_incomplete_locked_at || row.profile_incomplete_locked === true) return true;
+  return profileAlertCount(row) >= PROFILE_ALERT_MAX;
 }
 
 export function profileLockHomePath(row) {

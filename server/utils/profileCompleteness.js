@@ -63,7 +63,7 @@ function formatFieldList(fields) {
 }
 
 const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const PROFILE_ALERT_MAX = 5;
+const PROFILE_ALERT_MAX = 3;
 const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -137,8 +137,9 @@ function profileAlertCount(row) {
 
 function isProfileIncompleteLocked(row) {
   if (!row) return false;
-  if (!row.profile_incomplete_locked_at && row.profile_incomplete_locked !== true) return false;
-  return missingEmployeePortalFields(row).length > 0;
+  if (missingEmployeePortalFields(row).length === 0) return false;
+  if (row.profile_incomplete_locked_at || row.profile_incomplete_locked === true) return true;
+  return profileAlertCount(row) >= PROFILE_ALERT_MAX;
 }
 
 function parseAlertFields(raw) {

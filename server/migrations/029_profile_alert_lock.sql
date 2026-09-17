@@ -1,4 +1,4 @@
--- Five employee-profile alerts lock the portal to incomplete employee fields only.
+-- Three employee-profile alerts lock the portal to incomplete employee fields only.
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS profile_alert_count INTEGER NOT NULL DEFAULT 0;
 

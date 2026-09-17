@@ -68,6 +68,12 @@ export default function AccountDocuments() {
       body.append(field, file);
       const { data } = await api.put('/api/users/me/documents', body);
       setProfile(data.user || data);
+      const next = data.user || data;
+      if (locked && missingEmployeePortalFields(next).length === 0) {
+        await refreshUser();
+        navigate('/dashboard');
+        return;
+      }
       refreshUser();
       const next = data.user || data;
       if (locked && missingEmployeePortalFields(next).length === 0) {

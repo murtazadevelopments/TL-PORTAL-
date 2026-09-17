@@ -3,6 +3,7 @@ import {
   isProfileIncompleteLocked,
   missingEmployeePortalFields,
   profileLockHomePath,
+  PROFILE_ALERT_MAX,
 } from '../utils/profileCompleteness';
 import './ProfileIncompleteLock.css';
 
@@ -19,8 +20,8 @@ export default function ProfileIncompleteLock({ user, onContinue }) {
         <p className="profile-lock-kicker">Access limited</p>
         <h2 id="profile-lock-title">Complete your profile to continue</h2>
         <p>
-          After 5 reminders, the dashboard stays closed until you fill the employee fields that
-          are still missing. Admin-assigned fields are not required here.
+          After {PROFILE_ALERT_MAX} reminders, the dashboard stays closed until you fill the employee
+          fields that are still missing. Admin-assigned fields are not required here.
         </p>
         <ul>
           {missing.map((field) => (

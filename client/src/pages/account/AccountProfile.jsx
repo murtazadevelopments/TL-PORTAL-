@@ -140,12 +140,14 @@ export default function AccountProfile() {
         name: data.name || prev.name,
       }));
       setSuccess('Profile updated.');
-      refreshUser();
       const missing = missingEmployeePortalFields(data);
       if (missing.length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
+        await refreshUser();
         if (locked) navigate('/dashboard');
+      } else {
+        refreshUser();
       }
     } catch (err) {
       if (err.response?.status === 401) {
@@ -172,11 +174,13 @@ export default function AccountProfile() {
       setAvatarBroken(false);
       setShowAvatarEditor(false);
       setSuccess('Profile photo updated.');
-      refreshUser();
       if (missingEmployeePortalFields(data).length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
+        await refreshUser();
         if (locked) navigate('/dashboard');
+      } else {
+        refreshUser();
       }
     } catch (err) {
       if (err.response?.status === 401) {
@@ -203,16 +207,16 @@ export default function AccountProfile() {
         <h1>Profile</h1>
         <p className="muted">Your Textured Lab Portal employee profile</p>
 
-        {loading && <p className="muted">Loading profile…</p>}
-
-        {!loading && profile && locked && missingLabels.length > 0 && (
+        {locked && (
           <div className="profile-lock-banner" role="alert">
-            <strong>Dashboard locked until these employee fields are complete.</strong>
+            <strong>Dashboard locked until missing employee fields are complete.</strong>
             <p className="muted">
-              Fill only the missing items below. Admin-assigned fields are not required.
+              Only incomplete employee fields are shown. Admin-assigned fields are not required.
             </p>
           </div>
         )}
+
+        {loading && <p className="muted">Loading profile…</p>}
 
         {!loading && profile && !locked && showIncompleteBanner && missingLabels.length > 0 && (
           <div className="alert-banner" role="status">
@@ -271,6 +275,7 @@ export default function AccountProfile() {
                     {(profile.name || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
+                {(!locked || missingKeys.has('profile_picture_url')) && (
                 <button
                   type="button"
                   className="btn btn-ghost avatar-edit-btn"
@@ -278,6 +283,7 @@ export default function AccountProfile() {
                 >
                   Change / adjust photo
                 </button>
+                )}
               </div>
               )}
               {!locked && (
@@ -513,9 +519,11 @@ export default function AccountProfile() {
 
               {error && <p className="error">{error}</p>}
               {success && <p className="success">{success}</p>}
+              {(!locked || missingText) && (
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
+              )}
             </form>
           </>
         )}

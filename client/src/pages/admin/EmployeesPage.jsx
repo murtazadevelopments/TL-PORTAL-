@@ -16,6 +16,7 @@ import {
   photoAlertCooldown,
   profileAlertAction,
   isProfileIncompleteLocked,
+  PROFILE_ALERT_MAX,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
 } from '../../utils/profileCompleteness';
@@ -607,7 +608,7 @@ function EmployeesPage() {
     const action = profileAlertAction(target);
     if (action.locked) {
       setSaveError(
-        'This employee already had 5 profile alerts. Their portal is limited to incomplete employee fields until they finish.'
+        `This employee already had ${PROFILE_ALERT_MAX} profile alerts. Their portal is limited to incomplete employee fields until they finish.`
       );
       return;
     }
@@ -1850,14 +1851,14 @@ function EmployeesPage() {
                               className="btn btn-ghost alert-row-btn"
                               title={
                                 alertAction.locked
-                                  ? 'Portal limited after 5 alerts until they complete employee fields'
+                                  ? `Portal limited after ${PROFILE_ALERT_MAX} alerts until they complete employee fields`
                                   : alertCooldown.active
                                   ? `Already sent. Try again in ${alertCooldown.remainingLabel}`
                                   : `Ask them to fill: ${missingEmployee.map((f) => f.label).join(', ')}`
                               }
                               aria-label={
                                 alertAction.locked
-                                  ? `Profile limited after 5 alerts`
+                                  ? `Profile limited after ${PROFILE_ALERT_MAX} alerts`
                                   : alertCooldown.active
                                   ? `Alert available in ${alertCooldown.remainingLabel}`
                                   : `Alert ${fullName(row)} to complete portal fields`
@@ -1971,7 +1972,7 @@ function EmployeesPage() {
                           {isProfileIncompleteLocked(row) && (
                             <span
                               className="status-pill locked"
-                              title="Limited to incomplete employee fields after 5 alerts"
+                              title={`Limited to incomplete employee fields after ${PROFILE_ALERT_MAX} alerts`}
                             >
                               profile limited
                             </span>
@@ -2169,7 +2170,7 @@ function EmployeesPage() {
                     className="btn btn-ghost alert-row-btn"
                     title={
                       profileAlertAction(detail, nowMs).locked
-                        ? 'Portal limited after 5 alerts until they complete employee fields'
+                        ? `Portal limited after ${PROFILE_ALERT_MAX} alerts until they complete employee fields`
                         : profileAlertAction(detail, nowMs).cooldown.active
                         ? `Already sent. Try again in ${profileAlertAction(detail, nowMs).cooldown.remainingLabel}`
                         : `Ask them to fill: ${detailMissingEmployee.join(', ')}`
@@ -2229,7 +2230,7 @@ function EmployeesPage() {
                       )}
                       {profileAlertAction(detail, nowMs).locked && (
                         <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-                          5 alerts sent. Their portal is limited to incomplete employee fields until they finish.
+                          {PROFILE_ALERT_MAX} alerts sent. Their portal is limited to incomplete employee fields until they finish.
                         </p>
                       )}
                     </div>
