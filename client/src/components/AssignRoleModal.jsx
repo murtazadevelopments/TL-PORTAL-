@@ -28,6 +28,7 @@ function defaultScopesFromUser(user) {
     'employees:view',
     'employees:edit',
     'employees:remote',
+    'employees:export',
     'attendance:view',
     'attendance:edit',
   ]) {
@@ -56,6 +57,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     'employees:view': { type: 'all' },
     'employees:edit': { type: 'all' },
     'employees:remote': { type: 'all' },
+    'employees:export': { type: 'all' },
     'attendance:view': { type: 'all' },
     'attendance:edit': { type: 'all' },
   });
@@ -128,6 +130,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
         'employees:view': { type: 'all' },
         'employees:edit': { type: 'all' },
         'employees:remote': { type: 'all' },
+        'employees:export': { type: 'all' },
         'attendance:view': { type: 'all' },
         'attendance:edit': { type: 'all' },
       });
@@ -228,9 +231,13 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                 ? 'View employees'
                 : key === 'employees:edit'
                   ? 'Edit employees'
-                  : key === 'attendance:view'
-                    ? 'View attendance'
-                    : 'Edit attendance'
+                  : key === 'employees:export'
+                    ? 'Export employee data'
+                    : key === 'employees:remote'
+                      ? 'Remote employees'
+                      : key === 'attendance:view'
+                        ? 'View attendance'
+                        : 'Edit attendance'
             }, choose All, or pick at least one branch/team.`
           );
           return;

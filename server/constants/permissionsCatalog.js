@@ -52,6 +52,12 @@ const PERMISSIONS_CATALOG = [
       'Soft-delete employees and immediately end their session (keep records). Also block/unblock accounts so they cannot sign in.',
   },
   {
+    key: 'employees:export',
+    label: 'Export employee data',
+    description:
+      'Download employee records as Excel or PDF for an assigned branch, team, or all employees. Does not include documents. CEO always has this; other admins only if assigned.',
+  },
+  {
     key: 'documents:view',
     label: 'View documents',
     description: 'View/download CV and employment forms on employee profiles',

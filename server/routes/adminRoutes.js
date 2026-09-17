@@ -20,6 +20,10 @@ const {
   sendPhotoAlert,
 } = require('../controllers/adminController');
 const {
+  getExportOptions,
+  exportEmployees,
+} = require('../controllers/employeeExportController');
+const {
   getPermissionsCatalog,
   listEmployeesForRoleAssign,
   listRoleHolders,
@@ -217,6 +221,18 @@ router.get(
   requireRole('admin'),
   requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
   listEmployees
+);
+router.get(
+  '/employees/export-options',
+  requireRole('admin'),
+  requirePermission('employees:export'),
+  getExportOptions
+);
+router.get(
+  '/employees/export',
+  requireRole('admin'),
+  requirePermission('employees:export'),
+  exportEmployees
 );
 router.post(
   '/employees',

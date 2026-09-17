@@ -134,6 +134,7 @@ const SCOPED_PERMISSION_KEYS = new Set([
   'employees:view',
   'employees:edit',
   'employees:remote',
+  'employees:export',
   'attendance:view',
   'attendance:edit',
 ]);

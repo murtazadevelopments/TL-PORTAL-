@@ -1494,3 +1494,40 @@ tr.lower-staff-row-editing td {
   white-space: nowrap;
   text-align: right;
 }
+
+.employee-export-page .export-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 1.1rem 0 1.25rem;
+}
+
+.employee-export-page .export-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.employee-export-page .export-filters select {
+  min-height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+}
+
+.employee-export-page .export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .employee-export-page .export-filters {
+    grid-template-columns: 1fr;
+  }
+}

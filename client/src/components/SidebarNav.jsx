@@ -71,6 +71,9 @@ export function buildSidebarGroups(
         }
       );
     }
+    if (hasPermission(permissions, 'employees:export', role)) {
+      employeeItems.push({ to: '/admin/employees/export', label: 'Export employees' });
+    }
     if (canViewTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance' });
     }
