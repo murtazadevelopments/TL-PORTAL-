@@ -1,11 +1,14 @@
 const { PDFDocument } = require('pdf-lib');
 const sharp = require('sharp');
 
+/** Long edge in PDF points (~A4). Viewers then scale the whole page to the screen. */
+const PAGE_LONG_EDGE = 842;
+const MAX_IMAGE_EDGE = 2480;
+
 /**
- * Build a multi-page PDF from image buffers (one page per image, native aspect ratio).
- * Order of `files` is preserved.
- * @param {Array<{ buffer: Buffer, mimetype?: string }>} files
- * @returns {Promise<Buffer>}
+ * Build a multi-page PDF from camera/gallery scans.
+ * Page size follows the photo (no crop, no forced A4 bars) but is sized so
+ * phones and desktops can fit-width / pinch-zoom the full page.
  */
 async function imagesToEmploymentFormPdf(files) {
   if (!Array.isArray(files) || files.length === 0) {
@@ -19,49 +22,32 @@ async function imagesToEmploymentFormPdf(files) {
       throw new Error('One of the uploaded images is empty.');
     }
 
-    const mime = String(file.mimetype || '').toLowerCase();
-    let embedBytes = file.buffer;
-    let kind = 'jpg';
-
-    if (mime === 'image/png') {
-      kind = 'png';
-    } else if (mime === 'image/jpeg' || mime === 'image/jpg') {
-      kind = 'jpg';
-    } else {
-      // webp/gif/heic/etc → jpeg via sharp
-      try {
-        embedBytes = await sharp(file.buffer)
-          .rotate()
-          .jpeg({ quality: 88, mozjpeg: true })
-          .toBuffer();
-        kind = 'jpg';
-      } catch (err) {
-        throw new Error(`Could not process image: ${err.message}`);
-      }
-    }
-
-    let image;
+    let jpegBytes;
     try {
-      image =
-        kind === 'png'
-          ? await pdfDoc.embedPng(embedBytes)
-          : await pdfDoc.embedJpg(embedBytes);
+      jpegBytes = await sharp(file.buffer)
+        .rotate()
+        .resize({
+          width: MAX_IMAGE_EDGE,
+          height: MAX_IMAGE_EDGE,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality: 86, mozjpeg: true })
+        .toBuffer();
     } catch (err) {
-      // Corrupt JPEG that claims jpeg — re-encode once
-      try {
-        embedBytes = await sharp(file.buffer)
-          .rotate()
-          .jpeg({ quality: 88, mozjpeg: true })
-          .toBuffer();
-        image = await pdfDoc.embedJpg(embedBytes);
-      } catch {
-        throw new Error(`Could not embed image in PDF: ${err.message}`);
-      }
+      throw new Error(`Could not process image: ${err.message}`);
     }
 
-    const { width, height } = image.scale(1);
-    const page = pdfDoc.addPage([width, height]);
-    page.drawImage(image, { x: 0, y: 0, width, height });
+    const image = await pdfDoc.embedJpg(jpegBytes);
+    const imgW = image.width;
+    const imgH = image.height;
+    const longEdge = Math.max(imgW, imgH) || 1;
+    const scale = PAGE_LONG_EDGE / longEdge;
+    const pageW = Math.max(1, imgW * scale);
+    const pageH = Math.max(1, imgH * scale);
+
+    const page = pdfDoc.addPage([pageW, pageH]);
+    page.drawImage(image, { x: 0, y: 0, width: pageW, height: pageH });
   }
 
   const pdfBytes = await pdfDoc.save();

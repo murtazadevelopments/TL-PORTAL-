@@ -6,6 +6,7 @@ import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
+import EmploymentFormViewer from '../../components/EmploymentFormViewer';
 import CnicProtectedViewer from '../../components/CnicProtectedViewer';
 import PhotoLightbox from '../../components/PhotoLightbox';
 import {
@@ -360,6 +361,7 @@ function EmployeesPage() {
   const [composeRecipient, setComposeRecipient] = useState(null);
   const [composeToast, setComposeToast] = useState('');
   const [employmentFormOpen, setEmploymentFormOpen] = useState(false);
+  const [employmentFormViewOpen, setEmploymentFormViewOpen] = useState(false);
   const [cnicView, setCnicView] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -2488,17 +2490,29 @@ function EmployeesPage() {
                   <p className="muted">No CV uploaded.</p>
                 )}
                 {detail.employment_form_url ? (
-                  <a
-                    className="cv-link"
-                    href={withAuthDocumentUrl(
-                      detail.employment_form_url,
-                      detail.updated_at || detail.id
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Download Employment Form (PDF)
-                  </a>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEmploymentFormViewOpen(true);
+                      }}
+                    >
+                      View employment form
+                    </button>
+                    <a
+                      className="cv-link"
+                      href={withAuthDocumentUrl(
+                        detail.employment_form_url,
+                        detail.updated_at || detail.id
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Download PDF
+                    </a>
+                  </div>
                 ) : (
                   <p className="muted">No employment form uploaded.</p>
                 )}
@@ -2978,6 +2992,13 @@ function EmployeesPage() {
           setComposeToast('Employment form PDF saved.');
           if (detail?.id) openDetail(detail.id);
         }}
+      />
+
+      <EmploymentFormViewer
+        open={employmentFormViewOpen && Boolean(detail?.employment_form_url)}
+        src={detail?.employment_form_url}
+        title={`${detail?.name || 'Employee'} — employment form`}
+        onClose={() => setEmploymentFormViewOpen(false)}
       />
 
       {addOpen && (

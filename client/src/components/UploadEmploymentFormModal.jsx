@@ -14,6 +14,7 @@ export default function UploadEmploymentFormModal({
   onSuccess,
 }) {
   const imageInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const pdfInputRef = useRef(null);
   const [mode, setMode] = useState(null); // null | 'pdf' | 'images'
   const [pages, setPages] = useState([]);
@@ -268,14 +269,14 @@ export default function UploadEmploymentFormModal({
                 ← Back
               </button>
               <p className="muted" style={{ margin: 0 }}>
-                {pages.length} / {MAX_IMAGES} images — then create &amp; upload PDF
+                {pages.length} / {MAX_IMAGES} pages — photograph the full form, then create the PDF
               </p>
 
               {pages.length > 0 && (
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
                     gap: '0.65rem',
                   }}
                 >
@@ -295,9 +296,10 @@ export default function UploadEmploymentFormModal({
                         alt={`Page ${index + 1}`}
                         style={{
                           width: '100%',
-                          height: 110,
-                          objectFit: 'cover',
+                          height: 180,
+                          objectFit: 'contain',
                           display: 'block',
+                          background: '#050814',
                         }}
                       />
                       <span
@@ -337,8 +339,18 @@ export default function UploadEmploymentFormModal({
                 ref={imageInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 multiple
+                hidden
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
                 hidden
                 onChange={(e) => {
                   addFiles(e.target.files);
@@ -347,14 +359,24 @@ export default function UploadEmploymentFormModal({
               />
 
               {!atLimit && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={submitting}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  {pages.length ? 'Add Another Image' : 'Add Image'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={submitting}
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    Scan full page
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={submitting}
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    {pages.length ? 'Add from gallery' : 'Choose from gallery'}
+                  </button>
+                </div>
               )}
 
               {error && <p className="error">{error}</p>}

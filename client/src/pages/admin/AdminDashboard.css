@@ -17,8 +17,10 @@
 
 .status-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.55rem;
   margin: 0.25rem 0 1rem;
+  max-width: 100%;
 }
 
 .status-tab {
@@ -26,12 +28,14 @@
   background: rgba(8, 12, 22, 0.7);
   color: var(--muted);
   border-radius: 999px;
-  padding: 0.55rem 0.95rem;
+  padding: 0.45rem 0.8rem;
   font-weight: 800;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  min-height: 40px;
+  box-sizing: border-box;
 }
 
 .status-tab.active {
@@ -63,18 +67,25 @@
 
 .filters-toolbar {
   justify-content: flex-start;
-  align-items: stretch;
+  align-items: center;
 }
 
 .admin-search {
-  flex: 1 1 220px;
-  min-width: min(100%, 220px);
-  max-width: 320px;
+  flex: 1 1 16rem;
+  min-width: min(100%, 12rem);
+  max-width: 22rem;
+  min-height: 2.75rem;
+  height: 2.75rem;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.7rem 1rem;
+  padding: 0 1rem;
   background: rgba(5, 8, 16, 0.7);
   color: var(--text-h);
+  font-size: 0.95rem;
+  line-height: 1.2;
 }
 
 .admin-search:focus {
@@ -83,14 +94,26 @@
   box-shadow: 0 0 0 3px var(--glow-green);
 }
 
+.admin-search::-webkit-search-decoration,
+.admin-search::-webkit-search-cancel-button,
+.admin-search::-webkit-search-results-button,
+.admin-search::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+}
+
 .filter-select {
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.65rem 0.9rem;
+  padding: 0 0.9rem;
   background: rgba(5, 8, 16, 0.7);
   color: var(--text-h);
   min-width: min(150px, 100%);
   max-width: 100%;
+  min-height: 2.75rem;
+  height: 2.75rem;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .filter-select:focus {
@@ -840,26 +863,46 @@ button.doc-preview:not(:disabled):hover {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    padding-bottom: 0.25rem;
+    scrollbar-width: none;
+    padding-bottom: 0.15rem;
     max-width: 100%;
+  }
+
+  .status-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .status-tab {
     flex: 0 0 auto;
     white-space: nowrap;
+    font-size: 0.88rem;
+    padding: 0.4rem 0.75rem;
   }
 
   .filters-toolbar {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
+    gap: 0.65rem;
   }
 
   .admin-search,
-  .filter-select {
+  .filter-select,
+  .filters-toolbar .btn {
     width: 100%;
     max-width: none;
     min-width: 0;
+    flex: none;
+    height: 2.75rem;
+    max-height: 2.75rem;
+  }
+
+  .admin-search {
+    grid-column: 1 / -1;
+  }
+
+  .filters-toolbar .btn {
+    grid-column: 1 / -1;
   }
 
   .table-shell {
@@ -910,6 +953,19 @@ button.doc-preview:not(:disabled):hover {
 
 @media (max-width: 560px) {
   .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-toolbar .btn {
+    width: 100%;
+  }
+
+  .filters-toolbar {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -76,6 +76,21 @@
   top: 6px;
 }
 
+.shell-back-btn {
+  display: none;
+  color: var(--text-h);
+}
+
+.shell-back-icon {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-left: 2.5px solid var(--text-h);
+  border-bottom: 2.5px solid var(--text-h);
+  transform: rotate(45deg);
+  margin-left: 3px;
+}
+
 .shell-brand {
   display: inline-flex;
   align-items: center;
@@ -358,6 +373,10 @@
     display: flex;
   }
 
+  .shell-back-btn {
+    display: inline-flex;
+  }
+
   .app-shell-topbar .hard-refresh-btn {
     flex: 0 0 auto;
   }
@@ -445,6 +464,10 @@
   }
 
   .app-shell-topbar:has(.shell-setup-actions) .shell-menu-btn {
+    display: none;
+  }
+
+  .shell-back-btn {
     display: none;
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
@@ -21,6 +21,7 @@ function ShellInner() {
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
   const portalGaps = user ? missingEmployeePortalFields(user) : [];
   const missingDocs = portalGaps.some((field) => field.document);
   const missingText = portalGaps.some((field) => !field.document);
@@ -125,6 +126,23 @@ function ShellInner() {
           onClick={() => setDrawerOpen((o) => !o)}
         >
           <span className="shell-menu-icon" aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="shell-menu-btn shell-back-btn"
+          aria-label="Go back"
+          onClick={() => {
+            const idx = window.history.state?.idx;
+            if (typeof idx === 'number' && idx > 0) {
+              navigate(-1);
+              return;
+            }
+            if (location.pathname !== '/dashboard') {
+              navigate('/dashboard');
+            }
+          }}
+        >
+          <span className="shell-back-icon" aria-hidden />
         </button>
         <Link to="/dashboard" className="shell-brand shell-brand-mobile">
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
