@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import PdfJsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 import api from '../api/client';
 import './EmploymentFormViewer.css';
 
-GlobalWorkerOptions.workerSrc = pdfWorker;
+let pdfWorkerPort;
+
+function ensurePdfWorker() {
+  if (pdfWorkerPort) return;
+  pdfWorkerPort = new PdfJsWorker();
+  GlobalWorkerOptions.workerPort = pdfWorkerPort;
+}
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 3;
@@ -107,6 +113,7 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
         const path = documentPath(src);
         const { data } = await api.get(path, { responseType: 'arraybuffer' });
         if (cancelled) return;
+        ensurePdfWorker();
         const pdf = await getDocument({ data: new Uint8Array(data).slice() }).promise;
         if (cancelled) {
           pdf.destroy();

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 /** Bump when SW routing/caching rules change — forces clients onto a new worker URL. */
-const SW_BUILD_ID = '20260912a';
+const SW_BUILD_ID = '20260917a';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -36,7 +36,7 @@ export default defineConfig({
         // Web Push handlers (mobile installed PWA)
         importScripts: ['push-handlers.js'],
         // App-shell caching for offline shell support (static only)
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest,json}'],
+        globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,woff2,webmanifest,json}'],
         // Brand logo asset is huge (~3MB) — don't precache the full file
         globIgnores: ['**/logo-*.png', '**/favicon.png', '**/models/**'],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,

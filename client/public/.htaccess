@@ -8,6 +8,9 @@
 
 ErrorDocument 404 /index.html
 
+AddType application/javascript .mjs
+AddType text/javascript .mjs
+
 # Stop week-long CDN caching of the service worker and app shell.
 # (Do not apply long-cache rules to *.js here — that would override tl-sw.js.)
 <IfModule mod_headers.c>
