@@ -4,9 +4,10 @@ import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
-import { missingEmployeePortalFields } from '../utils/profileCompleteness';
+import { missingEmployeePortalFields, isProfileIncompleteLocked, profileLockHomePath } from '../utils/profileCompleteness';
 import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
+import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
 import InstallAppModal from '../components/InstallAppModal';
 import HardRefreshButton from '../components/HardRefreshButton';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
@@ -19,12 +20,14 @@ function ShellInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
+  const [ackProfileLock, setAckProfileLock] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const portalGaps = user ? missingEmployeePortalFields(user) : [];
   const missingDocs = portalGaps.some((field) => field.document);
   const missingText = portalGaps.some((field) => !field.document);
+  const profileLocked = isProfileIncompleteLocked(user);
 
   const refreshUnread = useCallback(async () => {
     try {
@@ -42,6 +45,19 @@ function ShellInner() {
   useEffect(() => {
     setDismissProfileAlert(false);
   }, [user?.profile_alert_at]);
+
+  useEffect(() => {
+    if (!profileLocked) setAckProfileLock(false);
+  }, [profileLocked]);
+
+  useEffect(() => {
+    if (!profileLocked) return;
+    const path = location.pathname;
+    const allowed = path === '/account' || path === '/account/documents';
+    if (!allowed) {
+      navigate(profileLockHomePath(user), { replace: true });
+    }
+  }, [profileLocked, location.pathname, navigate, user]);
 
   useEffect(() => {
     if (location.pathname === '/account') {
@@ -137,14 +153,12 @@ function ShellInner() {
               navigate(-1);
               return;
             }
-            if (location.pathname !== '/dashboard') {
-              navigate('/dashboard');
-            }
+            navigate(profileLocked ? profileLockHomePath(user) : '/dashboard');
           }}
         >
           <span className="shell-back-icon" aria-hidden />
         </button>
-        <Link to="/dashboard" className="shell-brand shell-brand-mobile">
+        <Link to={profileLocked ? profileLockHomePath(user) : '/dashboard'} className="shell-brand shell-brand-mobile">
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
@@ -166,7 +180,7 @@ function ShellInner() {
       )}
 
       <aside className="app-sidebar" aria-label="Sidebar">
-        <Link to="/dashboard" className="shell-brand shell-brand-desktop">
+        <Link to={profileLocked ? profileLockHomePath(user) : '/dashboard'} className="shell-brand shell-brand-desktop">
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
@@ -177,6 +191,7 @@ function ShellInner() {
           tlDashboardAccess={tlDashboardAccess}
           unreadMessages={unreadMessages}
           employmentType={user?.employment_type || null}
+          profileLocked={profileLocked}
           onNavigate={() => setDrawerOpen(false)}
         />
 
@@ -206,6 +221,7 @@ function ShellInner() {
           </div>
         )}
         {user?.profile_alert_at &&
+          !profileLocked &&
           !dismissProfileAlert &&
           (Array.isArray(user.profile_alert_fields)
             ? user.profile_alert_fields
@@ -254,8 +270,11 @@ function ShellInner() {
         )}
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
-      <InstallAppModal />
-      <AdminIncompleteGate user={user} />
+      {!profileLocked && <InstallAppModal />}
+      {profileLocked && !ackProfileLock && (
+        <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
+      )}
+      {!profileLocked && <AdminIncompleteGate user={user} />}
     </div>
   );
 }

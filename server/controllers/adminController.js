@@ -30,6 +30,8 @@ const {
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
   withDocumentPresence,
+  profileAlertCount,
+  PROFILE_ALERT_MAX,
 } = require('../utils/profileCompleteness');
 const {
   ensureEmploymentTypeColumn,
@@ -66,7 +68,7 @@ const LIST_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url,
   cnic_front_url, cnic_back_url, cv_url
@@ -83,7 +85,7 @@ const DETAIL_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason,
-  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
 `;
@@ -1612,6 +1614,16 @@ async function sendProfileAlert(req, res) {
       });
     }
 
+    const currentCount = profileAlertCount(target);
+    if (currentCount >= PROFILE_ALERT_MAX) {
+      return res.status(400).json({
+        message:
+          'This employee already had 5 profile alerts. Their portal is limited to incomplete employee fields until they finish.',
+        code: 'PROFILE_ALERT_LIMIT',
+        profileAlertCount: currentCount,
+      });
+    }
+
     const cooldown = profileAlertCooldown(target);
     if (cooldown.active) {
       return res.status(429).json({
@@ -1624,14 +1636,18 @@ async function sendProfileAlert(req, res) {
 
     const labels = missing.map((f) => f.label);
     const fieldList = formatFieldList(missing);
+    const nextCount = currentCount + 1;
+    const lockNow = nextCount >= PROFILE_ALERT_MAX;
     const firstName = String(target.name || target.username || 'there').split(' ')[0];
     const subject = 'Please complete your portal profile';
     const messageBody =
       `Hi ${firstName},\n\n` +
-      'HR asked you to complete the following fields in your portal profile. ' +
+      'Please complete the following fields in your portal profile. ' +
       'These are fields you fill yourself (not assigned by admin):\n\n' +
       labels.map((l) => `• ${l}`).join('\n') +
-      '\n\nOpen My Account → Profile and save the missing details.\n\n' +
+      (lockNow
+        ? '\n\nThis was the 5th reminder. Until these employee fields are complete, you will only see the missing items — not the dashboard.\n\n'
+        : '\n\nOpen My Account → Profile and save the missing details.\n\n') +
       '— Textured Lab Portal';
 
     const { rows: senderRows } = await pool.query(
@@ -1658,8 +1674,10 @@ async function sendProfileAlert(req, res) {
       deliveryMethod: 'portal',
       emailIfPushUndelivered: true,
       pushPayload: {
-        title: 'Complete your portal profile',
-        body: `HR asked you to fill: ${labels.slice(0, 4).join(', ')}${labels.length > 4 ? '…' : ''}`,
+        title: lockNow ? 'Complete your profile to continue' : 'Complete your portal profile',
+        body: lockNow
+          ? 'Your portal is limited to missing employee fields until you finish them.'
+          : `Please fill: ${labels.slice(0, 4).join(', ')}${labels.length > 4 ? '…' : ''}`,
         url: '/account',
         tag: 'profile-alert',
         urgency: 'high',
@@ -1667,16 +1685,19 @@ async function sendProfileAlert(req, res) {
       },
     });
 
+    const sentAt = new Date();
     await pool.query(
       `
         UPDATE users
         SET profile_alert_at = NOW(),
             profile_alert_sent_at = NOW(),
             profile_alert_fields = $2,
+            profile_alert_count = $3,
+            profile_incomplete_locked_at = CASE WHEN $4 THEN NOW() ELSE profile_incomplete_locked_at END,
             updated_at = NOW()
         WHERE id = $1
       `,
-      [id, JSON.stringify(labels)]
+      [id, JSON.stringify(labels), nextCount, lockNow]
     );
 
     try {
@@ -1686,7 +1707,7 @@ async function sendProfileAlert(req, res) {
         action: 'profile_alert_sent',
         targetTable: 'users',
         targetId: target.id,
-        reason: `Asked ${target.username || target.name} to complete: ${fieldList}`,
+        reason: `Asked ${target.username || target.name} to complete: ${fieldList} (${nextCount}/${PROFILE_ALERT_MAX})`,
       });
     } catch (auditErr) {
       console.warn('profile_alert_sent audit failed:', auditErr.message || auditErr);
@@ -1700,13 +1721,20 @@ async function sendProfileAlert(req, res) {
         ? 'They do not have the app, so the alert was emailed.'
         : 'They will see a banner in the portal. Email could not be sent.';
 
+    const nextHint = lockNow
+      ? 'Their portal is now limited to incomplete employee fields until they finish.'
+      : `This was reminder ${nextCount} of ${PROFILE_ALERT_MAX}. Next alert is available after 24 hours.`;
+
     res.json({
-      message: `Alert sent. ${channel} Next alert is available after 24 hours.`,
+      message: `Alert sent (${nextCount} of ${PROFILE_ALERT_MAX}). ${channel} ${nextHint}`,
       missingFields: labels,
       emailSent: viaEmail,
       pushSent: viaPush,
       emailError: result?.emailError || null,
-      profileAlertSentAt: new Date().toISOString(),
+      profileAlertSentAt: sentAt.toISOString(),
+      profileAlertCount: nextCount,
+      profileIncompleteLocked: lockNow,
+      profileIncompleteLockedAt: lockNow ? sentAt.toISOString() : target.profile_incomplete_locked_at || null,
     });
     queueCeoBranchManagerNotice(req, {
       action: 'Sent profile alert',

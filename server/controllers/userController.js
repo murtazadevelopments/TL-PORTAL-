@@ -16,6 +16,7 @@ const {
   ensureProfileAlertColumns,
   missingEmployeePortalFields,
   parseAlertFields,
+  profileAlertCount,
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
@@ -30,7 +31,7 @@ const USER_PUBLIC_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_fields
+  profile_alert_at, profile_alert_fields, profile_alert_count, profile_incomplete_locked_at
 `;
 
 const EMPLOYEE_UPDATE_WHITELIST = [
@@ -78,19 +79,29 @@ function hideSalary(user) {
 async function decorateProfileAlert(user) {
   if (!user) return user;
   user.profile_alert_fields = parseAlertFields(user.profile_alert_fields);
-  user.missing_portal_fields = missingEmployeePortalFields(user).map((f) => f.label);
-  if (user.profile_alert_at && user.missing_portal_fields.length === 0) {
+  user.profile_alert_count = profileAlertCount(user);
+  const missing = missingEmployeePortalFields(user);
+  user.missing_portal_fields = missing.map((f) => f.label);
+  if (missing.length === 0 && (user.profile_alert_at || user.profile_incomplete_locked_at || user.profile_alert_count > 0)) {
     await pool.query(
       `
         UPDATE users
-        SET profile_alert_at = NULL, profile_alert_fields = NULL, updated_at = NOW()
+        SET profile_alert_at = NULL,
+            profile_alert_fields = NULL,
+            profile_alert_count = 0,
+            profile_incomplete_locked_at = NULL,
+            updated_at = NOW()
         WHERE id = $1
       `,
       [user.id]
     );
     user.profile_alert_at = null;
     user.profile_alert_fields = [];
+    user.profile_alert_count = 0;
+    user.profile_incomplete_locked_at = null;
   }
+  user.profile_incomplete_locked =
+    Boolean(user.profile_incomplete_locked_at) && missing.length > 0;
   return user;
 }
 

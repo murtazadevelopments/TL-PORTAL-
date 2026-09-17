@@ -8,8 +8,20 @@ import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendan
 export function buildSidebarGroups(
   role,
   permissions,
-  { tlDashboardAccess = false, unreadMessages = 0, employmentType = null } = {}
+  { tlDashboardAccess = false, unreadMessages = 0, employmentType = null, profileLocked = false } = {}
 ) {
+  if (profileLocked) {
+    return [
+      {
+        id: 'account',
+        label: 'Complete your profile',
+        items: [
+          { to: '/account', label: 'Profile', end: true },
+          { to: '/account/documents', label: 'My Documents' },
+        ],
+      },
+    ];
+  }
   const dashboardItems = [{ to: '/dashboard', label: 'Overview', end: true }];
   if (employmentType === 'remote' || employmentType === 'onsite') {
     dashboardItems.push({ to: '/attendance', label: 'My Attendance' });
@@ -156,6 +168,7 @@ export default function SidebarNav({
   tlDashboardAccess,
   unreadMessages = 0,
   employmentType = null,
+  profileLocked = false,
   onNavigate,
 }) {
   const location = useLocation();
@@ -165,8 +178,9 @@ export default function SidebarNav({
         tlDashboardAccess,
         unreadMessages,
         employmentType,
+        profileLocked,
       }),
-    [role, permissions, tlDashboardAccess, unreadMessages, employmentType]
+    [role, permissions, tlDashboardAccess, unreadMessages, employmentType, profileLocked]
   );
 
   const activeGroupId = useMemo(() => {

@@ -1,0 +1,73 @@
+.profile-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(2, 4, 10, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.profile-lock-card {
+  width: min(520px, 100%);
+  padding: 1.35rem 1.4rem 1.25rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 107, 129, 0.45);
+  background: #101826;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  color: var(--text-h);
+}
+
+.profile-lock-kicker {
+  margin: 0 0 0.35rem;
+  color: #ff8a9a;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-lock-card h2 {
+  margin: 0 0 0.55rem;
+  font-size: 1.25rem;
+}
+
+.profile-lock-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.profile-lock-card ul {
+  margin: 0.85rem 0 1.1rem;
+  padding-left: 1.15rem;
+  color: var(--text-h);
+}
+
+.profile-lock-card li {
+  margin: 0.2rem 0;
+  font-weight: 700;
+}
+
+.profile-lock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.profile-lock-banner {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-sm, 10px);
+  border: 1px solid rgba(255, 107, 129, 0.5);
+  background: rgba(255, 107, 129, 0.12);
+}
+
+.profile-lock-banner strong {
+  color: #ff8a9a;
+}
+
+.profile-lock-banner p {
+  margin: 0.35rem 0 0;
+}

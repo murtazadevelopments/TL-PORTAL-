@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router';
 import api from '../../api/client';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
-import { missingEmployeePortalFields } from '../../utils/profileCompleteness';
+import { missingEmployeePortalFields, isProfileIncompleteLocked } from '../../utils/profileCompleteness';
+import '../../components/ProfileIncompleteLock.css';
 
 export default function AccountDocuments() {
   const navigate = useNavigate();
@@ -47,10 +48,14 @@ export default function AccountDocuments() {
     () => (profile ? missingEmployeePortalFields(profile).filter((field) => field.document) : []),
     [profile]
   );
+  const locked = isProfileIncompleteLocked(profile);
   const missingFileDocs = missingDocFields
     .filter((field) => field.key !== 'profile_picture_url')
     .map((field) => field.label);
   const missingPhoto = missingDocFields.some((field) => field.key === 'profile_picture_url');
+  const showCnicFront = !locked || missingDocFields.some((field) => field.key === 'cnic_front_url');
+  const showCnicBack = !locked || missingDocFields.some((field) => field.key === 'cnic_back_url');
+  const showCv = !locked || missingDocFields.some((field) => field.key === 'cv_url');
 
   async function handleDocumentUpload(field, file) {
     if (!file) return;
@@ -64,6 +69,11 @@ export default function AccountDocuments() {
       const { data } = await api.put('/api/users/me/documents', body);
       setProfile(data.user || data);
       refreshUser();
+      const next = data.user || data;
+      if (locked && missingEmployeePortalFields(next).length === 0) {
+        navigate('/dashboard');
+        return;
+      }
       setDocSuccess(
         field === 'cv'
           ? 'CV updated.'
@@ -91,7 +101,16 @@ export default function AccountDocuments() {
       {docError && <p className="error">{docError}</p>}
       {docSuccess && <p className="success">{docSuccess}</p>}
 
-      {!loading && profile && (missingFileDocs.length > 0 || missingPhoto) && (
+      {!loading && profile && locked && (
+        <div className="profile-lock-banner" role="alert">
+          <strong>Dashboard locked until missing employee documents are uploaded.</strong>
+          <p className="muted">
+            Only incomplete files are shown. Admin-assigned fields are not required.
+          </p>
+        </div>
+      )}
+
+      {!loading && profile && !locked && (missingFileDocs.length > 0 || missingPhoto) && (
         <div className="alert-banner" role="status">
           <div>
             <strong>Your profile is incomplete.</strong>
@@ -115,6 +134,7 @@ export default function AccountDocuments() {
       {!loading && profile && (
         <section className="docs">
           <div className="doc-grid">
+            {showCnicFront && (
             <div className="doc-card doc-card-static">
               <span>{profile.cnic_front_url ? 'On file' : 'No CNIC front'}</span>
               <span>CNIC front</span>
@@ -142,7 +162,9 @@ export default function AccountDocuments() {
                     : 'Upload'}
               </button>
             </div>
+            )}
 
+            {showCnicBack && (
             <div className="doc-card doc-card-static">
               <span>{profile.cnic_back_url ? 'On file' : 'No CNIC back'}</span>
               <span>CNIC back</span>
@@ -170,7 +192,9 @@ export default function AccountDocuments() {
                     : 'Upload'}
               </button>
             </div>
+            )}
 
+            {showCv && (
             <div className="doc-card doc-card-static">
               <span className="pdf-badge">{profile.cv_url ? 'On file' : 'No CV'}</span>
               <span>CV</span>
@@ -194,7 +218,13 @@ export default function AccountDocuments() {
                 {docUploading === 'cv' ? 'Uploading…' : profile.cv_url ? 'Change' : 'Upload'}
               </button>
             </div>
+            )}
           </div>
+          {locked && missingPhoto && (
+            <p className="muted" style={{ marginTop: '1rem' }}>
+              Add your profile photo on the <Link to="/account">Profile</Link> page.
+            </p>
+          )}
         </section>
       )}
     </main>
