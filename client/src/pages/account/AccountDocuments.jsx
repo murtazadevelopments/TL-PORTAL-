@@ -75,11 +75,6 @@ export default function AccountDocuments() {
         return;
       }
       refreshUser();
-      const next = data.user || data;
-      if (locked && missingEmployeePortalFields(next).length === 0) {
-        navigate('/dashboard');
-        return;
-      }
       setDocSuccess(
         field === 'cv'
           ? 'CV updated.'
