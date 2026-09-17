@@ -58,6 +58,7 @@ export function missingAdminAssignFields(row) {
 }
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+export const PROFILE_ALERT_MAX = 5;
 export const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 export const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -92,6 +93,42 @@ function cooldownFromSentAt(sentAt, now = Date.now()) {
     remainingMs,
     remainingLabel: formatCooldownRemaining(remainingMs),
     retryAt: new Date(sentMs + PROFILE_ALERT_COOLDOWN_MS),
+  };
+}
+
+export function profileAlertCount(row) {
+  const n = Number(row?.profile_alert_count);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(PROFILE_ALERT_MAX, Math.floor(n));
+}
+
+export function isProfileIncompleteLocked(row) {
+  if (!row) return false;
+  if (!row.profile_incomplete_locked_at && row.profile_incomplete_locked !== true) return false;
+  return missingEmployeePortalFields(row).length > 0;
+}
+
+export function profileLockHomePath(row) {
+  const missing = missingEmployeePortalFields(row);
+  if (missing.some((field) => !field.document)) return '/account';
+  return '/account/documents';
+}
+
+export function profileAlertAction(row, now = Date.now()) {
+  const count = profileAlertCount(row);
+  const locked = isProfileIncompleteLocked(row) || count >= PROFILE_ALERT_MAX;
+  const cooldown = profileAlertCooldown(row, now);
+  const next = Math.min(PROFILE_ALERT_MAX, count + 1);
+  return {
+    count,
+    locked,
+    cooldown,
+    disabled: locked || cooldown.active,
+    label: locked
+      ? `Locked ${PROFILE_ALERT_MAX}/${PROFILE_ALERT_MAX}`
+      : cooldown.active
+        ? `Wait ${cooldown.remainingLabel}`
+        : `Alert ${next}/${PROFILE_ALERT_MAX}`,
   };
 }
 

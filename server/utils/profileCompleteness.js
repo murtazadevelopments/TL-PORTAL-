@@ -63,6 +63,7 @@ function formatFieldList(fields) {
 }
 
 const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const PROFILE_ALERT_MAX = 5;
 const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -118,12 +119,26 @@ async function ensureProfileAlertColumns() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_fields TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_incomplete_locked_at TIMESTAMPTZ;
     UPDATE users
     SET profile_alert_sent_at = profile_alert_at
     WHERE profile_alert_sent_at IS NULL
       AND profile_alert_at IS NOT NULL;
   `);
   profileAlertColumnsReady = true;
+}
+
+function profileAlertCount(row) {
+  const n = Number(row?.profile_alert_count);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(PROFILE_ALERT_MAX, Math.floor(n));
+}
+
+function isProfileIncompleteLocked(row) {
+  if (!row) return false;
+  if (!row.profile_incomplete_locked_at && row.profile_incomplete_locked !== true) return false;
+  return missingEmployeePortalFields(row).length > 0;
 }
 
 function parseAlertFields(raw) {
@@ -151,8 +166,11 @@ module.exports = {
   ensureProfileAlertColumns,
   parseAlertFields,
   PROFILE_ALERT_COOLDOWN_MS,
+  PROFILE_ALERT_MAX,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
   profileAlertCooldown,
   photoAlertCooldown,
+  profileAlertCount,
+  isProfileIncompleteLocked,
 };

@@ -5,7 +5,8 @@ import AvatarEditor from '../../components/AvatarEditor';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
-import { missingEmployeePortalFields } from '../../utils/profileCompleteness';
+import { missingEmployeePortalFields, isProfileIncompleteLocked } from '../../utils/profileCompleteness';
+import '../../components/ProfileIncompleteLock.css';
 
 const EMPLOYEE_EDIT_FIELDS = [
   'name',
@@ -111,6 +112,9 @@ export default function AccountProfile() {
     () => (profile ? missingEmployeePortalFields(profile) : []),
     [profile]
   );
+  const locked = isProfileIncompleteLocked(profile);
+  const missingKeys = new Set(missingEmployeeFields.map((field) => field.key));
+  const showField = (key) => !locked || missingKeys.has(key);
   const missingLabels = missingEmployeeFields.map((field) => field.label);
   const missingDocs = missingEmployeeFields.some((field) => field.document);
   const missingText = missingEmployeeFields.some((field) => !field.document);
@@ -141,6 +145,7 @@ export default function AccountProfile() {
       if (missing.length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
+        if (locked) navigate('/dashboard');
       }
     } catch (err) {
       if (err.response?.status === 401) {
@@ -171,6 +176,7 @@ export default function AccountProfile() {
       if (missingEmployeePortalFields(data).length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
+        if (locked) navigate('/dashboard');
       }
     } catch (err) {
       if (err.response?.status === 401) {
@@ -199,7 +205,16 @@ export default function AccountProfile() {
 
         {loading && <p className="muted">Loading profile…</p>}
 
-        {!loading && profile && showIncompleteBanner && missingLabels.length > 0 && (
+        {!loading && profile && locked && missingLabels.length > 0 && (
+          <div className="profile-lock-banner" role="alert">
+            <strong>Dashboard locked until these employee fields are complete.</strong>
+            <p className="muted">
+              Fill only the missing items below. Admin-assigned fields are not required.
+            </p>
+          </div>
+        )}
+
+        {!loading && profile && !locked && showIncompleteBanner && missingLabels.length > 0 && (
           <div className="alert-banner" role="status">
             <div>
               <strong>Your profile is incomplete.</strong>
@@ -242,6 +257,7 @@ export default function AccountProfile() {
         {!loading && profile && (
           <>
             <section className="profile-header">
+              {(!locked || missingKeys.has('profile_picture_url')) && (
               <div className="avatar-block">
                 {showAvatar ? (
                   <img
@@ -263,6 +279,8 @@ export default function AccountProfile() {
                   Change / adjust photo
                 </button>
               </div>
+              )}
+              {!locked && (
               <div className="meta">
                 <p>
                   <span className="label">Employee ID</span>
@@ -285,10 +303,13 @@ export default function AccountProfile() {
                   <strong>{profile.role}</strong>
                 </p>
               </div>
+              )}
             </section>
 
             <form id="edit-profile" ref={editSectionRef} onSubmit={handleSave} className="form">
-              <h2>Edit profile</h2>
+              <h2>{locked ? 'Missing employee fields' : 'Edit profile'}</h2>
+              {!locked && (
+              <>
               <label>
                 Name
                 <input type="text" name="name" value={form.name} onChange={handleChange} required />
@@ -370,6 +391,9 @@ export default function AccountProfile() {
                   onChange={handleChange}
                 />
               </label>
+              </>
+              )}
+              {showField('reference_person_name') && (
               <label>
                 Reference person
                 <input
@@ -377,9 +401,13 @@ export default function AccountProfile() {
                   name="reference_person_name"
                   value={form.reference_person_name}
                   onChange={handleChange}
+                  required={locked}
                 />
               </label>
+              )}
+              {(showField('emergency_contact_name') || showField('emergency_contact_number')) && (
               <div className="grid-2">
+                {showField('emergency_contact_name') && (
                 <label>
                   Emergency contact name
                   <input
@@ -387,8 +415,11 @@ export default function AccountProfile() {
                     name="emergency_contact_name"
                     value={form.emergency_contact_name}
                     onChange={handleChange}
+                    required={locked}
                   />
                 </label>
+                )}
+                {showField('emergency_contact_number') && (
                 <label>
                   Emergency contact number
                   <input
@@ -396,16 +427,32 @@ export default function AccountProfile() {
                     name="emergency_contact_number"
                     value={form.emergency_contact_number}
                     onChange={handleChange}
+                    required={locked}
                   />
                 </label>
+                )}
               </div>
+              )}
 
-              <h2>Bank details</h2>
+              {(showField('bank_name') ||
+                showField('account_title') ||
+                showField('iban') ||
+                showField('account_number')) && <h2>Bank details</h2>}
+              {(showField('bank_name') || showField('account_title')) && (
               <div className="grid-2">
+                {showField('bank_name') && (
                 <label>
                   Bank name
-                  <input type="text" name="bank_name" value={form.bank_name} onChange={handleChange} />
+                  <input
+                    type="text"
+                    name="bank_name"
+                    value={form.bank_name}
+                    onChange={handleChange}
+                    required={locked}
+                  />
                 </label>
+                )}
+                {showField('account_title') && (
                 <label>
                   Account title
                   <input
@@ -413,14 +460,27 @@ export default function AccountProfile() {
                     name="account_title"
                     value={form.account_title}
                     onChange={handleChange}
+                    required={locked}
                   />
                 </label>
+                )}
               </div>
+              )}
+              {(showField('iban') || showField('account_number')) && (
               <div className="grid-2">
+                {showField('iban') && (
                 <label>
                   IBAN
-                  <input type="text" name="iban" value={form.iban} onChange={handleChange} />
+                  <input
+                    type="text"
+                    name="iban"
+                    value={form.iban}
+                    onChange={handleChange}
+                    required={locked}
+                  />
                 </label>
+                )}
+                {showField('account_number') && (
                 <label>
                   Account number
                   <input
@@ -428,9 +488,28 @@ export default function AccountProfile() {
                     name="account_number"
                     value={form.account_number}
                     onChange={handleChange}
+                    required={locked}
                   />
                 </label>
+                )}
               </div>
+              )}
+
+              {locked && missingDocs && (
+                <p className="muted">
+                  Missing files:{' '}
+                  {missingEmployeeFields
+                    .filter((field) => field.document)
+                    .map((field) => field.label)
+                    .join(', ')}
+                  . {missingKeys.has('profile_picture_url') ? 'Use Change photo above. ' : ''}
+                  {missingEmployeeFields.some(
+                    (field) => field.document && field.key !== 'profile_picture_url'
+                  ) ? (
+                    <Link to="/account/documents">Upload documents</Link>
+                  ) : null}
+                </p>
+              )}
 
               {error && <p className="error">{error}</p>}
               {success && <p className="success">{success}</p>}

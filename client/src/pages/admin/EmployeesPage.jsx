@@ -14,6 +14,8 @@ import {
   missingEmployeePortalFieldsUnion,
   profileAlertCooldown,
   photoAlertCooldown,
+  profileAlertAction,
+  isProfileIncompleteLocked,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
 } from '../../utils/profileCompleteness';
@@ -602,6 +604,13 @@ function EmployeesPage() {
       setSaveError('This employee has already filled their portal fields.');
       return;
     }
+    const action = profileAlertAction(target);
+    if (action.locked) {
+      setSaveError(
+        'This employee already had 5 profile alerts. Their portal is limited to incomplete employee fields until they finish.'
+      );
+      return;
+    }
     const cooldown = profileAlertCooldown(target);
     if (cooldown.active) {
       setSaveError(`Alert already sent. You can send another after ${cooldown.remainingLabel}.`);
@@ -616,6 +625,8 @@ function EmployeesPage() {
       applyAccountPatch(userId, {
         profile_alert_at: sentAt,
         profile_alert_sent_at: sentAt,
+        profile_alert_count: data?.profileAlertCount,
+        profile_incomplete_locked_at: data?.profileIncompleteLockedAt || null,
       });
       setNowMs(Date.now());
       setSaveSuccess(
@@ -1827,7 +1838,8 @@ function EmployeesPage() {
                   const missingAdmin = missingAdminFields(row);
                   const missingEmployee = missingEmployeePortalFields(row);
                   const incomplete = missingAdmin.length > 0 || missingEmployee.length > 0;
-                  const alertCooldown = profileAlertCooldown(row, nowMs);
+                  const alertAction = profileAlertAction(row, nowMs);
+                  const alertCooldown = alertAction.cooldown;
                   return (
                     <tr key={row.id} onClick={() => openDetail(row.id)}>
                       {canSendProfileAlert && statusTab !== 'pending' && (
@@ -1837,23 +1849,23 @@ function EmployeesPage() {
                               type="button"
                               className="btn btn-ghost alert-row-btn"
                               title={
-                                alertCooldown.active
+                                alertAction.locked
+                                  ? 'Portal limited after 5 alerts until they complete employee fields'
+                                  : alertCooldown.active
                                   ? `Already sent. Try again in ${alertCooldown.remainingLabel}`
                                   : `Ask them to fill: ${missingEmployee.map((f) => f.label).join(', ')}`
                               }
                               aria-label={
-                                alertCooldown.active
+                                alertAction.locked
+                                  ? `Profile limited after 5 alerts`
+                                  : alertCooldown.active
                                   ? `Alert available in ${alertCooldown.remainingLabel}`
                                   : `Alert ${fullName(row)} to complete portal fields`
                               }
-                              disabled={alertingId === row.id || alertCooldown.active}
+                              disabled={alertingId === row.id || alertAction.disabled}
                               onClick={(e) => handleSendProfileAlert(row.id, e)}
                             >
-                              {alertingId === row.id
-                                ? '…'
-                                : alertCooldown.active
-                                  ? `Wait ${alertCooldown.remainingLabel}`
-                                  : 'Alert'}
+                              {alertingId === row.id ? '…' : alertAction.label}
                             </button>
                           ) : (
                             <span className="muted-cell">—</span>
@@ -1954,6 +1966,14 @@ function EmployeesPage() {
                               }
                             >
                               locked
+                            </span>
+                          )}
+                          {isProfileIncompleteLocked(row) && (
+                            <span
+                              className="status-pill locked"
+                              title="Limited to incomplete employee fields after 5 alerts"
+                            >
+                              profile limited
                             </span>
                           )}
                         </div>
@@ -2148,20 +2168,20 @@ function EmployeesPage() {
                     type="button"
                     className="btn btn-ghost alert-row-btn"
                     title={
-                      profileAlertCooldown(detail, nowMs).active
-                        ? `Already sent. Try again in ${profileAlertCooldown(detail, nowMs).remainingLabel}`
+                      profileAlertAction(detail, nowMs).locked
+                        ? 'Portal limited after 5 alerts until they complete employee fields'
+                        : profileAlertAction(detail, nowMs).cooldown.active
+                        ? `Already sent. Try again in ${profileAlertAction(detail, nowMs).cooldown.remainingLabel}`
                         : `Ask them to fill: ${detailMissingEmployee.join(', ')}`
                     }
                     disabled={
-                      alertingId === detail.id || profileAlertCooldown(detail, nowMs).active
+                      alertingId === detail.id || profileAlertAction(detail, nowMs).disabled
                     }
                     onClick={(e) => handleSendProfileAlert(detail.id, e)}
                   >
                     {alertingId === detail.id
                       ? 'Sending…'
-                      : profileAlertCooldown(detail, nowMs).active
-                        ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
-                        : 'Alert'}
+                      : profileAlertAction(detail, nowMs).label}
                   </button>
                 )}
                 <button type="button" className="icon-btn" onClick={closeDetail} aria-label="Close">
@@ -2200,9 +2220,16 @@ function EmployeesPage() {
                           You must assign: {detailMissingAdmin.join(', ')}
                         </p>
                       )}
-                      {profileAlertCooldown(detail, nowMs).active && isApprovedEmployee(detail) && (
+                      {profileAlertAction(detail, nowMs).cooldown.active &&
+                        isApprovedEmployee(detail) &&
+                        !profileAlertAction(detail, nowMs).locked && (
                         <p className="muted" style={{ margin: '0.35rem 0 0' }}>
-                          Next alert available in {profileAlertCooldown(detail, nowMs).remainingLabel}.
+                          Next alert available in {profileAlertAction(detail, nowMs).cooldown.remainingLabel}.
+                        </p>
+                      )}
+                      {profileAlertAction(detail, nowMs).locked && (
+                        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+                          5 alerts sent. Their portal is limited to incomplete employee fields until they finish.
                         </p>
                       )}
                     </div>
@@ -2214,15 +2241,13 @@ function EmployeesPage() {
                         className="btn btn-ghost alert-row-btn"
                         disabled={
                           alertingId === detail.id ||
-                          profileAlertCooldown(detail, nowMs).active
+                          profileAlertAction(detail, nowMs).disabled
                         }
                         onClick={(e) => handleSendProfileAlert(detail.id, e)}
                       >
                         {alertingId === detail.id
                           ? 'Sending…'
-                          : profileAlertCooldown(detail, nowMs).active
-                            ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
-                            : 'Alert'}
+                          : profileAlertAction(detail, nowMs).label}
                       </button>
                     )}
                   </div>
@@ -2298,6 +2323,9 @@ function EmployeesPage() {
                             ? ` · ${detail.failed_login_attempts} attempts`
                             : ''}
                         </span>
+                      )}
+                      {isProfileIncompleteLocked(detail) && (
+                        <span className="status-pill locked">profile limited</span>
                       )}
                       {!isSignInDisabled(detail) && (
                         <span className="status-pill active">login ok</span>
@@ -2893,15 +2921,13 @@ function EmployeesPage() {
                           alertingId === detail.id ||
                           saving ||
                           deactivating ||
-                          profileAlertCooldown(detail, nowMs).active
+                          profileAlertAction(detail, nowMs).disabled
                         }
                         onClick={(e) => handleSendProfileAlert(detail.id, e)}
                       >
                         {alertingId === detail.id
                           ? 'Sending…'
-                          : profileAlertCooldown(detail, nowMs).active
-                            ? `Wait ${profileAlertCooldown(detail, nowMs).remainingLabel}`
-                            : 'Alert'}
+                          : profileAlertAction(detail, nowMs).label}
                       </button>
                     )}
                     {canUnlockAccounts && isAccountLocked(detail) && (
