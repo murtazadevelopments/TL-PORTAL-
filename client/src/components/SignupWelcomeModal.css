@@ -1,0 +1,228 @@
+.signup-welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 20%, rgba(61, 255, 122, 0.18), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(126, 203, 255, 0.16), transparent 55%),
+    rgba(2, 4, 12, 0.82);
+  backdrop-filter: blur(14px);
+  animation: signup-welcome-fade 0.35s ease-out;
+}
+
+.signup-welcome-card {
+  position: relative;
+  overflow: hidden;
+  width: min(440px, 100%);
+  padding: 2.1rem 1.5rem 1.45rem;
+  text-align: center;
+  border-radius: 24px;
+  border: 1px solid rgba(61, 255, 122, 0.35);
+  background:
+    linear-gradient(180deg, rgba(22, 32, 58, 0.96) 0%, rgba(10, 14, 28, 0.98) 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    0 0 48px var(--glow-green);
+  animation: signup-welcome-pop 0.55s cubic-bezier(0.2, 1.15, 0.32, 1);
+}
+
+.signup-welcome-spark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: signup-welcome-spark 2.4s ease-in-out infinite;
+}
+
+.signup-welcome-spark:nth-child(1) {
+  top: 18%;
+  left: 12%;
+  background: var(--green);
+  animation-delay: 0s;
+}
+
+.signup-welcome-spark:nth-child(2) {
+  top: 22%;
+  right: 14%;
+  background: var(--cyan);
+  animation-delay: 0.35s;
+}
+
+.signup-welcome-spark:nth-child(3) {
+  bottom: 28%;
+  left: 10%;
+  background: var(--purple);
+  animation-delay: 0.7s;
+}
+
+.signup-welcome-spark:nth-child(4) {
+  bottom: 22%;
+  right: 12%;
+  background: var(--green);
+  animation-delay: 1.1s;
+}
+
+.signup-welcome-spark:nth-child(5) {
+  top: 48%;
+  left: 6%;
+  background: var(--cyan-soft);
+  width: 5px;
+  height: 5px;
+  animation-delay: 0.2s;
+}
+
+.signup-welcome-spark:nth-child(6) {
+  top: 54%;
+  right: 7%;
+  background: #fff7c2;
+  width: 5px;
+  height: 5px;
+  animation-delay: 0.85s;
+}
+
+.signup-welcome-seal {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 1.1rem;
+}
+
+.signup-welcome-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(61, 255, 122, 0.35);
+  animation: signup-welcome-pulse 1.8s ease-out infinite;
+}
+
+.signup-welcome-check {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--green) 0%, var(--green-deep) 100%);
+  color: #04140a;
+  box-shadow: 0 0 32px var(--glow-green);
+}
+
+.signup-welcome-check svg {
+  width: 42px;
+  height: 42px;
+}
+
+.signup-welcome-eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan-soft);
+}
+
+.signup-welcome-card h2 {
+  margin: 0 0 0.55rem;
+  font-family: var(--display);
+  font-size: clamp(1.55rem, 5vw, 2rem);
+  font-weight: 650;
+  color: var(--text-h);
+  line-height: 1.15;
+}
+
+.signup-welcome-card h2 span {
+  color: var(--green);
+  text-shadow: 0 0 18px var(--glow-green);
+}
+
+.signup-welcome-copy {
+  margin: 0 auto;
+  max-width: 34ch;
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.signup-welcome-note {
+  margin: 0.9rem auto 0;
+  max-width: 36ch;
+  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(126, 203, 255, 0.08);
+  border: 1px solid var(--border);
+  color: var(--cyan-soft);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.signup-welcome-actions {
+  margin-top: 1.25rem;
+}
+
+.signup-welcome-actions .btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0;
+}
+
+@keyframes signup-welcome-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes signup-welcome-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes signup-welcome-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  70% {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.28);
+    opacity: 0;
+  }
+}
+
+@keyframes signup-welcome-spark {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translateY(-10px) scale(1.35);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signup-welcome-backdrop,
+  .signup-welcome-card,
+  .signup-welcome-spark,
+  .signup-welcome-ring {
+    animation: none;
+  }
+}

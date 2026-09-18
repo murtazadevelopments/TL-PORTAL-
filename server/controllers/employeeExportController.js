@@ -5,11 +5,11 @@ const {
   scopeWhereClause,
   employeeMatchesScope,
 } = require('../utils/employeeScope');
-const { buildExcelXml, buildEmployeePdf } = require('../utils/employeeExportFiles');
+const { buildExcelXml, buildEmployeePdf, displayRows, EXPORT_COLUMNS } = require('../utils/employeeExportFiles');
 
 const EXPORT_COLUMNS_SQL = `
   employee_id, username, name, email, contact_number, address, cnic_number,
-  role, department, designation, status, branch, shift, salary,
+  role, department, designation, status, branch, shift,
   education, last_job_status, employment_type, date_of_birth,
   date_of_joining, work_start_hour, work_end_hour,
   bank_name, account_title, iban, account_number,
@@ -99,6 +99,61 @@ function formatExportKind(format) {
   const key = String(format || '').toLowerCase();
   if (key === 'pdf') return 'PDF';
   return 'Excel';
+}
+
+function filenamePart(value, fallback) {
+  const cleaned = String(value || '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || fallback;
+}
+
+function uniqueFieldPart(rows, key, fallback) {
+  const unique = [
+    ...new Set(
+      rows
+        .map((row) => String(row[key] || '').trim())
+        .filter(Boolean)
+    ),
+  ];
+  if (unique.length === 1) return filenamePart(unique[0], fallback);
+  if (unique.length > 1 && unique.length <= 4) {
+    return filenamePart(unique.join(' '), fallback);
+  }
+  return fallback;
+}
+
+function buildExportBaseName(filters, rows) {
+  const team = filters.team
+    ? filenamePart(filters.team, 'All Teams')
+    : uniqueFieldPart(rows, 'department', 'All Teams');
+  const branch = filters.branch
+    ? filenamePart(filters.branch, 'All Branches')
+    : uniqueFieldPart(rows, 'branch', 'All Branches');
+  const shift = filters.shift
+    ? filenamePart(filters.shift, 'All Shifts')
+    : uniqueFieldPart(rows, 'shift', 'All Shifts');
+  return `TL ${team} ${branch} ${shift}`;
+}
+
+function attachmentDisposition(filename) {
+  const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, "'");
+  const encoded = encodeURIComponent(filename);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+async function loadExportRows(scope, filters) {
+  const { sql, params } = buildQuery(scope, filters);
+  const { rows } = await pool.query(
+    `
+      SELECT ${EXPORT_COLUMNS_SQL}
+      ${sql}
+      ORDER BY branch NULLS LAST, department NULLS LAST, name ASC, employee_id ASC
+    `,
+    params
+  );
+  return rows.filter((row) => employeeMatchesScope(row, scope));
 }
 
 let exportLogTableReady = false;
@@ -252,6 +307,26 @@ async function getExportOptions(req, res) {
   }
 }
 
+async function listExportPreview(req, res) {
+  try {
+    const { scope, filters, blocked } = readFilters(req);
+    if (blocked) {
+      return res.status(403).json({ message: blocked });
+    }
+    const allowed = await loadExportRows(scope, filters);
+    const filenameBase = buildExportBaseName(filters, allowed);
+    return res.json({
+      count: allowed.length,
+      filenameBase,
+      columns: EXPORT_COLUMNS.map(({ key, label }) => ({ key, label })),
+      employees: displayRows(allowed),
+    });
+  } catch (err) {
+    console.error('listExportPreview error:', err);
+    return res.status(500).json({ message: 'Server error loading export preview.' });
+  }
+}
+
 async function exportEmployees(req, res) {
   try {
     const { scope, filters, blocked } = readFilters(req);
@@ -265,22 +340,20 @@ async function exportEmployees(req, res) {
       return res.status(400).json({ message: 'format must be xlsx or pdf.' });
     }
 
-    const { sql, params } = buildQuery(scope, filters);
-    const { rows } = await pool.query(
-      `
-        SELECT ${EXPORT_COLUMNS_SQL}
-        ${sql}
-        ORDER BY branch NULLS LAST, department NULLS LAST, name ASC, employee_id ASC
-      `,
-      params
-    );
-    const allowed = rows.filter((row) => employeeMatchesScope(row, scope));
-    const stamp = new Date().toISOString().slice(0, 10);
+    const allowed = await loadExportRows(scope, filters);
     const filtersLabel = describeFilters(filters, scope);
+    const filenameBase = buildExportBaseName(filters, allowed);
+    const { rows: actorRows } = await pool.query(
+      `SELECT name, username FROM users WHERE id = $1 LIMIT 1`,
+      [req.user.id]
+    );
+    const generatedBy =
+      String(actorRows[0]?.name || actorRows[0]?.username || '').trim() || 'Unknown';
     const meta = {
       title: 'Textured Lab employee export',
       filters: filtersLabel,
       generatedAt: new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
+      generatedBy,
     };
 
     try {
@@ -309,21 +382,19 @@ async function exportEmployees(req, res) {
     }
 
     if (format === 'pdf') {
+      const pdfName = `${filenameBase}.pdf`;
       const buffer = await buildEmployeePdf(allowed, meta);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="TL-employees-${stamp}.pdf"`
-      );
+      res.setHeader('Content-Disposition', attachmentDisposition(pdfName));
+      res.setHeader('X-Export-Filename', pdfName);
       return res.send(buffer);
     }
 
+    const excelName = `${filenameBase}.xls`;
     const xml = buildExcelXml(allowed, meta);
     res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="TL-employees-${stamp}.xls"`
-    );
+    res.setHeader('Content-Disposition', attachmentDisposition(excelName));
+    res.setHeader('X-Export-Filename', excelName);
     return res.send(xml);
   } catch (err) {
     console.error('exportEmployees error:', err);
@@ -333,6 +404,7 @@ async function exportEmployees(req, res) {
 
 module.exports = {
   getExportOptions,
+  listExportPreview,
   exportEmployees,
   listExportLogs,
 };

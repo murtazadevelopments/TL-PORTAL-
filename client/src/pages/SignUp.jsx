@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
+import SignupWelcomeModal from '../components/SignupWelcomeModal';
 import logo from '../assets/logo.webp';
 
 const LAST_JOB_OPTIONS = [
@@ -53,6 +54,7 @@ const USERNAME_REGEX = /^[a-z0-9._]+$/;
 
 function SignUp() {
   const navigate = useNavigate();
+  const goToSignIn = useCallback(() => navigate('/'), [navigate]);
   const [form, setForm] = useState(INITIAL);
   const [files, setFiles] = useState({
     cnic_front: null,
@@ -114,11 +116,7 @@ function SignUp() {
       const { data } = await api.post('/api/auth/signup', body);
 
       localStorage.removeItem('token');
-      setSuccess(
-        data.message ||
-          'Your account has been created and is pending admin approval. You can sign in once an administrator activates it.'
-      );
-      setTimeout(() => navigate('/'), 2500);
+      setSuccess(data.message || 'Account created.');
     } catch (err) {
       const status = err.response?.status;
       if (status === 409) setError('account already exists');
@@ -385,7 +383,6 @@ function SignUp() {
           </div>
 
           {error && <p className="error">{error}</p>}
-          {success && <p className="success">{success}</p>}
 
           <button type="submit" className="btn btn-primary" disabled={loading || Boolean(success)}>
             {loading ? 'Creating account…' : 'Create account'}
@@ -396,6 +393,9 @@ function SignUp() {
           Already registered? <Link to="/">Sign in</Link>
         </p>
       </main>
+      {success ? (
+        <SignupWelcomeModal name={form.name} onContinue={goToSignIn} />
+      ) : null}
     </div>
   );
 }

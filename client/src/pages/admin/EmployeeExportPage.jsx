@@ -10,6 +10,32 @@ function describeAssignment(scope, ceo) {
   return describeEmployeeScope(scope);
 }
 
+function describeActiveFilters({ branch, team, shift }) {
+  const parts = [
+    team ? `Team: ${team}` : 'Team: all assigned teams',
+    branch ? `Branch: ${branch}` : 'Branch: all assigned branches',
+    shift ? `Shift: ${shift}` : 'Shift: all shifts',
+  ];
+  return parts.join(' · ');
+}
+
+function parseDownloadName(res, format) {
+  const headerName = String(res.headers['x-export-filename'] || '').trim();
+  if (headerName) return headerName;
+  const disposition = String(res.headers['content-disposition'] || '');
+  const utf = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf?.[1]) {
+    try {
+      return decodeURIComponent(utf[1]);
+    } catch {
+      /* keep scanning */
+    }
+  }
+  const quoted = disposition.match(/filename="([^"]+)"/);
+  if (quoted?.[1]) return quoted[1];
+  return format === 'pdf' ? 'TL All Teams All Branches All Shifts.pdf' : 'TL All Teams All Branches All Shifts.xls';
+}
+
 async function downloadBlob(format, filters) {
   try {
     const res = await api.get('/api/admin/employees/export', {
@@ -32,10 +58,7 @@ async function downloadBlob(format, filters) {
       }
       throw new Error(message);
     }
-    const disposition = String(res.headers['content-disposition'] || '');
-    const matched = disposition.match(/filename="([^"]+)"/);
-    const fallback = format === 'pdf' ? 'TL-employees.pdf' : 'TL-employees.xls';
-    const filename = matched?.[1] || fallback;
+    const filename = parseDownloadName(res, format);
     const url = URL.createObjectURL(res.data);
     const link = document.createElement('a');
     link.href = url;
@@ -44,6 +67,7 @@ async function downloadBlob(format, filters) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+    return filename;
   } catch (err) {
     const data = err.response?.data;
     if (data instanceof Blob) {
@@ -75,11 +99,16 @@ export default function EmployeeExportPage() {
   const [team, setTeam] = useState('');
   const [shift, setShift] = useState('');
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [columns, setColumns] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [filenameBase, setFilenameBase] = useState('TL All Teams All Branches All Shifts');
 
   const canExport = hasPermission(permissions, 'employees:export', role);
+  const filters = useMemo(() => ({ branch, team, shift }), [branch, team, shift]);
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
@@ -97,6 +126,28 @@ export default function EmployeeExportPage() {
       setError(err.response?.data?.message || 'Failed to load export options.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadPreview = useCallback(async (nextFilters) => {
+    setPreviewLoading(true);
+    setError('');
+    try {
+      const { data } = await api.get('/api/admin/employees/export-preview', {
+        params: {
+          branch: nextFilters.branch || undefined,
+          team: nextFilters.team || undefined,
+          shift: nextFilters.shift || undefined,
+        },
+      });
+      setColumns(Array.isArray(data?.columns) ? data.columns : []);
+      setEmployees(Array.isArray(data?.employees) ? data.employees : []);
+      setFilenameBase(data?.filenameBase || 'TL All Teams All Branches All Shifts');
+    } catch (err) {
+      setEmployees([]);
+      setError(err.response?.data?.message || 'Failed to load employee preview.');
+    } finally {
+      setPreviewLoading(false);
     }
   }, []);
 
@@ -130,7 +181,13 @@ export default function EmployeeExportPage() {
     if (!checking && canExport) loadOptions();
   }, [checking, canExport, loadOptions]);
 
-  const filters = useMemo(() => ({ branch, team, shift }), [branch, team, shift]);
+  useEffect(() => {
+    if (checking || !canExport) return undefined;
+    const timer = setTimeout(() => {
+      loadPreview(filters);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [checking, canExport, filters, loadPreview]);
 
   async function handleExport(format) {
     if (!canExport) return;
@@ -138,8 +195,8 @@ export default function EmployeeExportPage() {
     setError('');
     setSuccess('');
     try {
-      await downloadBlob(format, filters);
-      setSuccess(format === 'pdf' ? 'PDF downloaded.' : 'Excel file downloaded.');
+      const filename = await downloadBlob(format, filters);
+      setSuccess(`${filename} downloaded.`);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Export failed.');
     } finally {
@@ -203,11 +260,16 @@ export default function EmployeeExportPage() {
         </label>
       </div>
 
+      <p className="export-filter-summary">{describeActiveFilters(filters)}</p>
+      <p className="export-filename-hint">
+        File name: <strong>{filenameBase}.xls</strong> / <strong>{filenameBase}.pdf</strong>
+      </p>
+
       <div className="export-actions">
         <button
           type="button"
           className="btn btn-primary"
-          disabled={Boolean(exporting) || loading}
+          disabled={Boolean(exporting) || loading || previewLoading || employees.length === 0}
           onClick={() => handleExport('xlsx')}
         >
           {exporting === 'xlsx' ? 'Preparing Excel…' : 'Download Excel'}
@@ -215,11 +277,54 @@ export default function EmployeeExportPage() {
         <button
           type="button"
           className="btn btn-ghost"
-          disabled={Boolean(exporting) || loading}
+          disabled={Boolean(exporting) || loading || previewLoading || employees.length === 0}
           onClick={() => handleExport('pdf')}
         >
           {exporting === 'pdf' ? 'Preparing PDF…' : 'Download PDF'}
         </button>
+      </div>
+
+      <div className="export-preview-head">
+        <h2>Employees in this download</h2>
+        <p className="muted">
+          {previewLoading
+            ? 'Updating list…'
+            : `${employees.length} ${employees.length === 1 ? 'employee' : 'employees'} match the filters above.`}
+        </p>
+      </div>
+
+      <div className="table-shell export-preview-table">
+        {previewLoading && employees.length === 0 && (
+          <div className="admin-loading">
+            <div className="spinner" />
+            Loading employees…
+          </div>
+        )}
+
+        {!previewLoading && employees.length === 0 && (
+          <div className="admin-empty">No employees match these filters.</div>
+        )}
+
+        {employees.length > 0 && (
+          <table className="admin-table">
+            <thead>
+              <tr>
+                {columns.map((col) => (
+                  <th key={col.key}>{col.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((row, index) => (
+                <tr key={`${row.employee_id || 'row'}-${index}`}>
+                  {columns.map((col) => (
+                    <td key={col.key}>{row[col.key] || '—'}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

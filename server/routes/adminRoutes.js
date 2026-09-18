@@ -21,6 +21,7 @@ const {
 } = require('../controllers/adminController');
 const {
   getExportOptions,
+  listExportPreview,
   exportEmployees,
   listExportLogs,
 } = require('../controllers/employeeExportController');
@@ -229,6 +230,12 @@ router.get(
   requireRole('admin'),
   requirePermission('employees:export'),
   getExportOptions
+);
+router.get(
+  '/employees/export-preview',
+  requireRole('admin'),
+  requirePermission('employees:export'),
+  listExportPreview
 );
 router.get(
   '/employees/export',

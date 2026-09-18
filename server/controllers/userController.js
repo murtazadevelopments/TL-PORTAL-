@@ -22,6 +22,7 @@ const {
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
+const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -147,6 +148,8 @@ async function getMe(req, res) {
     }
 
     const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
+    user.is_birthday = isBirthdayToday(user.date_of_birth);
+    user.birthday_on = user.is_birthday ? birthdayKey() : null;
     const role = String(user.role || '')
       .trim()
       .toLowerCase();

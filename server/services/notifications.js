@@ -470,26 +470,80 @@ async function notifyUserLogin(user, { ip, userAgent, locationLabel, device, geo
   return result;
 }
 
+function birthdayEmailWrap(inner) {
+  return `
+    <div style="background:#070910;padding:28px 16px;font-family:Nunito,Segoe UI,sans-serif;">
+      <div style="max-width:560px;margin:0 auto;background:#12182a;border:1px solid rgba(61,255,122,.35);border-radius:20px;padding:28px 24px;color:#c9d4e8;">
+        ${inner}
+      </div>
+    </div>
+  `;
+}
+
 /**
- * Feature C — birthday email.
+ * Employee birthday email — sent on the day.
  */
 async function notifyBirthday(user) {
   if (!user?.email) return null;
+  const who = firstName(user.name);
 
   const result = await sendEmailSafe({
     to: user.email,
-    subject: `Happy Birthday, ${firstName(user.name)}! 🎉`,
-    html: `
-      <p>Happy Birthday, <strong>${escapeHtml(firstName(user.name))}</strong>!</p>
-      <p>Everyone at Textured Lab wishes you a wonderful day filled with joy.</p>
-      <p>— The Textured Lab team</p>
-    `,
+    subject: `Happy Birthday, ${who}! 🎉`,
+    html: birthdayEmailWrap(`
+      <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Textured Lab</p>
+      <h1 style="margin:0 0 12px;font-size:28px;color:#f4f8ff;">Happy Birthday, ${escapeHtml(who)}!</h1>
+      <p style="line-height:1.6;margin:0 0 12px;">The whole Textured Lab family is celebrating you today. Thank you for the care, craft, and energy you bring to the lab.</p>
+      <p style="line-height:1.6;margin:0 0 18px;">May this year be kind, bright, and full of work you are proud of. Enjoy your day — you have earned every wish.</p>
+      <p style="margin:0;color:#3dff7a;"><strong>— Textured Lab</strong></p>
+    `),
   });
 
   await logEmail({
     emailType: 'birthday',
     recipient: user.email,
     meta: { userId: user.id, ok: Boolean(result) },
+  });
+
+  return result;
+}
+
+/**
+ * CEO reminder — sent one day before an employee's birthday.
+ */
+async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
+  const selfEmail = String(user?.email || '').trim().toLowerCase();
+  let to = await getCeoEmails();
+  if (!includeBirthdayPerson) {
+    to = to.filter((email) => email && email !== selfEmail);
+  }
+  if (!to.length) {
+    console.warn('[birthday-ceo] SKIP — no CEO email on file');
+    return null;
+  }
+
+  const who = user?.name || user?.username || `Employee ${user?.id}`;
+  const result = await sendEmailSafe({
+    to,
+    subject: `Tomorrow is ${who}'s birthday`,
+    html: birthdayEmailWrap(`
+      <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Birthday reminder</p>
+      <h1 style="margin:0 0 12px;font-size:24px;color:#f4f8ff;">${escapeHtml(who)} has a birthday tomorrow</h1>
+      <p style="line-height:1.6;margin:0 0 12px;">This is your one-day-ahead note so you can wish them in time.</p>
+      <ul style="padding-left:18px;line-height:1.7;">
+        <li><strong>Name:</strong> ${escapeHtml(who)}</li>
+        <li><strong>Employee ID:</strong> ${escapeHtml(user?.employee_id || '—')}</li>
+        <li><strong>Team:</strong> ${escapeHtml(user?.department || '—')}</li>
+        <li><strong>Branch:</strong> ${escapeHtml(user?.branch || '—')}</li>
+      </ul>
+      <p style="margin:0;color:#8b97ad;">They will receive their birthday email from Textured Lab on the day.</p>
+    `),
+  });
+
+  await logEmail({
+    emailType: 'birthday_ceo_preview',
+    recipient: to.join(','),
+    meta: { userId: user?.id, ok: Boolean(result) },
   });
 
   return result;
@@ -603,6 +657,7 @@ module.exports = {
   notifyAdminsEmployeeSelfUpdate,
   notifyUserLogin,
   notifyBirthday,
+  notifyCeoBirthdayTomorrow,
   notifyAttendanceFailed,
   notifyRemoteAttendanceCheck,
   notifyApp,

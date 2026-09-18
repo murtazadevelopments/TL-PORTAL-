@@ -9,6 +9,7 @@ import api from '../api/client';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
 import InstallAppModal from '../components/InstallAppModal';
+import BirthdayCelebration from '../components/BirthdayCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import './AppShell.css';
@@ -21,6 +22,7 @@ function ShellInner() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const [ackProfileLock, setAckProfileLock] = useState(false);
+  const [ackBirthday, setAckBirthday] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -49,6 +51,21 @@ function ShellInner() {
   useEffect(() => {
     if (!profileLocked) setAckProfileLock(false);
   }, [profileLocked]);
+
+  const birthdayStorageKey =
+    user?.is_birthday && user?.id && user?.birthday_on
+      ? `tl-birthday-seen:${user.id}:${user.birthday_on}`
+      : '';
+
+  useEffect(() => {
+    if (!birthdayStorageKey) {
+      setAckBirthday(false);
+      return;
+    }
+    setAckBirthday(sessionStorage.getItem(birthdayStorageKey) === '1');
+  }, [birthdayStorageKey]);
+
+  const showBirthday = Boolean(user?.is_birthday) && !ackBirthday;
 
   useEffect(() => {
     if (!profileLocked) return;
@@ -271,7 +288,16 @@ function ShellInner() {
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
       {!profileLocked && <InstallAppModal />}
-      {profileLocked && !ackProfileLock && (
+      {showBirthday && (
+        <BirthdayCelebration
+          user={user}
+          onContinue={() => {
+            if (birthdayStorageKey) sessionStorage.setItem(birthdayStorageKey, '1');
+            setAckBirthday(true);
+          }}
+        />
+      )}
+      {profileLocked && !ackProfileLock && !showBirthday && (
         <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
       )}
       {!profileLocked && <AdminIncompleteGate user={user} />}

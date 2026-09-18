@@ -1,50 +1,66 @@
 const pool = require('../config/db');
-const { notifyBirthday } = require('../services/notifications');
+const { notifyBirthday, notifyCeoBirthdayTomorrow } = require('../services/notifications');
+const { calendarYmd, addCalendarDays } = require('../utils/birthdayCalendar');
 
-/**
- * Find active users whose DOB month/day matches today (in APP_TIMEZONE).
- */
-async function findBirthdayUsers(now = new Date()) {
-  const tz = process.env.APP_TIMEZONE || 'Asia/Karachi';
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const month = parts.find((p) => p.type === 'month')?.value;
-  const day = parts.find((p) => p.type === 'day')?.value;
-  if (!month || !day) return [];
+const PORTAL_STAFF = `AND COALESCE(staff_kind, 'portal') <> 'lower'`;
 
+async function findUsersBornOn(month, day) {
   const { rows } = await pool.query(
     `
-      SELECT id, name, email, employee_id, date_of_birth
+      SELECT id, name, email, employee_id, username, department, branch, date_of_birth
       FROM users
       WHERE is_active = true
-        AND email IS NOT NULL
+        AND NULLIF(TRIM(email), '') IS NOT NULL
         AND date_of_birth IS NOT NULL
+        ${PORTAL_STAFF}
         AND EXTRACT(MONTH FROM date_of_birth) = $1::int
         AND EXTRACT(DAY FROM date_of_birth) = $2::int
     `,
     [Number(month), Number(day)]
   );
-
   return rows;
 }
 
-async function runBirthdayEmails() {
-  const users = await findBirthdayUsers();
-  let sent = 0;
-  for (const user of users) {
-    const result = await notifyBirthday(user);
-    if (result) sent += 1;
+async function findBirthdayUsers(now = new Date()) {
+  const today = calendarYmd(now);
+  return findUsersBornOn(today.month, today.day);
+}
+
+async function findTomorrowBirthdayUsers(now = new Date()) {
+  const tomorrow = addCalendarDays(calendarYmd(now), 1);
+  return findUsersBornOn(tomorrow.month, tomorrow.day);
+}
+
+async function runBirthdayEmails(now = new Date()) {
+  const tomorrowPeople = await findTomorrowBirthdayUsers(now);
+  const todayPeople = await findBirthdayUsers(now);
+  let ceoSent = 0;
+  let employeeSent = 0;
+
+  for (const user of tomorrowPeople) {
+    const result = await notifyCeoBirthdayTomorrow(user);
+    if (result) ceoSent += 1;
   }
+
+  for (const user of todayPeople) {
+    const result = await notifyBirthday(user);
+    if (result) employeeSent += 1;
+  }
+
   console.log(
-    `[birthday-job] ${new Date().toISOString()} candidates=${users.length} sent=${sent}`
+    `[birthday-job] ${new Date().toISOString()} tomorrow=${tomorrowPeople.length} ceoSent=${ceoSent} today=${todayPeople.length} employeeSent=${employeeSent}`
   );
-  return { candidates: users.length, sent };
+  return {
+    tomorrow: tomorrowPeople.length,
+    ceoSent,
+    today: todayPeople.length,
+    employeeSent,
+  };
 }
 
 module.exports = {
+  findUsersBornOn,
   findBirthdayUsers,
+  findTomorrowBirthdayUsers,
   runBirthdayEmails,
 };
