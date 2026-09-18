@@ -108,6 +108,7 @@ export function buildSidebarGroups(
     }
     if (isCeo(role)) {
       adminItems.push({ to: '/admin/login-logs', label: 'Login Logs' });
+      adminItems.push({ to: '/admin/export-logs', label: 'Export logs' });
     }
     groups.push({ id: 'administration', label: 'Administration', items: adminItems });
   }

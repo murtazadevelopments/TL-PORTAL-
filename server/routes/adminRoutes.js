@@ -22,6 +22,7 @@ const {
 const {
   getExportOptions,
   exportEmployees,
+  listExportLogs,
 } = require('../controllers/employeeExportController');
 const {
   getPermissionsCatalog,
@@ -200,6 +201,7 @@ router.put('/hr-people', requireRole('ceo'), saveHrPeople);
 
 // CEO login activity
 router.get('/login-logs', requireRole('ceo'), listLoginLogs);
+router.get('/export-logs', requireRole('ceo'), listExportLogs);
 
 // Optional API for notification_settings (UI removed — recipients come from permission)
 router.get(

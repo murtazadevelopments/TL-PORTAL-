@@ -26,6 +26,7 @@ const DesignationsPage = lazy(() => import('./pages/admin/DesignationsPage'));
 const ShiftsPage = lazy(() => import('./pages/admin/ShiftsPage'));
 const NotificationSettingsPage = lazy(() => import('./pages/admin/NotificationSettingsPage'));
 const LoginLogs = lazy(() => import('./pages/LoginLogs'));
+const EmployeeExportLogsPage = lazy(() => import('./pages/admin/EmployeeExportLogsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const TeamLeaderDashboard = lazy(() => import('./pages/team-leader/TeamLeaderDashboard'));
 const MessagesInbox = lazy(() => import('./pages/account/MessagesInbox'));
@@ -73,6 +74,7 @@ function App() {
               <Route path="/admin/shifts" element={<ShiftsPage />} />
               <Route path="/admin/notifications" element={<NotificationSettingsPage />} />
               <Route path="/admin/login-logs" element={<LoginLogs />} />
+              <Route path="/admin/export-logs" element={<EmployeeExportLogsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
