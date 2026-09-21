@@ -7,11 +7,18 @@ const UNICODE_FONT_PATH = path.join(
   __dirname,
   '../assets/fonts/NotoSansArabic-Regular.ttf'
 );
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
 let unicodeFontBytes = null;
+let logoPngBytes = null;
 try {
   unicodeFontBytes = fs.readFileSync(UNICODE_FONT_PATH);
 } catch (err) {
   console.warn('employee export PDF font missing:', err.message || err);
+}
+try {
+  logoPngBytes = fs.readFileSync(LOGO_PATH);
+} catch (err) {
+  console.warn('employee export PDF logo missing:', err.message || err);
 }
 
 const LAST_JOB_LABELS = {
@@ -243,6 +250,14 @@ async function buildEmployeePdf(records, meta = {}) {
   const rows = displayRows(records);
   const pdf = await PDFDocument.create();
   const { font, bold } = await embedExportFonts(pdf);
+  let logoImage = null;
+  if (logoPngBytes) {
+    try {
+      logoImage = await pdf.embedPng(logoPngBytes);
+    } catch (err) {
+      console.warn('employee export PDF logo embed failed:', err.message || err);
+    }
+  }
   const pageWidth = 842;
   const pageHeight = 595;
   const margin = 28;
@@ -272,6 +287,21 @@ async function buildEmployeePdf(records, meta = {}) {
       size,
       font: usedFont,
       color,
+    });
+  }
+
+  function drawWatermark(target) {
+    if (!logoImage) return;
+    const maxSide = Math.min(pageWidth, pageHeight) * 0.62;
+    const scale = Math.min(maxSide / logoImage.width, maxSide / logoImage.height);
+    const width = logoImage.width * scale;
+    const height = logoImage.height * scale;
+    target.drawImage(logoImage, {
+      x: (pageWidth - width) / 2,
+      y: (pageHeight - height) / 2,
+      width,
+      height,
+      opacity: 0.22,
     });
   }
 
@@ -441,6 +471,7 @@ async function buildEmployeePdf(records, meta = {}) {
   }
 
   pdf.getPages().forEach((p, idx, all) => {
+    drawWatermark(p);
     safeDrawText(p, `${idx + 1} / ${all.length}`, {
       x: pageWidth / 2 - 14,
       y: 12,
