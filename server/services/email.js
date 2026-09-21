@@ -23,16 +23,22 @@ function getFrom() {
   );
 }
 
-/**
- * @param {{ to: string|string[], subject: string, html: string, text?: string, emailType?: string }} opts
- */
-async function sendEmail({ to, subject, html, text }) {
-  const resend = getClient();
-  const recipients = Array.isArray(to) ? to : [to];
+function uniqueRecipients(to) {
+  const list = Array.isArray(to) ? to : [to];
+  return [
+    ...new Set(
+      list
+        .map((email) => String(email || '').trim().toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
 
+async function sendOne({ to, subject, html, text }) {
+  const resend = getClient();
   const { data, error } = await resend.emails.send({
     from: getFrom(),
-    to: recipients,
+    to: [to],
     subject,
     html,
     text: text || undefined,
@@ -42,45 +48,85 @@ async function sendEmail({ to, subject, html, text }) {
     const err = new Error(error.message || 'Failed to send email');
     err.cause = error;
     err.statusCode = error.statusCode;
+    err.recipient = to;
     throw err;
   }
 
   return data;
 }
 
+/**
+ * Always sends one message per recipient so nobody can see another address.
+ * @param {{ to: string|string[], subject: string, html: string, text?: string, emailType?: string }} opts
+ */
+async function sendEmail(opts) {
+  const recipients = uniqueRecipients(opts.to);
+  if (!recipients.length) {
+    const err = new Error('No email recipient');
+    err.code = 'NO_RECIPIENT';
+    throw err;
+  }
+
+  const results = [];
+  for (const recipient of recipients) {
+    results.push(
+      await sendOne({
+        to: recipient,
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text,
+      })
+    );
+  }
+  return results.length === 1 ? results[0] : results;
+}
+
 async function sendEmailSafe(opts) {
-  const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
-  const recipientStr = recipients.filter(Boolean).join(',');
-  try {
-    const data = await sendEmail(opts);
-    console.log(
-      `[email] OK type=${opts.emailType || 'generic'} to=${recipientStr} id=${data?.id || 'n/a'} from=${getFrom()}`
-    );
-    if (opts.emailType) {
-      await logEmail({
-        emailType: opts.emailType,
-        recipient: recipientStr,
-        meta: { ok: true, id: data?.id || null, subject: opts.subject },
-      });
-    }
-    return data;
-  } catch (err) {
-    console.error(
-      `[email] FAIL type=${opts.emailType || 'generic'} to=${recipientStr} from=${getFrom()}:`,
-      err.message || err
-    );
-    await logEmail({
-      emailType: opts.emailType || 'email_failure',
-      recipient: recipientStr,
-      meta: {
-        ok: false,
-        error: err.message || String(err),
-        subject: opts.subject || null,
-        from: getFrom(),
-      },
-    });
+  const recipients = uniqueRecipients(opts.to);
+  if (!recipients.length) {
+    console.warn(`[email] SKIP type=${opts.emailType || 'generic'} no recipients`);
     return null;
   }
+
+  let lastOk = null;
+  for (const recipient of recipients) {
+    try {
+      const data = await sendOne({
+        to: recipient,
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text,
+      });
+      lastOk = data;
+      console.log(
+        `[email] OK type=${opts.emailType || 'generic'} to=${recipient} id=${data?.id || 'n/a'} from=${getFrom()}`
+      );
+      if (opts.emailType) {
+        await logEmail({
+          emailType: opts.emailType,
+          recipient,
+          meta: { ok: true, id: data?.id || null, subject: opts.subject },
+        });
+      }
+    } catch (err) {
+      console.error(
+        `[email] FAIL type=${opts.emailType || 'generic'} to=${recipient} from=${getFrom()}:`,
+        err.message || err
+      );
+      await logEmail({
+        emailType: opts.emailType || 'email_failure',
+        recipient,
+        meta: {
+          ok: false,
+          error: err.message || String(err),
+          subject: opts.subject || null,
+          from: getFrom(),
+        },
+      });
+    }
+  }
+
+  return lastOk;
 }
 
 module.exports = { sendEmail, sendEmailSafe, getFrom };
