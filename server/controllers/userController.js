@@ -23,6 +23,7 @@ const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
+const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -111,6 +112,7 @@ async function getMe(req, res) {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
     await ensureDesignationsSchema();
+    await ensureSalaryColumn();
     const { rows } = await pool.query(
       `SELECT ${USER_PUBLIC_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [req.user.id]
@@ -234,6 +236,7 @@ async function updateMe(req, res) {
   try {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
+    await ensureSalaryColumn();
     const body = req.body || {};
 
     // Admin-only keys are dropped silently (no error) if present

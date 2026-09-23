@@ -48,6 +48,7 @@ const {
 } = require('../utils/staffKind');
 const { deliverOneMessage } = require('./messagesController');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
+const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 const LAST_JOB_STATUSES = new Set([
@@ -239,6 +240,7 @@ async function listEmployees(req, res) {
     await ensureEmploymentTypeColumn();
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
+    await ensureSalaryColumn();
     const scopes = await resolvePermissionScopes(req);
     const access = directoryAccess(req);
     const filter = employmentAccessWhere({
@@ -295,6 +297,7 @@ async function getEmployeeById(req, res) {
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
     await ensureLowerStaffExtraColumns();
+    await ensureSalaryColumn();
     const { id } = req.params;
 
     const { rows } = await pool.query(
@@ -374,6 +377,7 @@ async function getEmployeeById(req, res) {
 async function createLowerStaff(req, res, body) {
   await ensureLowerStaffExtraColumns();
   await ensureUsersBranchNotEnumLocked();
+  await ensureSalaryColumn();
   if (!canManageLowerStaff(req)) {
     return res.status(403).json({
       message: 'Only HR with Add employees permission can add subordinate staff.',
@@ -489,6 +493,7 @@ async function updateLowerStaff(req, res) {
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
     await ensureUsersBranchNotEnumLocked();
+    await ensureSalaryColumn();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
         message: 'Only HR with Add employees permission can edit subordinate staff.',
@@ -671,6 +676,7 @@ async function createEmployee(req, res) {
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
     await ensureUsersBranchNotEnumLocked();
+    await ensureSalaryColumn();
     const body = req.body || {};
 
     if (String(body.staff_kind || '').trim().toLowerCase() === 'lower') {
