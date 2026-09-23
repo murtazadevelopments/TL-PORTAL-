@@ -18,9 +18,6 @@ app.use(compression());
 const defaultOrigins = [
   'https://texturedlab.org',
   'https://www.texturedlab.org',
-  'https://portal.texturedlab.com',
-  'https://www.portal.texturedlab.com',
-  'https://seagreen-weasel-875788.hostingersite.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
