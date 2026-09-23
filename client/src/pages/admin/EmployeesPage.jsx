@@ -2966,7 +2966,8 @@ function EmployeesPage() {
                         {blockingId === detail.id ? 'Blocking…' : 'Block'}
                       </button>
                     )}
-                    {canDeactivateEmployees && (
+                    {canDeactivateEmployees &&
+                      String(detail.role || '').toLowerCase() !== 'ceo' && (
                     <button
                       type="button"
                       className="btn btn-ghost"

@@ -1095,7 +1095,7 @@ async function deactivateEmployee(req, res) {
 
     const { rows: existingRows } = await pool.query(
       `
-        SELECT id, branch, department, is_active, employment_type
+        SELECT id, branch, department, is_active, employment_type, role
         FROM users
         WHERE id = $1 AND is_active = true
         LIMIT 1
@@ -1104,6 +1104,9 @@ async function deactivateEmployee(req, res) {
     );
     if (!existingRows[0]) {
       return res.status(404).json({ message: 'Employee not found or already deactivated.' });
+    }
+    if (normalizeRoleName(existingRows[0].role) === 'ceo') {
+      return res.status(403).json({ message: 'CEO accounts cannot be deactivated.' });
     }
 
     const scopes = await resolvePermissionScopes(req);
@@ -1128,6 +1131,7 @@ async function deactivateEmployee(req, res) {
         UPDATE users
         SET is_active = false, updated_at = NOW()
         WHERE id = $1 AND is_active = true
+          AND LOWER(TRIM(COALESCE(role, ''))) <> 'ceo'
         RETURNING id, employee_id, username, name, email, role, is_active
       `,
       [id]
@@ -1252,6 +1256,9 @@ async function purgeEmployee(req, res) {
     const employee = rows[0];
     if (!employee) {
       return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeRoleName(employee.role) === 'ceo') {
+      return res.status(403).json({ message: 'CEO accounts cannot be permanently deleted.' });
     }
 
     await writeAuditLog({
@@ -1456,6 +1463,7 @@ async function blockAccount(req, res) {
         UPDATE users
         SET blocked_at = NOW(), blocked_reason = $2, updated_at = NOW()
         WHERE id = $1
+          AND LOWER(TRIM(COALESCE(role, ''))) <> 'ceo'
         RETURNING id, employee_id, username, name, email, role, status,
                   failed_login_attempts, locked_at, blocked_at, blocked_reason, is_active
       `,
