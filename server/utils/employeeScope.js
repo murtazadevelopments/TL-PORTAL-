@@ -50,13 +50,14 @@ function isAllScope(scope) {
 function employeeMatchesScope(employee, scope) {
   const s = normalizeScope(scope);
   if (s.type === 'all') return true;
+  const folded = (s.values || []).map((v) => String(v || '').trim().toLowerCase());
   if (s.type === 'branch') {
-    const branch = String(employee?.branch || '').trim();
-    return Boolean(branch) && s.values.includes(branch);
+    const branch = String(employee?.branch || '').trim().toLowerCase();
+    return Boolean(branch) && folded.includes(branch);
   }
   if (s.type === 'team') {
-    const team = String(employee?.department || '').trim();
-    return Boolean(team) && s.values.includes(team);
+    const team = String(employee?.department || '').trim().toLowerCase();
+    return Boolean(team) && folded.includes(team);
   }
   return true;
 }
@@ -70,13 +71,13 @@ function scopeWhereClause(scope, startIndex = 1) {
   if (s.type === 'all') return { sql: '', params: [] };
   if (s.type === 'branch') {
     return {
-      sql: `AND COALESCE(TRIM(branch), '') = ANY($${startIndex}::text[])`,
+      sql: `AND LOWER(TRIM(COALESCE(branch, ''))) IN (SELECT LOWER(TRIM(v)) FROM unnest($${startIndex}::text[]) AS v)`,
       params: [s.values],
     };
   }
   if (s.type === 'team') {
     return {
-      sql: `AND COALESCE(TRIM(department), '') = ANY($${startIndex}::text[])`,
+      sql: `AND LOWER(TRIM(COALESCE(department, ''))) IN (SELECT LOWER(TRIM(v)) FROM unnest($${startIndex}::text[]) AS v)`,
       params: [s.values],
     };
   }
@@ -137,6 +138,7 @@ const SCOPED_PERMISSION_KEYS = new Set([
   'employees:export',
   'attendance:view',
   'attendance:edit',
+  'sales:targets',
 ]);
 
 function isScopedPermissionKey(key) {

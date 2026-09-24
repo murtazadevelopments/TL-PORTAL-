@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { runBirthdayEmails } = require('./birthdayEmails');
 const { runLoginLogsPrune } = require('./loginLogsPrune');
 const { runAttendanceMissed } = require('./attendanceMissed');
+const { startZktecoSync } = require('../scripts/sync');
 
 /**
  * Register scheduled jobs. Call once after the HTTP server starts.
@@ -59,6 +60,10 @@ function startScheduledJobs() {
     console.log(`[cron] Attendance missed scan scheduled: "${attendanceExpression}" (${tz})`);
   } else {
     console.error(`[cron] Invalid ATTENDANCE_MISSED_CRON expression: ${attendanceExpression}`);
+  }
+
+  if (/^(1|true|yes)$/i.test(String(process.env.ZKTECO_SYNC_ENABLED || ''))) {
+    startZktecoSync();
   }
 }
 

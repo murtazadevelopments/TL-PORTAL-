@@ -159,6 +159,15 @@ async function assignRole(req, res) {
       for (const key of permissionKeys) {
         if (!isScopedPermissionKey(key)) continue;
         const scope = normalizeScope(scopesByKey[key]);
+        if (key === 'sales:targets') {
+          if (scope.type !== 'team' || !scope.values?.length) {
+            return res.status(400).json({
+              message:
+                'Sales targets (supervisor) requires Specific team — pick at least one team. This is not for every employee.',
+            });
+          }
+          continue;
+        }
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           return res.status(400).json({
             message: `Select at least one ${scope.type || 'value'} for ${key}, or choose All employees.`,

@@ -41,6 +41,7 @@ export function isScopedEmployeePermission(key) {
     key === 'employees:remote' ||
     key === 'employees:export' ||
     key === 'attendance:view' ||
-    key === 'attendance:edit'
+    key === 'attendance:edit' ||
+    key === 'sales:targets'
   );
 }

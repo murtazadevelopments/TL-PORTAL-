@@ -31,8 +31,12 @@ function defaultScopesFromUser(user) {
     'employees:export',
     'attendance:view',
     'attendance:edit',
+    'sales:targets',
   ]) {
     scopes[key] = normalizeEmployeeScope(incoming[key]);
+    if (key === 'sales:targets' && scopes[key].type !== 'team') {
+      scopes[key] = { type: 'team', values: Array.isArray(scopes[key].values) ? scopes[key].values : [] };
+    }
   }
   return scopes;
 }
@@ -60,6 +64,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     'employees:export': { type: 'all' },
     'attendance:view': { type: 'all' },
     'attendance:edit': { type: 'all' },
+    'sales:targets': { type: 'team', values: [] },
   });
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -170,7 +175,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     if (isScopedEmployeePermission(key)) {
       setScopes((prev) => ({
         ...prev,
-        [key]: prev[key] || { type: 'all' },
+        [key]:
+          prev[key] ||
+          (key === 'sales:targets' ? { type: 'team', values: [] } : { type: 'all' }),
       }));
     }
   }
@@ -224,6 +231,13 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       for (const key of permissions) {
         if (!isScopedEmployeePermission(key)) continue;
         const scope = normalizeEmployeeScope(scopes[key]);
+        if (key === 'sales:targets') {
+          if (scope.type !== 'team' || !scope.values?.length) {
+            setFormError('Sales targets (supervisor): pick at least one specific team. This is not for every employee.');
+            return;
+          }
+          continue;
+        }
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           setFormError(
             `For ${
@@ -237,7 +251,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                       ? 'Remote employees'
                       : key === 'attendance:view'
                         ? 'View attendance'
-                        : 'Edit attendance'
+                        : key === 'sales:targets'
+                          ? 'Sales targets (supervisor)'
+                          : 'Edit attendance'
             }, choose All, or pick at least one branch/team.`
           );
           return;
@@ -288,8 +304,18 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
 
   function renderScopeControls(permKey) {
     if (!permissions.includes(permKey)) return null;
-    const scope = normalizeEmployeeScope(scopes[permKey] || { type: 'all' });
-    const options = scope.type === 'team' ? teamNames : branchOptions;
+    const scope =
+      permKey === 'sales:targets' && (scopes[permKey]?.type !== 'team')
+        ? { type: 'team', values: scopes[permKey]?.values || [] }
+        : normalizeEmployeeScope(scopes[permKey] || { type: 'all' });
+    const typeOptions =
+      permKey === 'sales:targets'
+        ? [{ value: 'team', label: 'Specific team' }]
+        : [
+            { value: 'all', label: 'All employees' },
+            { value: 'branch', label: 'Specific branch' },
+            { value: 'team', label: 'Specific team' },
+          ];
 
     return (
       <div
@@ -299,11 +325,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       >
         <span className="permission-scope-label">Access scope</span>
         <div className="permission-scope-types" role="radiogroup" aria-label="Access scope">
-          {[
-            { value: 'all', label: 'All employees' },
-            { value: 'branch', label: 'Specific branch' },
-            { value: 'team', label: 'Specific team' },
-          ].map((opt) => (
+          {typeOptions.map((opt) => (
             <button
               key={opt.value}
               type="button"
