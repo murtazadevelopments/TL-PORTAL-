@@ -78,6 +78,7 @@ const {
   adminEmployeeDays,
   adminDeleteRemoteDay,
 } = require('../controllers/attendanceController');
+const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
 
 const router = express.Router();
 
@@ -304,6 +305,20 @@ router.post(
 );
 
 router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
+
+router.get(
+  '/zkteco-attendance',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:view',
+    'attendance:edit',
+    'employees:view',
+    'employees:edit',
+    'employees:remote',
+    'hr:add_employee'
+  ),
+  listZktecoAttendance
+);
 
 router.get(
   '/attendance',

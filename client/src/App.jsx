@@ -33,6 +33,7 @@ const MessagesInbox = lazy(() => import('./pages/account/MessagesInbox'));
 const ComposeMessagePage = lazy(() => import('./pages/admin/ComposeMessagePage'));
 const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
+const AttendanceDashboard = lazy(() => import('./pages/admin/AttendanceDashboard'));
 
 function App() {
   return (
@@ -64,6 +65,7 @@ function App() {
               <Route path="/admin/employees" element={<EmployeesPage />} />
               <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
               <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
+              <Route path="/admin/attendance/biometric" element={<AttendanceDashboard />} />
               <Route path="/admin/messages" element={<ComposeMessagePage />} />
               <Route path="/admin/locked" element={<LockedAccountsPage />} />
               <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
