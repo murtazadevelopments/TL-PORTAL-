@@ -84,3 +84,8 @@ export function canViewTeamAttendance(role, permissions) {
     canViewOnsiteTeamAttendance(role, permissions)
   );
 }
+
+/** CEO-assigned sales supervisor (or CEO). Dashboard is PIN-gated for non-CEO. */
+export function canManageSalesTargets(role, permissions) {
+  return hasPermission(permissions, 'sales:targets', role);
+}

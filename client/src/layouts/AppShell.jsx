@@ -209,6 +209,7 @@ function ShellInner() {
           unreadMessages={unreadMessages}
           employmentType={user?.employment_type || null}
           profileLocked={profileLocked}
+          salesAgentDashboard={Boolean(user?.sales_agent_dashboard)}
           onNavigate={() => setDrawerOpen(false)}
         />
 

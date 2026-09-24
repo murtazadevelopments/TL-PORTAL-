@@ -22,6 +22,12 @@ const PERMISSIONS_CATALOG = [
       'View and edit remote employees. Without this grant, remote staff are hidden. CEO always has access; assign this to the person who manages remote staff.',
   },
   {
+    key: 'sales:targets',
+    label: 'Sales targets (supervisor)',
+    description:
+      'Named sales supervisor: PIN-locked board for sales executives and team leaders on assigned teams only — not production, HR, or other admins. Only those sales people see My Target.',
+  },
+  {
     key: 'hr:followup',
     label: 'HR assignee',
     description:

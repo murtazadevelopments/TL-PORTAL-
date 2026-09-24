@@ -34,6 +34,8 @@ const ComposeMessagePage = lazy(() => import('./pages/admin/ComposeMessagePage')
 const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
 const AttendanceDashboard = lazy(() => import('./pages/admin/AttendanceDashboard'));
+const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
+const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
 
 function App() {
   return (
@@ -57,6 +59,8 @@ function App() {
               <Route path="/dashboard" element={<DashboardHome />} />
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/team-leader" element={<TeamLeaderDashboard />} />
+              <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
+              <Route path="/my-target" element={<SalesAgentDashboard />} />
               <Route path="/account" element={<AccountProfile />} />
               <Route path="/account/documents" element={<AccountDocuments />} />
               <Route path="/account/messages" element={<MessagesInbox />} />

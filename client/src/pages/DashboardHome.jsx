@@ -96,7 +96,11 @@ export default function DashboardHome() {
             <div className="detail-grid readonly-cards">
               <p>
                 <span className="label">Status</span>
-                <strong>{user.status || '—'}</strong>
+                <strong>
+                  {user.status
+                    ? String(user.status).charAt(0).toUpperCase() + String(user.status).slice(1)
+                    : '—'}
+                </strong>
               </p>
               <p>
                 <span className="label">Department</span>
@@ -174,6 +178,24 @@ export default function DashboardHome() {
                   </em>
                 </span>
               </Link>
+            ) : null}
+            {user.sales_agent_dashboard ? (
+            <Link to="/my-target" className="dash-shortcut">
+              <span className="dash-shortcut-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
+                  <path
+                    d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                </svg>
+              </span>
+              <span className="dash-shortcut-copy">
+                <strong>My sales target</strong>
+                <em>Progress this month</em>
+              </span>
+            </Link>
             ) : null}
             <Link to="/account/documents" className="dash-shortcut">
               <span className="dash-shortcut-icon" aria-hidden="true">

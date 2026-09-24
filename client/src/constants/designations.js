@@ -1,6 +1,7 @@
 /** Job titles shown on Add / Edit employee. */
 export const DESIGNATION_OPTIONS = [
   'Sales Agent',
+  'Sales Executive',
   'Team Lead',
   'Supervisor',
   'Sub Supervisor',

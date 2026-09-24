@@ -209,7 +209,9 @@ export default function RolesPage() {
           <div>
             <h1>Assign Roles</h1>
             <p className="muted" style={{ margin: 0 }}>
-              People with admin or CEO access and their permission scopes
+              People with admin or CEO access and their permission scopes. To name a sales
+              supervisor, assign Admin and tick “Sales targets (supervisor)”, then limit Access
+              scope to that person’s teams.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>

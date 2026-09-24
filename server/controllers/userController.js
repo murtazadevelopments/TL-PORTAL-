@@ -224,6 +224,25 @@ async function getMe(req, res) {
 
     const keys = Array.isArray(user.permissions) ? user.permissions : [];
     user.is_hr = role !== 'ceo' && keys.includes('hr:followup');
+    user.sales_agent_dashboard = false;
+    try {
+      const { employeeHasSalesAgentDashboard } = require('../utils/salesTeams');
+      user.sales_agent_dashboard = await employeeHasSalesAgentDashboard(user);
+    } catch {
+      user.sales_agent_dashboard = false;
+    }
+    user.sales_pin_configured = false;
+    if (role === 'ceo' || keys.includes('sales:targets') || keys.includes('*')) {
+      try {
+        const { rows: salesPinRows } = await pool.query(
+          'SELECT sales_pin_hash IS NOT NULL AS configured FROM users WHERE id = $1',
+          [user.id]
+        );
+        user.sales_pin_configured = Boolean(salesPinRows[0]?.configured);
+      } catch {
+        user.sales_pin_configured = false;
+      }
+    }
 
     return res.json(user);
   } catch (err) {

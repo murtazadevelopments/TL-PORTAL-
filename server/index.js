@@ -47,7 +47,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Sales-Pin'],
     exposedHeaders: ['Content-Disposition', 'X-Export-Filename'],
   })
 );
@@ -150,6 +150,7 @@ try {
   app.use('/api/roles', require('./routes/rolesRoutes'));
   app.use('/api/documents', require('./routes/documentsRoutes'));
   app.use('/api/tl-dashboard', require('./routes/tlDashboardRoutes'));
+  app.use('/api/sales-targets', require('./routes/salesTargetsRoutes'));
   app.use('/api/messages', require('./routes/messagesRoutes'));
   app.use('/api/push', require('./routes/pushRoutes'));
 } catch (err) {

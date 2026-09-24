@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
-import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance } from '../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance, canManageSalesTargets } from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
@@ -8,7 +8,13 @@ import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendan
 export function buildSidebarGroups(
   role,
   permissions,
-  { tlDashboardAccess = false, unreadMessages = 0, employmentType = null, profileLocked = false } = {}
+  {
+    tlDashboardAccess = false,
+    unreadMessages = 0,
+    employmentType = null,
+    profileLocked = false,
+    salesAgentDashboard = false,
+  } = {}
 ) {
   if (profileLocked) {
     return [
@@ -26,6 +32,9 @@ export function buildSidebarGroups(
   if (employmentType === 'remote' || employmentType === 'onsite') {
     dashboardItems.push({ to: '/attendance', label: 'My Attendance' });
   }
+  if (salesAgentDashboard) {
+    dashboardItems.push({ to: '/my-target', label: 'My Target' });
+  }
 
   const groups = [
     {
@@ -41,6 +50,15 @@ export function buildSidebarGroups(
       label: 'Team Leader Dashboard',
       plainLabel: true,
       items: [{ to: '/team-leader', label: 'TL Dashboard', end: true }],
+    });
+  }
+
+  if (canManageSalesTargets(role, permissions)) {
+    groups.push({
+      id: 'sales-targets',
+      label: 'Sales Targets',
+      plainLabel: true,
+      items: [{ to: '/sales-targets', label: 'Supervisor board', end: true }],
     });
   }
 
@@ -174,6 +192,7 @@ export default function SidebarNav({
   unreadMessages = 0,
   employmentType = null,
   profileLocked = false,
+  salesAgentDashboard = false,
   onNavigate,
 }) {
   const location = useLocation();
@@ -184,8 +203,17 @@ export default function SidebarNav({
         unreadMessages,
         employmentType,
         profileLocked,
+        salesAgentDashboard,
       }),
-    [role, permissions, tlDashboardAccess, unreadMessages, employmentType, profileLocked]
+    [
+      role,
+      permissions,
+      tlDashboardAccess,
+      unreadMessages,
+      employmentType,
+      profileLocked,
+      salesAgentDashboard,
+    ]
   );
 
   const activeGroupId = useMemo(() => {
