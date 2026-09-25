@@ -10,6 +10,7 @@ import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
 import InstallAppModal from '../components/InstallAppModal';
 import BirthdayCelebration from '../components/BirthdayCelebration';
+import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import './AppShell.css';
@@ -23,6 +24,7 @@ function ShellInner() {
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const [ackProfileLock, setAckProfileLock] = useState(false);
   const [ackBirthday, setAckBirthday] = useState(false);
+  const [ackExam, setAckExam] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -65,7 +67,20 @@ function ShellInner() {
     setAckBirthday(sessionStorage.getItem(birthdayStorageKey) === '1');
   }, [birthdayStorageKey]);
 
+  const examCongrats = user?.exam_congrats;
+  const examStorageKey =
+    examCongrats?.id && user?.id ? `tl-exam-congrats-seen:${user.id}:${examCongrats.id}` : '';
+
+  useEffect(() => {
+    if (!examStorageKey) {
+      setAckExam(false);
+      return;
+    }
+    setAckExam(localStorage.getItem(examStorageKey) === '1');
+  }, [examStorageKey]);
+
   const showBirthday = Boolean(user?.is_birthday) && !ackBirthday;
+  const showExam = Boolean(examCongrats?.id) && !ackExam && !showBirthday;
 
   useEffect(() => {
     if (!profileLocked) return;
@@ -298,7 +313,18 @@ function ShellInner() {
           }}
         />
       )}
-      {profileLocked && !ackProfileLock && !showBirthday && (
+      {showExam && (
+        <ExamCelebration
+          user={user}
+          examLabel={examCongrats.exam_label}
+          onContinue={() => {
+            if (examStorageKey) localStorage.setItem(examStorageKey, '1');
+            setAckExam(true);
+            api.post('/api/users/me/exam-congrats/ack', { id: examCongrats.id }).catch(() => {});
+          }}
+        />
+      )}
+      {profileLocked && !ackProfileLock && !showBirthday && !showExam && (
         <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
       )}
       {!profileLocked && <AdminIncompleteGate user={user} />}

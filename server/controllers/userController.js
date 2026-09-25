@@ -24,6 +24,10 @@ const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
+const {
+  pendingExamCongrats,
+  acknowledgeExamCongrats,
+} = require('../utils/examCongrats');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -242,6 +246,13 @@ async function getMe(req, res) {
       } catch {
         user.sales_pin_configured = false;
       }
+    }
+
+    user.exam_congrats = null;
+    try {
+      user.exam_congrats = await pendingExamCongrats(user.id);
+    } catch {
+      user.exam_congrats = null;
     }
 
     return res.json(user);
@@ -541,4 +552,24 @@ async function updateDocuments(req, res) {
   }
 }
 
-module.exports = { getMe, updateMe, updateProfilePicture, updateDocuments };
+async function ackExamCongrats(req, res) {
+  try {
+    const congratsId = String(req.body?.id || req.body?.congrats_id || '').trim();
+    if (!congratsId) {
+      return res.status(400).json({ message: 'Congratulations id is required.' });
+    }
+    await acknowledgeExamCongrats(req.user.id, congratsId);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('ackExamCongrats error:', err);
+    return res.status(500).json({ message: 'Could not save congratulations.' });
+  }
+}
+
+module.exports = {
+  getMe,
+  updateMe,
+  updateProfilePicture,
+  updateDocuments,
+  ackExamCongrats,
+};

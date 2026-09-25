@@ -12,6 +12,7 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "zkteco:sync": "node scripts/sync.js",
+    "exam:congrats": "node scripts/grant-exam-congrats.js",
     "build": "echo \"Use repo root npm run build on Hostinger\"",
     "migrate:storage:inventory": "node scripts/migrate-storage-to-local.js --inventory",
     "migrate:storage": "node scripts/migrate-storage-to-local.js",
