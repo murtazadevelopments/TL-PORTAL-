@@ -94,7 +94,6 @@ export function buildSidebarGroups(
     }
     if (canViewTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance' });
-      employeeItems.push({ to: '/admin/attendance/biometric', label: 'Biometric punches' });
     }
     if (
       hasPermission(permissions, 'accounts:unlock', role) ||
