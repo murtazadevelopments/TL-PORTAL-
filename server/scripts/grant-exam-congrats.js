@@ -60,7 +60,8 @@ async function main() {
       ON CONFLICT (user_id)
       DO UPDATE SET
         exam_label = EXCLUDED.exam_label,
-        seen_at = CASE WHEN $3::boolean THEN NULL ELSE exam_congratulations.seen_at END
+        seen_at = CASE WHEN $3::boolean THEN NULL ELSE exam_congratulations.seen_at END,
+        id = CASE WHEN $3::boolean THEN gen_random_uuid() ELSE exam_congratulations.id END
       RETURNING id, seen_at
     `,
     [user.id, examLabel, reset]
