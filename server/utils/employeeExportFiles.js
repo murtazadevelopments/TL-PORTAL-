@@ -29,9 +29,18 @@ const LAST_JOB_LABELS = {
   other: 'Other',
 };
 
+const IDENTITY_FIELDS = [
+  { key: 'employee_id', label: 'Employee Id' },
+  { key: 'name', label: 'Name' },
+  { key: 'date_of_joining', label: 'Doj' },
+  { key: 'department', label: 'Team' },
+];
+
 const EXPORT_COLUMNS = [
-  { key: 'employee_id', label: 'Employee ID', width: 72 },
-  { key: 'name', label: 'Full name', width: 96 },
+  { key: 'employee_id', label: 'Employee Id', width: 72 },
+  { key: 'name', label: 'Name', width: 96 },
+  { key: 'date_of_joining', label: 'Doj', width: 64 },
+  { key: 'department', label: 'Team', width: 78 },
   { key: 'username', label: 'Username', width: 78 },
   { key: 'email', label: 'Email', width: 110 },
   { key: 'contact_number', label: 'Contact', width: 78 },
@@ -43,11 +52,9 @@ const EXPORT_COLUMNS = [
   { key: 'role', label: 'Role', width: 52 },
   { key: 'status', label: 'Status', width: 48 },
   { key: 'employment_type', label: 'Type', width: 48 },
-  { key: 'department', label: 'Team', width: 78 },
   { key: 'designation', label: 'Designation', width: 86 },
   { key: 'branch', label: 'Branch', width: 72 },
   { key: 'shift', label: 'Shift', width: 52 },
-  { key: 'date_of_joining', label: 'Joined', width: 58 },
   { key: 'work_hours', label: 'Hours', width: 48 },
   { key: 'reference_person_name', label: 'Reference', width: 72 },
   { key: 'emergency_contact_name', label: 'Emergency name', width: 80 },
@@ -76,11 +83,9 @@ const PDF_GROUPS = [
     title: 'Employment',
     fields: [
       ['Role', 'role'],
-      ['Team', 'department'],
       ['Designation', 'designation'],
       ['Branch', 'branch'],
       ['Shift', 'shift'],
-      ['Joined', 'date_of_joining'],
       ['Work hours', 'work_hours'],
       ['Reference', 'reference_person_name'],
     ],
@@ -381,8 +386,21 @@ async function buildEmployeePdf(records, meta = {}) {
     y -= 10;
   }
 
+  const identInner = inner - 20;
+  const identColW = identInner / IDENTITY_FIELDS.length;
+  const identValueW = identColW - 8;
+
   function fieldHeight(value) {
     return Math.max(rowH, wrapText(font, value, 8, valueW).slice(0, 2).length * 10);
+  }
+
+  function identityBlockHeight(row) {
+    const maxLines = Math.max(
+      ...IDENTITY_FIELDS.map(
+        (field) => wrapText(font, displayValue(row, field.key), 9, identValueW).slice(0, 2).length
+      )
+    );
+    return 20 + maxLines * 12 + 10;
   }
 
   function cardHeight(row) {
@@ -391,7 +409,7 @@ async function buildEmployeePdf(records, meta = {}) {
         group.fields.reduce((sum, [, key]) => sum + fieldHeight(displayValue(row, key)), 18)
       )
     );
-    return 26 + body + 12;
+    return identityBlockHeight(row) + body + 12;
   }
 
   function drawField(x, cursorY, label, value) {
@@ -443,50 +461,39 @@ async function buildEmployeePdf(records, meta = {}) {
       borderColor: rule,
       borderWidth: 0.7,
     });
+    const identH = identityBlockHeight(row);
     page.drawRectangle({
       x: margin,
-      y: top - 22,
+      y: top - identH,
       width: inner,
-      height: 22,
+      height: identH,
       color: band,
     });
 
-    const empId = displayValue(row, 'employee_id');
-    const name = displayValue(row, 'name');
-    const titleLeft = empId === '-' ? name : empId;
-    safeDrawText(page, titleLeft, {
-      x: margin + 10,
-      y: top - 15,
-      size: 9,
-      font: bold,
-      color: bandText,
-    });
-    if (empId !== '-' && name !== '-') {
-      safeDrawText(page, name, {
-        x: margin + 16 + textWidth(bold, titleLeft, 9),
-        y: top - 15,
-        size: 10,
+    IDENTITY_FIELDS.forEach((field, idx) => {
+      const x = margin + 10 + idx * identColW;
+      safeDrawText(page, field.label, {
+        x,
+        y: top - 14,
+        size: 7,
         font: bold,
-        color: bandText,
+        color: rgb(0.72, 0.78, 0.88),
       });
-    }
-
-    const badge = [displayValue(row, 'status'), displayValue(row, 'employment_type')]
-      .filter((v) => v && v !== '-')
-      .join('  |  ');
-    if (badge) {
-      safeDrawText(page, badge, {
-        x: pageWidth - margin - 12 - textWidth(font, badge, 8),
-        y: top - 15,
-        size: 8,
-        font,
-        color: bandText,
+      const lines = wrapText(font, displayValue(row, field.key), 9, identValueW).slice(0, 2);
+      lines.forEach((line, lineIdx) => {
+        safeDrawText(page, line, {
+          x,
+          y: top - 28 - lineIdx * 12,
+          size: 9,
+          font: bold,
+          color: bandText,
+        });
       });
-    }
+    });
 
     PDF_GROUPS.forEach((group, idx) => {
       const x = margin + 10 + idx * (colW + colGap);
-      let cursor = top - 36;
+      let cursor = top - identH - 14;
       safeDrawText(page, group.title.toUpperCase(), {
         x,
         y: cursor,
