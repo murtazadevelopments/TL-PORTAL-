@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission, isCeo } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 function fullName(row) {
@@ -17,6 +18,7 @@ export default function DeactivatedEmployeesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [restoringId, setRestoringId] = useState(null);
   const [purgingId, setPurgingId] = useState(null);
 
@@ -142,8 +144,6 @@ export default function DeactivatedEmployeesPage() {
       </div>
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {loading && users.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />

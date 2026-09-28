@@ -5,6 +5,7 @@ import InactivityGuard from './components/InactivityGuard';
 import RouteFallback from './components/RouteFallback';
 import AppShell from './layouts/AppShell';
 import SignIn from './pages/SignIn';
+import SuccessPopup from './components/SuccessPopup';
 import './App.css';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
@@ -35,10 +36,12 @@ const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
 const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
 const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
+const SalesDailyTargetsPage = lazy(() => import('./pages/sales/SalesDailyTargetsPage'));
 
 function App() {
   return (
     <BrowserRouter>
+      <SuccessPopup />
       <InactivityGuard>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
@@ -59,8 +62,11 @@ function App() {
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/team-leader" element={<TeamLeaderDashboard />} />
               <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
-              <Route path="/my-target" element={<SalesAgentDashboard />} />
+              <Route path="/sales-targets/:agentId" element={<SalesDailyTargetsPage />} />
+              <Route path="/my-target" element={<Navigate to="/account/my-target" replace />} />
               <Route path="/account" element={<AccountProfile />} />
+              <Route path="/account/my-target" element={<SalesAgentDashboard />} />
+              <Route path="/account/my-target/days" element={<SalesDailyTargetsPage agentView />} />
               <Route path="/account/documents" element={<AccountDocuments />} />
               <Route path="/account/messages" element={<MessagesInbox />} />
               <Route path="/account/security" element={<AccountSecurity />} />

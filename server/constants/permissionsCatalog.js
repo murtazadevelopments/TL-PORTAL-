@@ -25,7 +25,7 @@ const PERMISSIONS_CATALOG = [
     key: 'sales:targets',
     label: 'Sales targets (supervisor)',
     description:
-      'Named sales supervisor: PIN-locked board for sales executives and team leaders on assigned teams only — not production, HR, or other admins. Only those sales people see My Target.',
+      'Named sales supervisor: PIN-locked board for sales executives and team leaders on assigned teams only. Those people see My Target under My Account.',
   },
   {
     key: 'hr:followup',

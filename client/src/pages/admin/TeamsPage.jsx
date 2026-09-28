@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 export default function TeamsPage() {
@@ -13,6 +14,7 @@ export default function TeamsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -159,8 +161,6 @@ export default function TeamsPage() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {loading && teams.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />

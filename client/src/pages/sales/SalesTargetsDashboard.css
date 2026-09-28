@@ -89,7 +89,7 @@
 
 .sales-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.85rem;
   margin: 0 0 1.25rem;
 }
@@ -207,6 +207,13 @@
   color: var(--muted);
 }
 
+.sales-daily-hint {
+  font-style: normal;
+  font-weight: 650;
+  font-size: 0.78rem;
+  color: var(--text-h);
+}
+
 .sales-agent-form input {
   width: 100%;
   padding: 0.55rem 0.7rem;
@@ -269,6 +276,14 @@
   text-transform: uppercase;
 }
 
+.sales-ring.is-over .sales-ring-value {
+  filter: drop-shadow(0 0 12px var(--glow-green));
+}
+
+.sales-ring.is-over .sales-ring-label strong {
+  font-size: 1.02rem;
+}
+
 .sales-hero {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -294,7 +309,7 @@
 
 .sales-hero-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
   margin-top: 0.9rem;
 }
@@ -328,7 +343,7 @@
 
 .sales-history-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr auto;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr auto;
   gap: 0.6rem;
   align-items: center;
   padding: 0.75rem 0.9rem;
@@ -342,6 +357,62 @@
   text-align: center;
   border-radius: 18px;
   border: 1px dashed var(--border);
+}
+
+.sales-status.is-missed {
+  color: #ff8b8b;
+  border-color: rgba(255, 107, 107, 0.4);
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.sales-day-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(10, 16, 30, 0.65);
+}
+
+.sales-day-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sales-day-table th,
+.sales-day-table td {
+  text-align: left;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.sales-day-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.sales-day-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.sales-day-table tr.is-today {
+  background: rgba(126, 203, 255, 0.08);
+}
+
+.sales-day-table .sales-status {
+  margin-top: 0;
+}
+
+.sales-day-table input {
+  width: 7.5rem;
+  max-width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(5, 8, 16, 0.75);
+  color: var(--text-h);
+  font: inherit;
 }
 
 .sales-pin-card {

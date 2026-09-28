@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 export default function NotificationSettingsPage() {
@@ -13,6 +14,7 @@ export default function NotificationSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [recipientUser, setRecipientUser] = useState(null);
   const [employees, setEmployees] = useState([]);
@@ -143,8 +145,6 @@ export default function NotificationSettingsPage() {
 
       {loading && <p className="muted">Loading…</p>}
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {!loading && (
         <form className="form" onSubmit={handleSave} style={{ maxWidth: 480 }}>
           {recipientUser && (

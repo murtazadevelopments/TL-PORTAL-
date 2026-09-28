@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 function fullName(row) {
@@ -18,6 +19,7 @@ export default function LockedAccountsPage() {
   const [error, setError] = useState('');
   const [actingId, setActingId] = useState(null);
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
 
   const canUnlock = hasPermission(permissions, 'accounts:unlock', role);
   const canBlock = hasPermission(permissions, 'employees:deactivate', role);
@@ -145,8 +147,6 @@ export default function LockedAccountsPage() {
       </div>
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {loading && lockedAccounts.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import '../admin/AdminDashboard.css';
 import './SalesTargetsDashboard.css';
-import { ProgressRing, formatAmount, formatPeriod, statusLabel } from './salesUi';
+import { ProgressRing, formatAmount, formatPeriod, statusLabel, daysInPeriod, dailyTargetAmount } from './salesUi';
 
 export default function SalesAgentDashboard() {
   const navigate = useNavigate();
@@ -59,6 +59,7 @@ export default function SalesAgentDashboard() {
   }
 
   const assigned = current?.target_amount != null && current.target_amount > 0;
+  const perDay = current?.daily_target ?? dailyTargetAmount(current?.target_amount, period);
 
   return (
     <div className="admin-page page-panel sales-dash">
@@ -66,7 +67,7 @@ export default function SalesAgentDashboard() {
         <div>
           <h1>My sales target</h1>
           <p className="muted" style={{ margin: 0 }}>
-            {formatPeriod(period)} · your supervisor assigns the target and updates achieved sales.
+            {formatPeriod(period)} · monthly target split across {daysInPeriod(period) || '—'} days.
           </p>
         </div>
       </div>
@@ -92,6 +93,10 @@ export default function SalesAgentDashboard() {
                 <strong>{formatAmount(current.target_amount)}</strong>
               </p>
               <p>
+                <span>Per day</span>
+                <strong>{formatAmount(perDay)}</strong>
+              </p>
+              <p>
                 <span>Achieved</span>
                 <strong>{formatAmount(current.achieved_amount)}</strong>
               </p>
@@ -99,6 +104,15 @@ export default function SalesAgentDashboard() {
                 <span>Remaining</span>
                 <strong>{formatAmount(current.remaining)}</strong>
               </p>
+            </div>
+            <div className="sales-period-nav" style={{ marginTop: '1rem' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate(`/account/my-target/days?period=${encodeURIComponent(period)}`)}
+              >
+                View more
+              </button>
             </div>
           </div>
         </section>
@@ -112,6 +126,7 @@ export default function SalesAgentDashboard() {
               <div key={row.period} className="sales-history-row">
                 <strong>{formatPeriod(row.period)}</strong>
                 <span>{formatAmount(row.target_amount)}</span>
+                <span>{formatAmount(row.daily_target)}/day</span>
                 <span>{formatAmount(row.achieved_amount)}</span>
                 <span
                   className={`sales-status${

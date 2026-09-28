@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import { describeEmployeeScope } from '../../utils/employeeScope';
 import './AdminDashboard.css';
 
@@ -103,6 +104,7 @@ export default function EmployeeExportPage() {
   const [exporting, setExporting] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [columns, setColumns] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [filenameBase, setFilenameBase] = useState('TL All Teams All Branches All Shifts');
@@ -222,8 +224,6 @@ export default function EmployeeExportPage() {
       <p className="muted">{describeAssignment(options.scope, options.ceo)}</p>
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       <div className="export-filters">
         <label>
           Branch

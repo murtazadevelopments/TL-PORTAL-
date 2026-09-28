@@ -3,7 +3,6 @@ const {
   PERMISSIONS_CATALOG,
   normalizePermissionKeys,
 } = require('../constants/permissionsCatalog');
-const { findBranchName } = require('./branchesController');
 const {
   normalizeScope,
   describeScope,
@@ -92,7 +91,6 @@ async function getPermissionsForUser(userId) {
  *   user_id | userId | employee_id | employeeId,
  *   role: 'admin' | 'employee' | 'ceo',
  *   permissions?: string[],
- *   branch?: string,
  *   permission_scopes?: { [permission_key]: { type, values? } },
  *   reason?: string
  * }
@@ -178,27 +176,16 @@ async function assignRole(req, res) {
       permissionRows = buildPermissionRows(permissionKeys, scopesByKey);
     }
 
-    let nextBranch = target.branch || null;
-    if (role === 'admin') {
-      const parsed = await findBranchName(body.branch);
-      if (!parsed) {
-        return res.status(400).json({
-          message: 'Select a branch when assigning the admin role.',
-        });
-      }
-      nextBranch = parsed;
-    }
-
     await client.query('BEGIN');
 
     const { rows } = await client.query(
       `
         UPDATE users
-        SET role = $1, branch = $2, updated_at = NOW()
-        WHERE id = $3
+        SET role = $1, updated_at = NOW()
+        WHERE id = $2
         RETURNING id, employee_id, username, name, email, role, branch
       `,
-      [role, nextBranch, target.id]
+      [role, target.id]
     );
 
     const updated = rows[0];
@@ -211,7 +198,6 @@ async function assignRole(req, res) {
       reasonRaw ||
       `Assigned role '${role}'` +
         (permissionKeys.length ? ` with [${permissionKeys.join(', ')}]` : '') +
-        (role === 'admin' && nextBranch ? ` branch=${nextBranch}` : '') +
         (scopeParts.length ? `; scopes: ${scopeParts.join('; ')}` : '');
 
     await client.query(

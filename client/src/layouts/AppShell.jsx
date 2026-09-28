@@ -13,6 +13,7 @@ import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
+import { SalesLeaveGuardProvider, useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import './AppShell.css';
 
 function ShellInner() {
@@ -28,6 +29,15 @@ function ShellInner() {
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { tryLeave: trySalesLeave } = useSalesLeaveGuard();
+
+  function guardHref(href, event) {
+    if (!trySalesLeave({ type: 'href', href })) {
+      event?.preventDefault();
+      return false;
+    }
+    return true;
+  }
   const portalGaps = user ? missingEmployeePortalFields(user) : [];
   const missingDocs = portalGaps.some((field) => field.document);
   const missingText = portalGaps.some((field) => !field.document);
@@ -180,6 +190,7 @@ function ShellInner() {
           className="shell-menu-btn shell-back-btn"
           aria-label="Go back"
           onClick={() => {
+            if (!trySalesLeave({ type: 'back' })) return;
             const idx = window.history.state?.idx;
             if (typeof idx === 'number' && idx > 0) {
               navigate(-1);
@@ -190,7 +201,13 @@ function ShellInner() {
         >
           <span className="shell-back-icon" aria-hidden />
         </button>
-        <Link to={profileLocked ? profileLockHomePath(user) : '/dashboard'} className="shell-brand shell-brand-mobile">
+        <Link
+          to={profileLocked ? profileLockHomePath(user) : '/dashboard'}
+          className="shell-brand shell-brand-mobile"
+          onClick={(event) =>
+            guardHref(profileLocked ? profileLockHomePath(user) : '/dashboard', event)
+          }
+        >
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
@@ -212,7 +229,13 @@ function ShellInner() {
       )}
 
       <aside className="app-sidebar" aria-label="Sidebar">
-        <Link to={profileLocked ? profileLockHomePath(user) : '/dashboard'} className="shell-brand shell-brand-desktop">
+        <Link
+          to={profileLocked ? profileLockHomePath(user) : '/dashboard'}
+          className="shell-brand shell-brand-desktop"
+          onClick={(event) =>
+            guardHref(profileLocked ? profileLockHomePath(user) : '/dashboard', event)
+          }
+        >
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
           <span>Textured Lab Portal</span>
         </Link>
@@ -230,7 +253,14 @@ function ShellInner() {
 
         <div className="sidebar-footer">
           <HardRefreshButton block />
-          <button type="button" className="btn btn-ghost sidebar-logout" onClick={logout}>
+          <button
+            type="button"
+            className="btn btn-ghost sidebar-logout"
+            onClick={() => {
+              if (!trySalesLeave({ type: 'logout' })) return;
+              logout();
+            }}
+          >
             Logout
           </button>
         </div>
@@ -244,7 +274,14 @@ function ShellInner() {
               {liveNotice.body ? <p>{liveNotice.body}</p> : null}
             </div>
             <div className="portal-live-notice-actions">
-              <Link to={liveNotice.url} className="btn btn-primary" onClick={() => setLiveNotice(null)}>
+              <Link
+                to={liveNotice.url}
+                className="btn btn-primary"
+                onClick={(event) => {
+                  if (!guardHref(liveNotice.url, event)) return;
+                  setLiveNotice(null);
+                }}
+              >
                 Open
               </Link>
               <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => setLiveNotice(null)}>
@@ -278,16 +315,28 @@ function ShellInner() {
             </div>
             <div className="portal-profile-alert-actions">
               {missingText && (
-                <Link to="/account" className="btn btn-primary">
+                <Link
+                  to="/account"
+                  className="btn btn-primary"
+                  onClick={(event) => guardHref('/account', event)}
+                >
                   Complete profile
                 </Link>
               )}
               {missingDocs && (
-                <Link to="/account/documents" className={missingText ? 'btn btn-ghost' : 'btn btn-primary'}>
+                <Link
+                  to="/account/documents"
+                  className={missingText ? 'btn btn-ghost' : 'btn btn-primary'}
+                  onClick={(event) => guardHref('/account/documents', event)}
+                >
                   Upload documents
                 </Link>
               )}
-              <Link to="/account/messages" className="btn btn-ghost">
+              <Link
+                to="/account/messages"
+                className="btn btn-ghost"
+                onClick={(event) => guardHref('/account/messages', event)}
+              >
                 View message
               </Link>
               <button
@@ -335,7 +384,9 @@ function ShellInner() {
 export default function AppShell() {
   return (
     <AuthUserProvider>
-      <ShellInner />
+      <SalesLeaveGuardProvider>
+        <ShellInner />
+      </SalesLeaveGuardProvider>
     </AuthUserProvider>
   );
 }

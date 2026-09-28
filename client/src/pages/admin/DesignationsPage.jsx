@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 export default function DesignationsPage() {
@@ -13,6 +14,7 @@ export default function DesignationsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [newName, setNewName] = useState('');
   const [tlAccess, setTlAccess] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -232,8 +234,6 @@ export default function DesignationsPage() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {loading && rows.length === 0 && <div className="admin-loading">Loading designations…</div>}
       {!loading && rows.length === 0 && !error && (
         <div className="admin-empty">No designations yet.</div>

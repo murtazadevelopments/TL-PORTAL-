@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
+import { useFlashSuccess } from '../../utils/successPopup';
 import '../admin/AdminDashboard.css';
 
 /**
@@ -11,6 +12,7 @@ export default function ComposeMessagePage() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [error, setError] = useState('');
 
   return (
@@ -24,7 +26,6 @@ export default function ComposeMessagePage() {
         </div>
       </div>
 
-      {success && <p className="success">{success}</p>}
       {error && <p className="error">{error}</p>}
 
       <p className="muted">

@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
 import SignupWelcomeModal from '../components/SignupWelcomeModal';
 import logo from '../assets/logo.webp';
+import { useFlashSuccess } from '../utils/successPopup';
 
 const LAST_JOB_OPTIONS = [
   { value: 'still_employed', label: 'Still employed elsewhere' },
@@ -64,6 +65,7 @@ function SignUp() {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [loading, setLoading] = useState(false);
 
   function handleChange(e) {

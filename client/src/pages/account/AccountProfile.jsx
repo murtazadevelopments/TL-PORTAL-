@@ -6,6 +6,7 @@ import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import { missingEmployeePortalFields, isProfileIncompleteLocked } from '../../utils/profileCompleteness';
+import { useFlashSuccess } from '../../utils/successPopup';
 import '../../components/ProfileIncompleteLock.css';
 
 const EMPLOYEE_EDIT_FIELDS = [
@@ -55,6 +56,7 @@ export default function AccountProfile() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
@@ -518,7 +520,6 @@ export default function AccountProfile() {
               )}
 
               {error && <p className="error">{error}</p>}
-              {success && <p className="success">{success}</p>}
               {(!locked || missingText) && (
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving…' : 'Save changes'}

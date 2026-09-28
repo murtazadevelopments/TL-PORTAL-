@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import { useFlashSuccess } from '../../utils/successPopup';
 import '../admin/AdminDashboard.css';
 import './TeamLeaderDashboard.css';
 
@@ -157,6 +158,7 @@ export default function TeamLeaderDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
 
   const [newCategoryName, setNewCategoryName] = useState('');
   const [linkDrafts, setLinkDrafts] = useState({});
@@ -633,8 +635,6 @@ export default function TeamLeaderDashboard() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {canManage && (
         <form className="form tl-create-cat" onSubmit={handleCreateCategory}>
           <label>

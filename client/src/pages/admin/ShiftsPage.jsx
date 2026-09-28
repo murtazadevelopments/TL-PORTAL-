@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { useFlashSuccess } from '../../utils/successPopup';
 import TimeAmPmInput from '../../components/TimeAmPmInput';
 import { formatTimeAmPm } from '../../utils/timeAmPm';
 import './AdminDashboard.css';
@@ -22,6 +23,7 @@ export default function ShiftsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  useFlashSuccess(success);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -246,8 +248,6 @@ export default function ShiftsPage() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {success && <p className="success">{success}</p>}
-
       {loading && shifts.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />

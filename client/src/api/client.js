@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { sanitizePublicError, sanitizePublicPayload, attachNetworkErrorMessage } from '../utils/sanitizePublicError';
+import { showSuccess } from '../utils/successPopup';
 
 /**
  * Backend origin from Vite env (no trailing slash).
@@ -40,9 +41,25 @@ const SESSION_ENDED_CODES = new Set([
   'ACCOUNT_LOCKED',
 ]);
 
+const SUCCESS_SKIP = /\/api\/auth\/(login|signin)|\/api\/users\/me$|unread-count/;
+
+function maybeShowSuccessPopup(response) {
+  const method = String(response.config?.method || '').toLowerCase();
+  if (!['post', 'put', 'patch', 'delete'].includes(method)) return;
+  const url = String(response.config?.url || '');
+  if (SUCCESS_SKIP.test(url)) return;
+  if (response.config?.skipSuccessPopup) return;
+  const message = response.data?.message;
+  if (typeof message !== 'string' || !message.trim()) return;
+  const status = response.status;
+  if (status < 200 || status >= 300) return;
+  showSuccess(message.trim());
+}
+
 api.interceptors.response.use(
   (response) => {
     if (response.data) sanitizePublicPayload(response.data);
+    maybeShowSuccessPopup(response);
     return response;
   },
   (error) => {

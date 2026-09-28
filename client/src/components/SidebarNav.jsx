@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
+import { useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance, canManageSalesTargets } from '../utils/permissions';
 
 /**
@@ -32,9 +33,6 @@ export function buildSidebarGroups(
   if (employmentType === 'remote' || employmentType === 'onsite') {
     dashboardItems.push({ to: '/attendance', label: 'My Attendance' });
   }
-  if (salesAgentDashboard) {
-    dashboardItems.push({ to: '/my-target', label: 'My Target' });
-  }
 
   const groups = [
     {
@@ -58,23 +56,28 @@ export function buildSidebarGroups(
       id: 'sales-targets',
       label: 'Sales Targets',
       plainLabel: true,
-      items: [{ to: '/sales-targets', label: 'Supervisor board', end: true }],
+      items: [{ to: '/sales-targets', label: 'Supervisor board' }],
     });
+  }
+
+  const accountItems = [
+    { to: '/account', label: 'Profile', end: true },
+    { to: '/account/documents', label: 'My Documents' },
+    {
+      to: '/account/messages',
+      label: 'Messages',
+      badge: unreadMessages > 0 ? unreadMessages : null,
+    },
+    { to: '/account/security', label: 'Security' },
+  ];
+  if (salesAgentDashboard) {
+    accountItems.splice(1, 0, { to: '/account/my-target', label: 'My Target' });
   }
 
   groups.push({
     id: 'account',
     label: 'My Account',
-    items: [
-      { to: '/account', label: 'Profile', end: true },
-      { to: '/account/documents', label: 'My Documents' },
-      {
-        to: '/account/messages',
-        label: 'Messages',
-        badge: unreadMessages > 0 ? unreadMessages : null,
-      },
-      { to: '/account/security', label: 'Security' },
-    ],
+    items: accountItems,
   });
 
   if (canAccessAdmin(role)) {
@@ -195,6 +198,16 @@ export default function SidebarNav({
   onNavigate,
 }) {
   const location = useLocation();
+  const { tryLeave } = useSalesLeaveGuard();
+
+  function handleNavClick(event, href) {
+    if (!tryLeave({ type: 'href', href })) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    onNavigate?.();
+  }
   const groups = useMemo(
     () =>
       buildSidebarGroups(role, permissions, {
@@ -253,7 +266,7 @@ export default function SidebarNav({
                 to={only.to}
                 end={Boolean(only.end)}
                 className={`sidebar-accordion-btn sidebar-accordion-link${onlyActive ? ' is-current' : ''}`}
-                onClick={onNavigate}
+                onClick={(event) => handleNavClick(event, only.to)}
               >
                 <span
                   className={`sidebar-accordion-title${group.plainLabel ? ' is-plain' : ''}`}
@@ -307,7 +320,7 @@ export default function SidebarNav({
                         to={item.to}
                         end={Boolean(item.end)}
                         className={`sidebar-link${active ? ' sidebar-link-active' : ''}`}
-                        onClick={onNavigate}
+                        onClick={(event) => handleNavClick(event, item.to)}
                       >
                         <span>{item.label}</span>
                         {item.badge != null && (

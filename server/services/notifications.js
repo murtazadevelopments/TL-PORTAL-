@@ -335,6 +335,21 @@ async function notifyUsernameReminder(userOrUsers) {
   });
 }
 
+async function notifySalesPinOtp(user, otp) {
+  if (!user?.email) return null;
+  return sendEmailSafe({
+    to: user.email,
+    subject: 'Your sales PIN reset code',
+    emailType: 'sales_pin_otp',
+    html: `
+      <p>Hi ${escapeHtml(user.name || '')},</p>
+      <p>Use this one-time code to change your sales PIN. It expires in 10 minutes.</p>
+      <p style="font-size:28px;letter-spacing:0.2em;font-weight:700">${escapeHtml(otp)}</p>
+      <p>If you did not request this, you can ignore this email. Do not share the code.</p>
+    `,
+  });
+}
+
 async function notifyPasswordReset(user, resetUrl) {
   if (!user?.email) return;
   await sendEmailSafe({
@@ -655,6 +670,7 @@ module.exports = {
   notifyAccountApproved,
   notifyUsernameReminder,
   notifyPasswordReset,
+  notifySalesPinOtp,
   notifyEmployeeAdminUpdated,
   notifyAdminsEmployeeSelfUpdate,
   notifyUserLogin,

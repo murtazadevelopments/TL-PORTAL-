@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { hardEmptyCacheAndReload } from '../pwaUpdate';
+import { useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import './HardRefreshButton.css';
 
 export default function HardRefreshButton({ compact = false, block = false }) {
   const [busy, setBusy] = useState(false);
+  const { tryLeave } = useSalesLeaveGuard();
 
   async function handleClick() {
     if (busy) return;
+    if (!tryLeave({ type: 'reload' })) return;
     setBusy(true);
     await hardEmptyCacheAndReload();
   }

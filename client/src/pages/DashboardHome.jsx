@@ -179,24 +179,6 @@ export default function DashboardHome() {
                 </span>
               </Link>
             ) : null}
-            {user.sales_agent_dashboard ? (
-            <Link to="/my-target" className="dash-shortcut">
-              <span className="dash-shortcut-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                  <path
-                    d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                  />
-                </svg>
-              </span>
-              <span className="dash-shortcut-copy">
-                <strong>My sales target</strong>
-                <em>Progress this month</em>
-              </span>
-            </Link>
-            ) : null}
             <Link to="/account/documents" className="dash-shortcut">
               <span className="dash-shortcut-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
