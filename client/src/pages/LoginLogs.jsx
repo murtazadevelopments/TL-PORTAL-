@@ -8,24 +8,67 @@ const RANGE_OPTIONS = [
   { value: '24h', label: 'Last 24 hours' },
   { value: '7d', label: 'Last 7 days' },
   { value: '30d', label: 'Last 30 days' },
-  { value: 'custom', label: 'Custom range' },
-  { value: 'all', label: 'All time' },
 ];
 
 function formatWhen(value) {
   if (!value) return '—';
   try {
-    return new Date(value).toLocaleString();
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(value));
   } catch {
     return String(value);
   }
+}
+
+function tidyText(value) {
+  if (!value) return '';
+  return String(value)
+    .replace(/[\u0600-\u06FF]+/g, '')
+    .replace(/[،]+/g, ',')
+    .replace(/\s+,/g, ',')
+    .replace(/,+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^,|,$/g, '')
+    .trim();
+}
+
+function locationLine(row) {
+  const parts = [];
+  for (const part of [tidyText(row.area), tidyText(row.city), tidyText(row.country)]) {
+    if (!part) continue;
+    const lower = part.toLowerCase();
+    if (parts.some((p) => p.toLowerCase().includes(lower) || lower.includes(p.toLowerCase()))) {
+      continue;
+    }
+    parts.push(part);
+  }
+  const line = parts.join(', ') || tidyText(row.location) || '—';
+  if (line.length > 72) return `${line.slice(0, 70).replace(/[, ]+$/, '')}…`;
+  return line;
+}
+
+function shortIp(ip) {
+  if (!ip) return '—';
+  const s = String(ip);
+  if (s.includes(':') && s.length > 22) return `${s.slice(0, 18)}…`;
+  return s;
 }
 
 function formatCoords(lat, lng) {
   if (lat == null || lng == null || Number.isNaN(Number(lat)) || Number.isNaN(Number(lng))) {
     return null;
   }
-  return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
+  const a = Number(lat);
+  const b = Number(lng);
+  const decimals = 6;
+  return `${a.toFixed(decimals)}, ${b.toFixed(decimals)}`;
 }
 
 function mapsUrl(lat, lng) {
@@ -55,9 +98,7 @@ function LoginLogs() {
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [range, setRange] = useState('7d');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [range, setRange] = useState('30d');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -95,10 +136,6 @@ function LoginLogs() {
         q: q || undefined,
         range,
       };
-      if (range === 'custom') {
-        if (from) params.from = from;
-        if (to) params.to = to;
-      }
       const { data } = await api.get('/api/admin/login-logs', { params });
       setLogs(Array.isArray(data?.logs) ? data.logs : []);
       setPagination(data?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 });
@@ -113,7 +150,7 @@ function LoginLogs() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, range, from, to, navigate]);
+  }, [page, q, range, navigate]);
 
   useEffect(() => {
     if (!checking && isCeo(role)) {
@@ -144,8 +181,8 @@ function LoginLogs() {
         <div>
           <h1>Login Logs</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Recent sign-ins across Textured Lab Portal. People on the same Wi‑Fi share one public
-            IP; city/area come from that IP (not GPS).
+            Sign-ins from the last 30 days. Map pins are GPS only. If location is denied, city
+            comes from the user’s public IP (not a street pin).
           </p>
         </div>
       </div>
@@ -174,30 +211,6 @@ function LoginLogs() {
             </option>
           ))}
         </select>
-        {range === 'custom' && (
-          <>
-            <input
-              className="filter-select"
-              type="date"
-              value={from}
-              onChange={(e) => {
-                setFrom(e.target.value);
-                setPage(1);
-              }}
-              aria-label="From date"
-            />
-            <input
-              className="filter-select"
-              type="date"
-              value={to}
-              onChange={(e) => {
-                setTo(e.target.value);
-                setPage(1);
-              }}
-              aria-label="To date"
-            />
-          </>
-        )}
         <button type="submit" className="btn btn-primary">
           Search
         </button>
@@ -221,51 +234,57 @@ function LoginLogs() {
         )}
 
         {!loading && !error && logs.length > 0 && (
-          <table className="admin-table">
+          <table className="admin-table login-logs-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Employee ID</th>
+                <th>Employee</th>
+                <th>Location</th>
+                <th>Map</th>
                 <th>IP</th>
-                <th>City</th>
-                <th>Area</th>
-                <th>Country</th>
-                <th>Coordinates</th>
                 <th>Device</th>
                 <th>Logged in</th>
               </tr>
             </thead>
             <tbody>
-              {logs.map((row) => (
-                <tr key={row.id}>
-                  <td className="cell-name">{row.employee_name || row.username || '—'}</td>
-                  <td>{row.employee_id || '—'}</td>
-                  <td>{row.ip_address || '—'}</td>
-                  <td>{row.city || '—'}</td>
-                  <td>{row.area || '—'}</td>
-                  <td>{row.country || '—'}</td>
-                  <td>
-                    {formatCoords(row.latitude, row.longitude) ? (
-                      <a
-                        className="coord-link"
-                        href={mapsUrl(row.latitude, row.longitude)}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        title="Open in Google Maps"
-                      >
-                        {formatCoords(row.latitude, row.longitude)}
-                      </a>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td title={row.user_agent || ''}>
-                    {row.device || shortDevice(row.user_agent)}
-                  </td>
-                  <td>{formatWhen(row.logged_in_at)}</td>
-                </tr>
-              ))}
+              {logs.map((row) => {
+                const place = locationLine(row);
+                const gps = row.location_source === 'gps' && formatCoords(row.latitude, row.longitude);
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <div className="login-emp">
+                        <strong>{row.employee_name || row.username || '—'}</strong>
+                        <span>{row.employee_id || '—'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="login-place" title={place}>
+                        {place}
+                      </div>
+                    </td>
+                    <td>
+                      {gps ? (
+                        <a
+                          className="coord-link"
+                          href={mapsUrl(row.latitude, row.longitude)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          View map
+                        </a>
+                      ) : (
+                        <span className="muted">No GPS</span>
+                      )}
+                    </td>
+                    <td title={row.ip_address || ''}>{shortIp(row.ip_address)}</td>
+                    <td title={row.user_agent || ''}>
+                      {row.device || shortDevice(row.user_agent)}
+                    </td>
+                    <td className="login-when">{formatWhen(row.logged_in_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

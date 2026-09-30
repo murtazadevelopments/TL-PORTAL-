@@ -498,7 +498,7 @@ function birthdayEmailWrap(inner) {
 }
 
 /**
- * Employee birthday email — sent on the day.
+ * Employee birthday email — sent at 12:00 AM on the birthday (Asia/Karachi).
  */
 async function notifyBirthday(user) {
   if (!user?.email) return null;
@@ -526,7 +526,7 @@ async function notifyBirthday(user) {
 }
 
 /**
- * CEO reminder — sent one day before an employee's birthday.
+ * CEO reminder — sent 24 hours before (midnight the day before).
  */
 async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
   const selfEmail = String(user?.email || '').trim().toLowerCase();
@@ -546,14 +546,14 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
     html: birthdayEmailWrap(`
       <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Birthday reminder</p>
       <h1 style="margin:0 0 12px;font-size:24px;color:#f4f8ff;">${escapeHtml(who)} has a birthday tomorrow</h1>
-      <p style="line-height:1.6;margin:0 0 12px;">This is your one-day-ahead note so you can wish them in time.</p>
+      <p style="margin:0 0 12px;line-height:1.6;">This is your 24-hour notice so you can wish them in time.</p>
       <ul style="padding-left:18px;line-height:1.7;">
         <li><strong>Name:</strong> ${escapeHtml(who)}</li>
         <li><strong>Employee ID:</strong> ${escapeHtml(user?.employee_id || '—')}</li>
         <li><strong>Team:</strong> ${escapeHtml(user?.department || '—')}</li>
         <li><strong>Branch:</strong> ${escapeHtml(user?.branch || '—')}</li>
       </ul>
-      <p style="margin:0;color:#8b97ad;">They will receive their birthday email from Textured Lab on the day.</p>
+      <p style="margin:0;color:#8b97ad;">They will receive their birthday email from Textured Lab at 12:00 AM on the day.</p>
     `),
   });
 

@@ -11,7 +11,7 @@ const { sanitizePublicJson } = require('./utils/sanitizePublicJson');
 
 const app = express();
 // Hostinger / proxies: so req.ip and x-forwarded-for are correct for login emails
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 app.use(compression());
 
 // JWT is sent as Authorization: Bearer; credentials enabled for cookie-ready CORS.
@@ -65,7 +65,7 @@ app.use((req, res, next) => {
   res.setHeader('Critical-CH', 'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Arch');
   res.setHeader(
     'Permissions-Policy',
-    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*'
+    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self)'
   );
   next();
 });

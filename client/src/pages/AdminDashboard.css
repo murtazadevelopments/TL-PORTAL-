@@ -242,6 +242,47 @@
   color: var(--green);
 }
 
+.login-logs-table tbody tr {
+  cursor: default;
+}
+
+.login-emp {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 10rem;
+}
+
+.login-emp strong {
+  color: var(--text-h);
+}
+
+.login-emp span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.login-place {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.login-logs-table td {
+  white-space: nowrap;
+}
+
+.login-logs-table td:nth-child(5) {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.login-when {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .muted-cell {
   color: var(--muted);
   font-style: italic;

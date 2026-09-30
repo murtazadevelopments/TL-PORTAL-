@@ -13,8 +13,8 @@ const { startZktecoSync } = require('../scripts/sync');
  */
 function startScheduledJobs() {
   const tz = process.env.APP_TIMEZONE || 'Asia/Karachi';
-  const birthdayExpression = process.env.BIRTHDAY_CRON || '0 8 * * *'; // 08:00 daily
-  const pruneExpression = process.env.LOGIN_LOGS_PRUNE_CRON || '0 3 * * 0'; // Sunday 03:00
+  const birthdayExpression = process.env.BIRTHDAY_CRON || '0 0 * * *'; // 00:00 daily
+  const pruneExpression = process.env.LOGIN_LOGS_PRUNE_CRON || '0 3 * * *'; // 03:00 daily
 
   if (cron.validate(birthdayExpression)) {
     cron.schedule(
@@ -26,7 +26,7 @@ function startScheduledJobs() {
       },
       { timezone: tz }
     );
-    console.log(`[cron] Birthday emails scheduled: "${birthdayExpression}" (${tz})`);
+    console.log(`[cron] Birthday emails scheduled: "${birthdayExpression}" (${tz}) — CEO 24h before, employee at midnight`);
   } else {
     console.error(`[cron] Invalid BIRTHDAY_CRON expression: ${birthdayExpression}`);
   }
@@ -45,6 +45,10 @@ function startScheduledJobs() {
   } else {
     console.error(`[cron] Invalid LOGIN_LOGS_PRUNE_CRON expression: ${pruneExpression}`);
   }
+
+  runLoginLogsPrune().catch((err) => {
+    console.error('[login-logs-prune] startup failed:', err.message || err);
+  });
 
   const attendanceExpression = process.env.ATTENDANCE_MISSED_CRON || '* * * * *';
   if (cron.validate(attendanceExpression)) {

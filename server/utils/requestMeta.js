@@ -224,17 +224,23 @@ function joinPlace(parts) {
   return unique.length ? unique.join(', ') : null;
 }
 
+function clipPlace(value, max = 120) {
+  const s = String(value || '').trim();
+  if (!s) return null;
+  return s.length > max ? s.slice(0, max) : s;
+}
+
 function toCoord(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-function geoResult({ city, area, country, latitude, longitude, local = false } = {}) {
-  const label = local
+function geoResult({ city, area, country, latitude, longitude, local = false, label } = {}) {
+  const computed = local
     ? 'This computer (local network)'
-    : joinPlace([city, area, country]);
+    : clipPlace(label, 180) || joinPlace([city, area, country]);
   return {
-    label: label || null,
+    label: computed || null,
     city: city || null,
     area: area || null,
     country: country || null,
@@ -316,6 +322,89 @@ async function approxLocationFromIp(ip) {
   return geo.label;
 }
 
+function parseGpsHints(hints) {
+  const lat = Number(hints?.latitude);
+  const lng = Number(hints?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (lat === 0 && lng === 0) return null;
+  return { latitude: lat, longitude: lng };
+}
+
+function englishPlace(value, max = 80) {
+  const raw = clipPlace(value, max);
+  if (!raw) return null;
+  const arabic = (raw.match(/[\u0600-\u06FF]/g) || []).length;
+  const latin = (raw.match(/[A-Za-z]/g) || []).length;
+  if (arabic && arabic >= latin) return null;
+  const cleaned = raw
+    .replace(/[\u0600-\u06FF]+/g, '')
+    .replace(/\s+,/g, ',')
+    .replace(/,+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^,|,$/g, '')
+    .trim();
+  return cleaned || null;
+}
+
+async function reverseGeocode(latitude, longitude) {
+  const data = await fetchJson(
+    `https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=jsonv2&zoom=16&addressdetails=1&accept-language=en`,
+    5000,
+    { 'Accept-Language': 'en' }
+  );
+  if (!data || data.error) return geoResult({ latitude, longitude });
+  const addr = data.address || {};
+  const city = englishPlace(
+    addr.city || addr.town || addr.village || addr.municipality
+  );
+  const area = englishPlace(
+    addr.suburb || addr.neighbourhood || addr.city_district || addr.road
+  );
+  const country = englishPlace(addr.country);
+  const label = joinPlace([area, city, country]);
+  return geoResult({
+    city,
+    area,
+    country,
+    latitude,
+    longitude,
+    label,
+    local: false,
+  });
+}
+
+function hintedPublicIp(hints) {
+  const ip = stripIp(hints?.publicIp);
+  if (!ip || isPrivateOrLocalIp(ip) || !looksLikeRawIp(ip)) return null;
+  return ip;
+}
+
+async function geoFromLoginHints(hints, fallbackIp) {
+  const gps = parseGpsHints(hints);
+  if (gps) {
+    const place = await reverseGeocode(gps.latitude, gps.longitude);
+    return {
+      ...place,
+      latitude: gps.latitude,
+      longitude: gps.longitude,
+      source: 'gps',
+      label:
+        place.label ||
+        joinPlace([place.area, place.city, place.country]) ||
+        `${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`,
+    };
+  }
+  const ipGeo = await lookupGeoFromIp(fallbackIp);
+  return {
+    ...ipGeo,
+    latitude: null,
+    longitude: null,
+    source: 'ip',
+  };
+}
+
 module.exports = {
   clientIp,
   collectRequestIps,
@@ -326,6 +415,8 @@ module.exports = {
   parseUserAgent,
   approxLocationFromIp,
   lookupGeoFromIp,
+  geoFromLoginHints,
+  hintedPublicIp,
   isPrivateOrLocalIp,
   looksLikeRawIp,
   looksLikeOfficeNetworkEntry,

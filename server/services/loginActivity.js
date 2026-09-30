@@ -1,7 +1,8 @@
 const {
   clientIp,
   clientUserAgent,
-  lookupGeoFromIp,
+  geoFromLoginHints,
+  hintedPublicIp,
   isPrivateOrLocalIp,
 } = require('../utils/requestMeta');
 const { describeDevice, hintsFromRequest } = require('../utils/deviceLabel');
@@ -34,10 +35,10 @@ function loginPushBody({ device, geo, locationLabel }) {
 }
 
 function loginIp(req) {
+  const hinted = hintedPublicIp(req.body?.deviceHints);
+  if (hinted) return hinted;
   const fromReq = clientIp(req);
   if (fromReq && !isPrivateOrLocalIp(fromReq)) return fromReq;
-  const hinted = String(req.body?.deviceHints?.publicIp || '').trim();
-  if (hinted && !isPrivateOrLocalIp(hinted)) return hinted;
   return fromReq;
 }
 
@@ -50,7 +51,7 @@ async function recordSuccessfulLogin(req, user) {
     const userAgent = clientUserAgent(req);
     const hints = hintsFromRequest(req);
     const device = describeDevice(userAgent, hints);
-    const geo = await lookupGeoFromIp(ip);
+    const geo = await geoFromLoginHints(req.body?.deviceHints, ip);
     await recordLoginLog({
       userId: user.id,
       employeeId: user.employee_id,
@@ -65,6 +66,7 @@ async function recordSuccessfulLogin(req, user) {
       country: geo.country,
       latitude: geo.latitude,
       longitude: geo.longitude,
+      locationSource: geo.source || (geo.latitude != null ? 'gps' : 'ip'),
     });
     const loginMeta = {
       ip,

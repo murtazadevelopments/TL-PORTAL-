@@ -1,20 +1,24 @@
 const pool = require('../config/db');
 
+const RETENTION_INTERVAL = '30 days';
+
 /**
- * Delete login_logs older than 12 months.
+ * Delete login_logs older than 30 days.
  * audit_log is never pruned (compliance).
  */
 async function runLoginLogsPrune() {
   const { rowCount } = await pool.query(`
     DELETE FROM login_logs
-    WHERE logged_in_at < NOW() - INTERVAL '12 months'
+    WHERE logged_in_at < NOW() - INTERVAL '${RETENTION_INTERVAL}'
   `);
 
   const deleted = rowCount || 0;
-  console.log(
-    `[login-logs-prune] ${new Date().toISOString()} deleted=${deleted} (older than 12 months)`
-  );
+  if (deleted > 0) {
+    console.log(
+      `[login-logs-prune] ${new Date().toISOString()} deleted=${deleted} (older than ${RETENTION_INTERVAL})`
+    );
+  }
   return deleted;
 }
 
-module.exports = { runLoginLogsPrune };
+module.exports = { runLoginLogsPrune, RETENTION_INTERVAL };

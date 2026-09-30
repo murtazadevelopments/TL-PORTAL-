@@ -1,8 +1,10 @@
 const pool = require('../config/db');
 const { describeDevice } = require('../utils/deviceLabel');
 const { lookupGeoFromIp, isPrivateOrLocalIp } = require('../utils/requestMeta');
+const { runLoginLogsPrune } = require('../jobs/loginLogsPrune');
 
 let extraColumnsReady = false;
+let ipPinsCleared = false;
 async function ensureLoginLogColumns() {
   if (extraColumnsReady) return;
   await pool.query(`
@@ -12,6 +14,7 @@ async function ensureLoginLogColumns() {
     ALTER TABLE login_logs ADD COLUMN IF NOT EXISTS country TEXT;
     ALTER TABLE login_logs ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
     ALTER TABLE login_logs ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+    ALTER TABLE login_logs ADD COLUMN IF NOT EXISTS location_source TEXT;
   `);
   extraColumnsReady = true;
 }
@@ -30,6 +33,7 @@ async function recordLoginLog({
   country,
   latitude,
   longitude,
+  locationSource,
 }) {
   await ensureLoginLogColumns();
   const { rows } = await pool.query(
@@ -37,9 +41,9 @@ async function recordLoginLog({
       INSERT INTO login_logs (
         user_id, employee_id, employee_name, username,
         ip_address, location, user_agent, device,
-        city, area, country, latitude, longitude
+        city, area, country, latitude, longitude, location_source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id, logged_in_at
     `,
     [
@@ -56,6 +60,7 @@ async function recordLoginLog({
       country ?? null,
       latitude ?? null,
       longitude ?? null,
+      locationSource ?? null,
     ]
   );
   return rows[0];
@@ -64,15 +69,26 @@ async function recordLoginLog({
 /**
  * GET list with filters + pagination.
  * Query: page, limit, q, range (24h|7d|30d|custom), from, to
+ * Logs older than 30 days are deleted and never returned.
  */
 async function listLoginLogs(req, res) {
   try {
     await ensureLoginLogColumns();
+    await runLoginLogsPrune().catch(() => {});
+    if (!ipPinsCleared) {
+      await pool.query(`
+        UPDATE login_logs
+        SET latitude = NULL, longitude = NULL
+        WHERE COALESCE(location_source, '') <> 'gps'
+          AND latitude IS NOT NULL
+      `);
+      ipPinsCleared = true;
+    }
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
     const offset = (page - 1) * limit;
     const q = String(req.query.q || '').trim();
-    const range = String(req.query.range || '7d').trim().toLowerCase();
+    const range = String(req.query.range || '30d').trim().toLowerCase();
 
     const conditions = [];
     const params = [];
@@ -91,26 +107,25 @@ async function listLoginLogs(req, res) {
     }
 
     const now = new Date();
-    if (range === 'all' || range === '') {
-      // no date filter
-    } else if (range === '24h') {
+    const oldest = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    params.push(oldest.toISOString());
+    conditions.push(`logged_in_at >= $${params.length}`);
+
+    if (range === '24h') {
       params.push(new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
       conditions.push(`logged_in_at >= $${params.length}`);
     } else if (range === '7d') {
       params.push(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString());
       conditions.push(`logged_in_at >= $${params.length}`);
-    } else if (range === '30d') {
-      params.push(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString());
-      conditions.push(`logged_in_at >= $${params.length}`);
     } else if (range === 'custom') {
       const from = req.query.from ? new Date(String(req.query.from)) : null;
       const to = req.query.to ? new Date(String(req.query.to)) : null;
       if (from && !Number.isNaN(from.getTime())) {
-        params.push(from.toISOString());
+        const clamped = from < oldest ? oldest : from;
+        params.push(clamped.toISOString());
         conditions.push(`logged_in_at >= $${params.length}`);
       }
       if (to && !Number.isNaN(to.getTime())) {
-        // inclusive end-of-day if date-only
         const end = new Date(to);
         if (String(req.query.to).length <= 10) {
           end.setHours(23, 59, 59, 999);
@@ -147,6 +162,7 @@ async function listLoginLogs(req, res) {
           country,
           latitude,
           longitude,
+          location_source,
           logged_in_at
         FROM login_logs
         ${where}
@@ -190,7 +206,7 @@ async function fillMissingGeo(rows) {
 
   for (const ip of pending) {
     const geo = await lookupGeoFromIp(ip);
-    if (!geo.city && !geo.country && geo.latitude == null) continue;
+    if (!geo.city && !geo.country) continue;
     await pool.query(
       `
         UPDATE login_logs
@@ -198,13 +214,11 @@ async function fillMissingGeo(rows) {
           location = COALESCE($1, location),
           city = COALESCE(city, $2),
           area = COALESCE(area, $3),
-          country = COALESCE(country, $4),
-          latitude = COALESCE(latitude, $5),
-          longitude = COALESCE(longitude, $6)
-        WHERE ip_address = $7
+          country = COALESCE(country, $4)
+        WHERE ip_address = $5
           AND city IS NULL
       `,
-      [geo.label, geo.city, geo.area, geo.country, geo.latitude, geo.longitude, ip]
+      [geo.label, geo.city, geo.area, geo.country, ip]
     );
     for (const row of rows) {
       if (row.ip_address !== ip) continue;
@@ -212,8 +226,6 @@ async function fillMissingGeo(rows) {
       row.city = geo.city;
       row.area = geo.area;
       row.country = geo.country;
-      row.latitude = geo.latitude;
-      row.longitude = geo.longitude;
       row.location = geo.label || row.location;
     }
   }

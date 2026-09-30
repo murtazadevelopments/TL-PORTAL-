@@ -32,6 +32,7 @@ async function findTomorrowBirthdayUsers(now = new Date()) {
 }
 
 async function runBirthdayEmails(now = new Date()) {
+  // Midnight Karachi: employees whose birthday is today, CEO preview for tomorrow (24h earlier).
   const tomorrowPeople = await findTomorrowBirthdayUsers(now);
   const todayPeople = await findBirthdayUsers(now);
   let ceoSent = 0;

@@ -26,6 +26,10 @@ function SignIn() {
   const [hasPasskey, setHasPasskey] = useState(false);
 
   useEffect(() => {
+    import('../utils/deviceHints').then((mod) => mod.startLoginLocation()).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const msg = location.state?.inactivityMessage;
     if (msg) setInfo(String(msg));
   }, [location.state]);
