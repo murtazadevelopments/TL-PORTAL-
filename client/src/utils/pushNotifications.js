@@ -4,6 +4,7 @@ import { isStandalonePwa } from '../pwaInstall';
 const PUSH_OPT_OUT_KEY = 'tl-push-opt-out';
 
 let enableInflight = null;
+let lastSyncedEndpoint = null;
 
 /** True when running as an installed PWA (home screen / standalone). */
 export function isInstalledPwa() {
@@ -60,7 +61,7 @@ export async function requestPushPermission() {
  * Subscribe this device to Web Push and register with the API.
  * Works in the installed app and in a mobile/desktop browser that supports push.
  */
-export async function enablePushNotifications() {
+export async function enablePushNotifications(options = {}) {
   if (typeof window === 'undefined') {
     throw new Error('Not available in this environment.');
   }
@@ -87,10 +88,21 @@ export async function enablePushNotifications() {
     });
   }
 
-  await api.post('/api/push/subscribe', {
-    subscription: subscription.toJSON(),
-    userAgent: navigator.userAgent,
-  });
+  const payload = subscription.toJSON();
+  const endpoint = payload?.endpoint || '';
+  if (options.silent && lastSyncedEndpoint && lastSyncedEndpoint === endpoint) {
+    return true;
+  }
+
+  await api.post(
+    '/api/push/subscribe',
+    {
+      subscription: payload,
+      userAgent: navigator.userAgent,
+    },
+    { skipSuccessPopup: true }
+  );
+  lastSyncedEndpoint = endpoint;
   setPushOptOut(false);
 
   return true;
@@ -108,7 +120,7 @@ export async function enablePushNotificationsSafe() {
       if (!localStorage.getItem('token')) return false;
       if (!('Notification' in window) || Notification.permission === 'denied') return false;
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-      await enablePushNotifications();
+      await enablePushNotifications({ silent: true });
       return true;
     } catch {
       return false;
@@ -121,6 +133,7 @@ export async function enablePushNotificationsSafe() {
 
 export async function disablePushNotifications() {
   setPushOptOut(true);
+  lastSyncedEndpoint = null;
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     await api.put('/api/push/preferences', { enabled: false });
     return;

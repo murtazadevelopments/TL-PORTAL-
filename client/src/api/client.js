@@ -41,7 +41,8 @@ const SESSION_ENDED_CODES = new Set([
   'ACCOUNT_LOCKED',
 ]);
 
-const SUCCESS_SKIP = /\/api\/auth\/(login|signin)|\/api\/users\/me$|unread-count/;
+const SUCCESS_SKIP =
+  /\/api\/auth\/(login|signin)|\/api\/users\/me$|unread-count|\/api\/push\//;
 
 function maybeShowSuccessPopup(response) {
   const method = String(response.config?.method || '').toLowerCase();

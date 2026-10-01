@@ -111,14 +111,9 @@ function ShellInner() {
     if (!user) return undefined;
     enablePushNotificationsSafe();
     const onInstalled = () => enablePushNotificationsSafe();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') enablePushNotificationsSafe();
-    };
     window.addEventListener('appinstalled', onInstalled);
-    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('appinstalled', onInstalled);
-      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [user]);
 
