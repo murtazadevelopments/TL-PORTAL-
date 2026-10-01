@@ -331,6 +331,14 @@ function parseGpsHints(hints) {
   return { latitude: lat, longitude: lng };
 }
 
+function gpsRequiredPayload() {
+  return {
+    code: 'GPS_REQUIRED',
+    message:
+      'Location access is required to sign in. Allow GPS for this site and try again.',
+  };
+}
+
 function englishPlace(value, max = 80) {
   const raw = clipPlace(value, max);
   if (!raw) return null;
@@ -417,6 +425,8 @@ module.exports = {
   lookupGeoFromIp,
   geoFromLoginHints,
   hintedPublicIp,
+  parseGpsHints,
+  gpsRequiredPayload,
   isPrivateOrLocalIp,
   looksLikeRawIp,
   looksLikeOfficeNetworkEntry,

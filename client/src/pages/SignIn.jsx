@@ -152,7 +152,10 @@ function SignIn() {
         </div>
 
         <h1>Sign in</h1>
-        <p className="muted">Enter the lab — access your employee portal</p>
+        <p className="muted">
+          Location (GPS) is required to sign in so every login can be logged on the map. Allow this
+          site when your browser asks.
+        </p>
 
         <form onSubmit={handleSubmit} className="form">
           <label>

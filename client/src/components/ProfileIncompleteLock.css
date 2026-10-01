@@ -71,3 +71,11 @@
 .profile-lock-banner p {
   margin: 0.35rem 0 0;
 }
+
+.location-lock-card {
+  border-color: rgba(126, 203, 255, 0.45);
+}
+
+.location-lock-kicker {
+  color: var(--cyan-soft, #7ecbff);
+}
