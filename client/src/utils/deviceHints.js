@@ -104,7 +104,6 @@ export async function ensurePortalGps() {
         err.code = 'GPS_REQUIRED';
         throw err;
       }
-      if (status.state === 'granted') return true;
     } catch (err) {
       if (err?.code === 'GPS_REQUIRED') throw err;
     }

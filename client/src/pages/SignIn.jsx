@@ -4,6 +4,7 @@ import { startAuthentication } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
+import GpsLocationModal from '../components/GpsLocationModal';
 import logo from '../assets/logo.webp';
 
 function supportsWebAuthn() {
@@ -24,6 +25,7 @@ function SignIn() {
   const [bioLoading, setBioLoading] = useState(false);
   const [webauthnOk] = useState(() => supportsWebAuthn());
   const [hasPasskey, setHasPasskey] = useState(false);
+  const [showGpsModal, setShowGpsModal] = useState(false);
 
   useEffect(() => {
     import('../utils/deviceHints').then((mod) => mod.startLoginLocation()).catch(() => {});
@@ -69,15 +71,14 @@ function SignIn() {
     }));
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function performLogin() {
     setError('');
     setInfo('');
     setLoading(true);
 
     try {
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      const deviceHints = await collectDeviceHints({ requireGps: true });
       const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
@@ -88,8 +89,16 @@ function SignIn() {
       enablePushNotificationsSafe();
       navigate('/dashboard');
     } catch (err) {
+      const isGpsErr =
+        err?.code === 'GPS_REQUIRED' ||
+        err.response?.data?.code === 'GPS_REQUIRED' ||
+        String(err.message || '').toLowerCase().includes('location') ||
+        String(err.message || '').toLowerCase().includes('gps');
+      if (isGpsErr) {
+        setShowGpsModal(true);
+      }
       const status = err.response?.status;
-      const apiMsg = err.response?.data?.message;
+      const apiMsg = err.response?.data?.message || err.message;
       if (apiMsg) setError(apiMsg);
       else if (status === 503 || !err.response)
         setError('Check your internet connection.');
@@ -97,6 +106,11 @@ function SignIn() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e) {
+    if (e) e.preventDefault();
+    await performLogin();
   }
 
   async function handleBiometricLogin() {
@@ -117,7 +131,7 @@ function SignIn() {
         useBrowserAutofill: false,
       });
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      const deviceHints = await collectDeviceHints({ requireGps: true });
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
         username,
         response: assertion,
@@ -128,6 +142,14 @@ function SignIn() {
       enablePushNotificationsSafe();
       navigate('/dashboard');
     } catch (err) {
+      const isGpsErr =
+        err?.code === 'GPS_REQUIRED' ||
+        err.response?.data?.code === 'GPS_REQUIRED' ||
+        String(err.message || '').toLowerCase().includes('location') ||
+        String(err.message || '').toLowerCase().includes('gps');
+      if (isGpsErr) {
+        setShowGpsModal(true);
+      }
       if (err?.name === 'NotAllowedError') {
         setError('Biometric login was cancelled or timed out.');
       } else {
@@ -139,6 +161,13 @@ function SignIn() {
       }
     } finally {
       setBioLoading(false);
+    }
+  }
+
+  function handleGpsSuccess() {
+    setShowGpsModal(false);
+    if (form.username && form.password) {
+      performLogin();
     }
   }
 
@@ -199,6 +228,15 @@ function SignIn() {
               {bioLoading ? 'Waiting for biometric…' : 'Login with Face/Fingerprint'}
             </button>
           )}
+
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: '0.85rem', marginTop: '0.25rem', opacity: 0.85 }}
+            onClick={() => setShowGpsModal(true)}
+          >
+            📍 Turn on / Allow GPS Location
+          </button>
         </form>
 
         <p className="muted center auth-links">
@@ -215,6 +253,15 @@ function SignIn() {
           No account? <Link to="/signup">Create one</Link>
         </p>
       </main>
+
+      <GpsLocationModal
+        isOpen={showGpsModal}
+        canClose={true}
+        onClose={() => setShowGpsModal(false)}
+        onSuccess={handleGpsSuccess}
+        title="Enable GPS Location"
+        description="Textured Lab Portal requires device GPS location to sign in and access your workspace."
+      />
     </div>
   );
 }

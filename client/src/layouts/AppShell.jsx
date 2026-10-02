@@ -120,6 +120,25 @@ function ShellInner() {
   }, [user]);
 
   useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.permissions?.query) return undefined;
+    let permStatus;
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((status) => {
+        permStatus = status;
+        status.onchange = () => {
+          if (status.state !== 'granted') {
+            setGpsOk(false);
+          }
+        };
+      })
+      .catch(() => {});
+    return () => {
+      if (permStatus) permStatus.onchange = null;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!user) return undefined;
     refreshUnread();
     refreshUser?.();
