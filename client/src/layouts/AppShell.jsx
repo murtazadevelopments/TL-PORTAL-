@@ -13,7 +13,6 @@ import InstallAppModal from '../components/InstallAppModal';
 import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
-import LocationRequiredGate from '../components/LocationRequiredGate';
 import { SalesLeaveGuardProvider, useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import './AppShell.css';
 
@@ -27,7 +26,6 @@ function ShellInner() {
   const [ackProfileLock, setAckProfileLock] = useState(false);
   const [ackBirthday, setAckBirthday] = useState(false);
   const [ackExam, setAckExam] = useState(false);
-  const [gpsOk, setGpsOk] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -373,8 +371,7 @@ function ShellInner() {
       {profileLocked && !ackProfileLock && !showBirthday && !showExam && (
         <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
       )}
-          {!profileLocked && <AdminIncompleteGate user={user} />}
-          {!gpsOk && <LocationRequiredGate onReady={() => setGpsOk(true)} />}
+      {!profileLocked && <AdminIncompleteGate user={user} />}
     </div>
   );
 }
