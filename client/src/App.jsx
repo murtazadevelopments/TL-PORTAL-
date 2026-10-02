@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import ProtectedRoute from './components/ProtectedRoute';
 import InactivityGuard from './components/InactivityGuard';
-import GlobalGpsGate from './components/GlobalGpsGate';
 import RouteFallback from './components/RouteFallback';
 import AppShell from './layouts/AppShell';
 import SignIn from './pages/SignIn';
@@ -44,57 +43,55 @@ function App() {
     <BrowserRouter>
       <SuccessPopup />
       <InactivityGuard>
-        <GlobalGpsGate>
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/" element={<SignIn />} />
-              <Route path="/signup" element={<SignUp />} />
-              <Route path="/forgot-username" element={<ForgotUsername />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<SignIn />} />
+            <Route path="/signup" element={<SignUp />} />
+            <Route path="/forgot-username" element={<ForgotUsername />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <AppShell />
-                  </ProtectedRoute>
-                }
-              >
-                <Route path="/dashboard" element={<DashboardHome />} />
-                <Route path="/attendance" element={<AttendancePage />} />
-                <Route path="/team-leader" element={<TeamLeaderDashboard />} />
-                <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
-                <Route path="/sales-targets/:agentId" element={<SalesDailyTargetsPage />} />
-                <Route path="/my-target" element={<Navigate to="/account/my-target" replace />} />
-                <Route path="/account" element={<AccountProfile />} />
-                <Route path="/account/my-target" element={<SalesAgentDashboard />} />
-                <Route path="/account/my-target/days" element={<SalesDailyTargetsPage agentView />} />
-                <Route path="/account/documents" element={<AccountDocuments />} />
-                <Route path="/account/messages" element={<MessagesInbox />} />
-                <Route path="/account/security" element={<AccountSecurity />} />
-                <Route path="/admin" element={<Navigate to="/admin/employees" replace />} />
-                <Route path="/admin/employees" element={<EmployeesPage />} />
-                <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
-                <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
-                <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance" replace />} />
-                <Route path="/admin/messages" element={<ComposeMessagePage />} />
-                <Route path="/admin/locked" element={<LockedAccountsPage />} />
-                <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
-                <Route path="/admin/roles" element={<RolesPage />} />
-                <Route path="/admin/teams" element={<TeamsPage />} />
-                <Route path="/admin/designations" element={<DesignationsPage />} />
-                <Route path="/admin/branches" element={<BranchesPage />} />
-                <Route path="/admin/shifts" element={<ShiftsPage />} />
-                <Route path="/admin/notifications" element={<NotificationSettingsPage />} />
-                <Route path="/admin/login-logs" element={<LoginLogs />} />
-                <Route path="/admin/export-logs" element={<EmployeeExportLogsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Route>
+            <Route
+              element={
+                <ProtectedRoute>
+                  <AppShell />
+                </ProtectedRoute>
+              }
+            >
+              <Route path="/dashboard" element={<DashboardHome />} />
+              <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/team-leader" element={<TeamLeaderDashboard />} />
+              <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
+              <Route path="/sales-targets/:agentId" element={<SalesDailyTargetsPage />} />
+              <Route path="/my-target" element={<Navigate to="/account/my-target" replace />} />
+              <Route path="/account" element={<AccountProfile />} />
+              <Route path="/account/my-target" element={<SalesAgentDashboard />} />
+              <Route path="/account/my-target/days" element={<SalesDailyTargetsPage agentView />} />
+              <Route path="/account/documents" element={<AccountDocuments />} />
+              <Route path="/account/messages" element={<MessagesInbox />} />
+              <Route path="/account/security" element={<AccountSecurity />} />
+              <Route path="/admin" element={<Navigate to="/admin/employees" replace />} />
+              <Route path="/admin/employees" element={<EmployeesPage />} />
+              <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
+              <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
+              <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance" replace />} />
+              <Route path="/admin/messages" element={<ComposeMessagePage />} />
+              <Route path="/admin/locked" element={<LockedAccountsPage />} />
+              <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
+              <Route path="/admin/roles" element={<RolesPage />} />
+              <Route path="/admin/teams" element={<TeamsPage />} />
+              <Route path="/admin/designations" element={<DesignationsPage />} />
+              <Route path="/admin/branches" element={<BranchesPage />} />
+              <Route path="/admin/shifts" element={<ShiftsPage />} />
+              <Route path="/admin/notifications" element={<NotificationSettingsPage />} />
+              <Route path="/admin/login-logs" element={<LoginLogs />} />
+              <Route path="/admin/export-logs" element={<EmployeeExportLogsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
 
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-        </GlobalGpsGate>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </InactivityGuard>
     </BrowserRouter>
   );
