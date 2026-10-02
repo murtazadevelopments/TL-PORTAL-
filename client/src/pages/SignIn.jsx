@@ -77,7 +77,7 @@ function SignIn() {
 
     try {
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      const deviceHints = await collectDeviceHints({ requireGps: true });
       const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
@@ -89,7 +89,7 @@ function SignIn() {
       navigate('/dashboard');
     } catch (err) {
       const status = err.response?.status;
-      const apiMsg = err.response?.data?.message;
+      const apiMsg = err.response?.data?.message || err.message;
       if (apiMsg) setError(apiMsg);
       else if (status === 503 || !err.response)
         setError('Check your internet connection.');
@@ -117,7 +117,7 @@ function SignIn() {
         useBrowserAutofill: false,
       });
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      const deviceHints = await collectDeviceHints({ requireGps: true });
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
         username,
         response: assertion,
