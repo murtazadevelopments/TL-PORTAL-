@@ -77,7 +77,7 @@ function SignIn() {
 
     try {
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints({ requireGps: true });
+      const deviceHints = await collectDeviceHints();
       const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
@@ -117,7 +117,7 @@ function SignIn() {
         useBrowserAutofill: false,
       });
       const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints({ requireGps: true });
+      const deviceHints = await collectDeviceHints();
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
         username,
         response: assertion,
@@ -152,10 +152,7 @@ function SignIn() {
         </div>
 
         <h1>Sign in</h1>
-        <p className="muted">
-          Location (GPS) is required to sign in so every login can be logged on the map. Allow this
-          site when your browser asks.
-        </p>
+        <p className="muted">Enter your credentials to access your account.</p>
 
         <form onSubmit={handleSubmit} className="form">
           <label>

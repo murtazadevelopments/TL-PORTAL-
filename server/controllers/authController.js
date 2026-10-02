@@ -11,7 +11,7 @@ const {
   notifyPasswordReset,
 } = require('../services/notifications');
 const { recordSuccessfulLogin } = require('../services/loginActivity');
-const { gpsRequiredPayload, parseGpsHints } = require('../utils/requestMeta');
+const { parseGpsHints } = require('../utils/requestMeta');
 const { writeAuditLog } = require('../utils/auditLog');
 const { frontendBaseUrl } = require('../utils/frontendUrl');
 const {
@@ -442,10 +442,6 @@ async function login(req, res) {
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));
-
-    if (!parseGpsHints(req.body?.deviceHints)) {
-      return res.status(400).json(gpsRequiredPayload());
-    }
 
     // Best-effort login log + email — never block the response
     void recordSuccessfulLogin(req, user);

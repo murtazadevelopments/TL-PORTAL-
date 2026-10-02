@@ -9,7 +9,7 @@ const pool = require('../config/db');
 const { attachReadableUrls } = require('../utils/storageUrls');
 const { frontendBaseUrl, PUBLIC_FRONTEND_URL } = require('../utils/frontendUrl');
 const { recordSuccessfulLogin } = require('../services/loginActivity');
-const { gpsRequiredPayload, parseGpsHints } = require('../utils/requestMeta');
+const { parseGpsHints } = require('../utils/requestMeta');
 const jwt = require('jsonwebtoken');
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -513,9 +513,6 @@ async function loginVerify(req, res) {
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));
-    if (!parseGpsHints(req.body?.deviceHints)) {
-      return res.status(400).json(gpsRequiredPayload());
-    }
     void recordSuccessfulLogin(req, user);
     return res.json({
       token: signToken(user),

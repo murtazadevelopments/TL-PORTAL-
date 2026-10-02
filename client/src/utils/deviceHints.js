@@ -52,19 +52,31 @@ function onceGps(options) {
 }
 
 async function readGps() {
+  // 1. Fast read (cached fix up to 5 min) - instant (<20ms) on both mobile and desktop
+  const cached = await onceGps({
+    enableHighAccuracy: false,
+    timeout: 5000,
+    maximumAge: 300000,
+  });
+  if (cached.gps) return cached;
+
+  // 2. High accuracy read with 1 min cache
   const precise = await onceGps({
     enableHighAccuracy: true,
-    timeout: 12000,
-    maximumAge: 0,
+    timeout: 6000,
+    maximumAge: 60000,
   });
   if (precise.gps) return precise;
-  const coarse = await onceGps({
+
+  // 3. Fresh location fallback
+  const fresh = await onceGps({
     enableHighAccuracy: false,
     timeout: 8000,
-    maximumAge: 15000,
+    maximumAge: 0,
   });
-  if (coarse.gps) return coarse;
-  return precise.error ? precise : coarse;
+  if (fresh.gps) return fresh;
+
+  return cached.error ? cached : precise.error ? precise : fresh;
 }
 
 let gpsWarmup = null;
@@ -84,7 +96,16 @@ export function startLoginLocation() {
 }
 
 export async function requireLoginGps() {
-  resetLoginLocation();
+  if (gpsWarmup) {
+    try {
+      const cached = await gpsWarmup;
+      if (cached && typeof cached.latitude === 'number' && typeof cached.longitude === 'number') {
+        return cached;
+      }
+    } catch {
+      gpsWarmup = null;
+    }
+  }
   const result = await readGps();
   if (result.gps) {
     gpsWarmup = Promise.resolve(result.gps);
@@ -128,7 +149,7 @@ async function readPublicIp() {
   }
 }
 
-export async function collectDeviceHints({ requireGps = false } = {}) {
+export async function collectDeviceHints() {
   const hints = {
     mobile: Boolean(navigator.userAgentData?.mobile),
     platform: navigator.userAgentData?.platform || navigator.platform || '',
@@ -158,18 +179,19 @@ export async function collectDeviceHints({ requireGps = false } = {}) {
     /* private mode / unsupported */
   }
 
-  const gpsPromise = requireGps ? requireLoginGps() : startLoginLocation();
-  const [ipMeta, gps] = await Promise.all([readPublicIp(), gpsPromise]);
-  if (ipMeta.publicIp) hints.publicIp = ipMeta.publicIp;
-  if (gps) {
-    hints.latitude = gps.latitude;
-    hints.longitude = gps.longitude;
-    if (gps.accuracy != null) hints.accuracy = gps.accuracy;
-  }
-  if (requireGps && (hints.latitude == null || hints.longitude == null)) {
-    const err = new Error(GPS_REQUIRED_MESSAGE);
-    err.code = 'GPS_REQUIRED';
-    throw err;
+  try {
+    const [ipMeta, gps] = await Promise.all([
+      readPublicIp().catch(() => ({})),
+      startLoginLocation().catch(() => null),
+    ]);
+    if (ipMeta?.publicIp) hints.publicIp = ipMeta.publicIp;
+    if (gps) {
+      hints.latitude = gps.latitude;
+      hints.longitude = gps.longitude;
+      if (gps.accuracy != null) hints.accuracy = gps.accuracy;
+    }
+  } catch {
+    /* ignore any location/ip errors */
   }
 
   return hints;
