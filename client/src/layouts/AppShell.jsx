@@ -6,6 +6,7 @@ import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
 import { missingEmployeePortalFields, isProfileIncompleteLocked, profileLockHomePath } from '../utils/profileCompleteness';
 import api from '../api/client';
+import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
 import InstallAppModal from '../components/InstallAppModal';
