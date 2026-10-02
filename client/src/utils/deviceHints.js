@@ -52,31 +52,19 @@ function onceGps(options) {
 }
 
 async function readGps() {
-  // 1. Fast read (uses phone cached fix up to 60s) - instant (<50ms) on mobile
-  const fast = await onceGps({
-    enableHighAccuracy: true,
-    timeout: 6000,
-    maximumAge: 60000,
-  });
-  if (fast.gps) return fast;
-
-  // 2. Coarse / network location fallback
-  const coarse = await onceGps({
-    enableHighAccuracy: false,
-    timeout: 6000,
-    maximumAge: 120000,
-  });
-  if (coarse.gps) return coarse;
-
-  // 3. Fresh precise location
   const precise = await onceGps({
     enableHighAccuracy: true,
-    timeout: 10000,
+    timeout: 12000,
     maximumAge: 0,
   });
   if (precise.gps) return precise;
-
-  return fast.error ? fast : coarse.error ? coarse : precise;
+  const coarse = await onceGps({
+    enableHighAccuracy: false,
+    timeout: 8000,
+    maximumAge: 15000,
+  });
+  if (coarse.gps) return coarse;
+  return precise.error ? precise : coarse;
 }
 
 let gpsWarmup = null;
@@ -96,16 +84,7 @@ export function startLoginLocation() {
 }
 
 export async function requireLoginGps() {
-  if (gpsWarmup) {
-    try {
-      const cached = await gpsWarmup;
-      if (cached?.latitude && cached?.longitude) {
-        return cached;
-      }
-    } catch {
-      gpsWarmup = null;
-    }
-  }
+  resetLoginLocation();
   const result = await readGps();
   if (result.gps) {
     gpsWarmup = Promise.resolve(result.gps);
