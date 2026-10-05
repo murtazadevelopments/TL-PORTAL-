@@ -26,6 +26,11 @@ const {
   listExportLogs,
 } = require('../controllers/employeeExportController');
 const {
+  getAttendanceExportOptions,
+  listAttendanceExportPreview,
+  exportAttendance,
+} = require('../controllers/attendanceExportController');
+const {
   getPermissionsCatalog,
   listEmployeesForRoleAssign,
   listRoleHolders,
@@ -318,6 +323,26 @@ router.get(
     'hr:add_employee'
   ),
   listZktecoAttendance
+);
+
+// Attendance export — scoped to CEO or assigned admin with attendance:export
+router.get(
+  '/attendance/export-options',
+  requireRole('admin'),
+  requirePermission('attendance:export'),
+  getAttendanceExportOptions
+);
+router.get(
+  '/attendance/export-preview',
+  requireRole('admin'),
+  requirePermission('attendance:export'),
+  listAttendanceExportPreview
+);
+router.get(
+  '/attendance/export',
+  requireRole('admin'),
+  requirePermission('attendance:export'),
+  exportAttendance
 );
 
 router.get(

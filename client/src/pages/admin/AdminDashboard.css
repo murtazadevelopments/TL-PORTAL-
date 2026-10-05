@@ -1502,6 +1502,10 @@ tr.lower-staff-row-editing td {
   margin: 1.1rem 0 1.25rem;
 }
 
+.attendance-export-page .export-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .employee-export-page .export-filters label {
   display: flex;
   flex-direction: column;
@@ -1569,8 +1573,20 @@ tr.lower-staff-row-editing td {
   white-space: nowrap;
 }
 
+@media (max-width: 860px) {
+  .attendance-export-page .export-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .employee-export-page .export-filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .attendance-export-page .export-filters {
     grid-template-columns: 1fr;
   }
 }

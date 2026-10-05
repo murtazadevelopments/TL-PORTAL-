@@ -40,6 +40,7 @@ export function isScopedEmployeePermission(key) {
     key === 'employees:edit' ||
     key === 'employees:remote' ||
     key === 'employees:export' ||
+    key === 'attendance:export' ||
     key === 'attendance:view' ||
     key === 'attendance:edit' ||
     key === 'sales:targets'

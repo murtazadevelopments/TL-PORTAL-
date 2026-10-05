@@ -64,6 +64,12 @@ const PERMISSIONS_CATALOG = [
       'Download employee records as Excel or PDF for an assigned branch, team, or all employees. Does not include documents. CEO always has this; other admins only if assigned.',
   },
   {
+    key: 'attendance:export',
+    label: 'Export attendance records',
+    description:
+      'Download monthly attendance records as Excel or PDF for onsite and remote employees. CEO always has this; other admins only if assigned by CEO.',
+  },
+  {
     key: 'documents:view',
     label: 'View documents',
     description: 'View/download CV and employment forms on employee profiles',
