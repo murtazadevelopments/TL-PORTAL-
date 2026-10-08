@@ -3,6 +3,7 @@ const { BRANCH_OPTIONS } = require('../constants/branches');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
 const { isCeoRole } = require('../middleware/permissions');
 const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
+const { parseCoordinate } = require('../utils/geo');
 
 const BRANCH_SELECT = `id, name, ip_address, latitude, longitude, radius_meters, created_by, created_at`;
 const MAX_OFFICE_IPS = 20;
@@ -53,11 +54,18 @@ function parseBranchGeo(body, { allowSkip = false } = {}) {
     return { skip: true };
   }
 
-  const latRaw = src.latitude;
-  const lngRaw = src.longitude;
+  let latRaw = src.latitude;
+  let lngRaw = src.longitude;
   const radRaw = src.radius_meters;
-  const latEmpty = latRaw == null || latRaw === '';
-  const lngEmpty = lngRaw == null || lngRaw === '';
+  let latEmpty = latRaw == null || latRaw === '';
+  let lngEmpty = lngRaw == null || lngRaw === '';
+  const combined = !latEmpty && lngEmpty ? latRaw : latEmpty && !lngEmpty ? lngRaw : null;
+  if (combined && /lat/i.test(String(combined)) && /long/i.test(String(combined))) {
+    latRaw = combined;
+    lngRaw = combined;
+    latEmpty = false;
+    lngEmpty = false;
+  }
 
   if (latEmpty !== lngEmpty) {
     return { error: 'Latitude and longitude must both be set, or both left empty.' };
@@ -66,13 +74,13 @@ function parseBranchGeo(body, { allowSkip = false } = {}) {
   let latitude = null;
   let longitude = null;
   if (!latEmpty) {
-    const lat = Number(latRaw);
-    const lng = Number(lngRaw);
+    const lat = parseCoordinate(latRaw, 'lat');
+    const lng = parseCoordinate(lngRaw, 'lng');
     if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-      return { error: 'Latitude must be a number between -90 and 90.' };
+      return { error: 'Latitude must be a number between -90 and 90. You can paste decimal or the full GPS text.' };
     }
     if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-      return { error: 'Longitude must be a number between -180 and 180.' };
+      return { error: 'Longitude must be a number between -180 and 180. You can paste decimal or the full GPS text.' };
     }
     latitude = lat;
     longitude = lng;

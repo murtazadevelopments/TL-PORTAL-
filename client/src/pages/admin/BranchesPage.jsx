@@ -173,8 +173,8 @@ export default function BranchesPage() {
       const ips = editIps.map((s) => String(s).trim()).filter(Boolean);
       const { data } = await api.patch(`/api/admin/branches/${editing.id}`, {
         ip_addresses: ips,
-        latitude: editLat.trim() === '' ? null : Number(editLat),
-        longitude: editLng.trim() === '' ? null : Number(editLng),
+        latitude: editLat.trim() === '' ? null : editLat.trim(),
+        longitude: editLng.trim() === '' ? null : editLng.trim(),
         radius_meters: editRadius.trim() === '' ? 150 : Number(editRadius),
       });
       setBranches((prev) => prev.map((b) => (b.id === data.id ? { ...b, ...data } : b)));
@@ -385,31 +385,33 @@ export default function BranchesPage() {
             >
               Add another IP
             </button>
+            <p className="muted">
+              GPS can be decimal (24.904541) or a full paste such as{' '}
+              <code>Latitude: 24.904541 / N 24° 54&apos; 16.349&apos;&apos;</code>. Only the number is stored.
+            </p>
             <div className="branches-geo-fields">
               <label>
                 Latitude
                 <input
-                  type="number"
-                  step="any"
-                  min="-90"
-                  max="90"
+                  type="text"
+                  inputMode="decimal"
                   value={editLat}
                   onChange={(e) => setEditLat(e.target.value)}
-                  placeholder="e.g. 24.86148"
+                  placeholder="24.904541 or paste full GPS"
                   disabled={saving}
+                  autoComplete="off"
                 />
               </label>
               <label>
                 Longitude
                 <input
-                  type="number"
-                  step="any"
-                  min="-180"
-                  max="180"
+                  type="text"
+                  inputMode="decimal"
                   value={editLng}
                   onChange={(e) => setEditLng(e.target.value)}
-                  placeholder="e.g. 67.00991"
+                  placeholder="67.076542 or paste full GPS"
                   disabled={saving}
+                  autoComplete="off"
                 />
               </label>
               <label>
