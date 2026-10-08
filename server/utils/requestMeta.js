@@ -112,28 +112,56 @@ function ipInCidr(ip, cidr) {
   }
 }
 
+function ipMatchesOfficeEntries(ip, entries) {
+  const got = stripIp(ip)?.toLowerCase();
+  if (!got || !entries.length) return false;
+  const exact = new Set(entries.filter((item) => !item.includes('/')));
+  if (exact.has(got)) return true;
+  return entries.filter((item) => item.includes('/')).some((cidr) => ipInCidr(got, cidr));
+}
+
+/**
+ * Public internet IP of this device as seen by the office ISP / Hostinger.
+ * Does not trust a client-supplied X-Forwarded-For chain (spoofable).
+ */
+function officeInternetIp(req) {
+  const fromPinnedHeader = [
+    req.headers['cf-connecting-ip'],
+    req.headers['true-client-ip'],
+    req.headers['x-real-ip'],
+  ];
+  for (const raw of fromPinnedHeader) {
+    const ip = stripIp(ipsFromHeader(raw)[0]);
+    if (ip && !isPrivateOrLocalIp(ip)) return ip;
+  }
+
+  const forwarded = ipsFromHeader(req.headers['x-forwarded-for']);
+  for (let i = forwarded.length - 1; i >= 0; i -= 1) {
+    if (!isPrivateOrLocalIp(forwarded[i])) return forwarded[i];
+  }
+
+  const expressIp = stripIp(req.ip);
+  if (expressIp && !isPrivateOrLocalIp(expressIp)) return expressIp;
+
+  const remote = stripIp(req.socket?.remoteAddress);
+  if (remote && !isPrivateOrLocalIp(remote)) return remote;
+
+  if (expressIp) return expressIp;
+  return remote || null;
+}
+
 function requestMatchesConfiguredIp(req, configuredIp) {
+  const client = officeInternetIp(req);
+  if (!client) return false;
   const entries = parseOfficeIps(configuredIp).map((ip) => ip.toLowerCase());
   if (!entries.length) return false;
-  const exact = new Set(entries.filter((ip) => !ip.includes('/')));
-  const cidrs = entries.filter((ip) => ip.includes('/'));
-  // DEBUG - remove after
-  console.log('[onsite-ip-debug]', {
-    reqIp: req.ip,
-    remoteAddress: req.socket?.remoteAddress,
-    xForwardedFor: req.headers['x-forwarded-for'],
-    xRealIp: req.headers['x-real-ip'],
-    cfConnectingIp: req.headers['cf-connecting-ip'],
-    forwarded: req.headers['forwarded'],
-    collected: collectRequestIps(req),
-    whitelist: entries,
-  });
-  return collectRequestIps(req).some((ip) => {
-    const got = stripIp(ip)?.toLowerCase();
-    if (!got) return false;
-    if (exact.has(got)) return true;
-    return cidrs.some((cidr) => ipInCidr(got, cidr));
-  });
+
+  const publicEntries = entries.filter((item) => item.includes('/') || !isPrivateOrLocalIp(item));
+  const privateEntries = entries.filter((item) => !item.includes('/') && isPrivateOrLocalIp(item));
+
+  if (ipMatchesOfficeEntries(client, publicEntries)) return true;
+  if (isPrivateOrLocalIp(client) && ipMatchesOfficeEntries(client, privateEntries)) return true;
+  return false;
 }
 
 function clientUserAgent(req) {

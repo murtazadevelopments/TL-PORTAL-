@@ -140,7 +140,7 @@ export default defineConfig({
       'Accept-CH':
         'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Arch, Sec-CH-UA-Form-Factors',
       'Permissions-Policy':
-        'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*',
+        'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self)',
     },
     proxy: {
       // Forward /api/* to the Express backend during local development

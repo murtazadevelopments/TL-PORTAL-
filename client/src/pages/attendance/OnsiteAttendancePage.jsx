@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import { formatTimeAmPm } from '../../utils/timeAmPm';
+import { readCheckInGps } from '../../utils/readCheckInGps';
 import './AttendancePage.css';
 
 function statusLabel(status) {
@@ -25,38 +26,6 @@ function formatKarachiTime(iso) {
     second: '2-digit',
     hourCycle: 'h23',
   }).format(d);
-}
-
-function readCheckInCoords() {
-  return new Promise((resolve, reject) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      reject(new Error('This browser cannot share location. Use Chrome or Safari with Location Services on.'));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) {
-          reject(new Error('Could not read a valid GPS position. Turn on Location Services and try again.'));
-          return;
-        }
-        resolve({ latitude, longitude });
-      },
-      (err) => {
-        if (err?.code === 1) {
-          reject(new Error('Location is required to check in. Allow GPS for this site, then try again.'));
-          return;
-        }
-        if (err?.code === 3) {
-          reject(new Error('Location request timed out. Turn on GPS and try again.'));
-          return;
-        }
-        reject(new Error('Could not read your GPS position. Turn on Location Services and try again.'));
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
-  });
 }
 
 export default function OnsiteAttendancePage() {
@@ -98,7 +67,7 @@ export default function OnsiteAttendancePage() {
     setError('');
     setStatus('');
     try {
-      const coords = await readCheckInCoords();
+      const coords = await readCheckInGps();
       const { data: payload } = await api.post('/api/attendance/onsite-check-in', {
         latitude: coords.latitude,
         longitude: coords.longitude,
@@ -198,6 +167,10 @@ export default function OnsiteAttendancePage() {
         ) : (
           <p className="muted">Not checked in yet.</p>
         )}
+        <p className="muted">
+          Check-in needs the office internet IP and live GPS. On the phone app, allow Location for
+          Textured Lab Portal (system GPS on is not enough if the app is blocked).
+        </p>
         <button
           type="button"
           className="btn btn-primary"

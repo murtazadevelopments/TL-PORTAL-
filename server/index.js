@@ -65,7 +65,7 @@ app.use((req, res, next) => {
   res.setHeader('Critical-CH', 'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Arch');
   res.setHeader(
     'Permissions-Policy',
-    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self)'
+    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self "https://texturedlab.org" "https://www.texturedlab.org")'
   );
   next();
 });
