@@ -9,7 +9,6 @@ const pool = require('../config/db');
 const { attachReadableUrls } = require('../utils/storageUrls');
 const { frontendBaseUrl, PUBLIC_FRONTEND_URL } = require('../utils/frontendUrl');
 const { recordSuccessfulLogin } = require('../services/loginActivity');
-const { parseGpsHints } = require('../utils/requestMeta');
 const jwt = require('jsonwebtoken');
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;

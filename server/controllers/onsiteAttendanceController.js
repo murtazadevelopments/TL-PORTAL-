@@ -364,37 +364,46 @@ async function onsiteCheckIn(req, res) {
     const geofence = branchGeofence(branchRow);
     const requestCoords = parseCheckInCoords(req.body);
 
-    if (!officeIps.length && !geofence) {
+    if (!officeIps.length || !geofence) {
       return res.status(400).json({
-        message: `No office IP or check-in location is set for ${branchLabel}. Open Manage Branches and save the public IP and/or GPS coordinates on that same branch (not a different office).`,
+        code: 'OFFICE_NETWORK_AND_GPS_REQUIRED',
+        message: `Office Wi‑Fi IP and GPS location must both be set for ${branchLabel}. Open Manage Branches and save both on that same branch.`,
       });
     }
 
-    const ipOk = officeIps.length > 0 && requestMatchesConfiguredIp(req, officeIps);
-    let gpsOk = false;
-    let gpsDistanceMeters = null;
-    if (!ipOk && geofence && requestCoords) {
-      gpsDistanceMeters = haversineDistanceMeters(
-        requestCoords.latitude,
-        requestCoords.longitude,
-        geofence.latitude,
-        geofence.longitude
-      );
-      gpsOk = gpsDistanceMeters <= geofence.radiusMeters;
-      if (gpsOk) {
-        console.log('[onsite-gps-fallback]', {
-          branch: branchRow?.name || branchLabel,
-          distanceMeters: Math.round(gpsDistanceMeters),
-          radiusMeters: geofence.radiusMeters,
-          requestLatitude: requestCoords.latitude,
-          requestLongitude: requestCoords.longitude,
-        });
-      }
+    if (!requestCoords) {
+      return res.status(400).json({
+        code: 'GPS_REQUIRED',
+        message: 'Location access is required to check in. Allow GPS for this site and try again.',
+      });
     }
 
-    if (!ipOk && !gpsOk) {
+    const ipOk = requestMatchesConfiguredIp(req, officeIps);
+    const gpsDistanceMeters = haversineDistanceMeters(
+      requestCoords.latitude,
+      requestCoords.longitude,
+      geofence.latitude,
+      geofence.longitude
+    );
+    const gpsOk = gpsDistanceMeters <= geofence.radiusMeters;
+
+    if (!ipOk || !gpsOk) {
+      if (!ipOk && !gpsOk) {
+        return res.status(403).json({
+          code: 'OFFICE_WIFI_AND_GPS_REQUIRED',
+          message:
+            'Check-in failed. Connect to the assigned office Wi‑Fi and stay at the office GPS location.',
+        });
+      }
+      if (!ipOk) {
+        return res.status(403).json({
+          code: 'OFFICE_WIFI_REQUIRED',
+          message: 'Check-in failed. Connect to the assigned office Wi‑Fi / network, then try again.',
+        });
+      }
       return res.status(403).json({
-        message: "You must check in from your branch's network.",
+        code: 'OFFICE_GPS_REQUIRED',
+        message: 'Check-in failed. You are not at the assigned office GPS location.',
       });
     }
 
@@ -454,7 +463,7 @@ async function getMyOnsiteAttendance(req, res) {
     const shift = user?.shift ? await getShiftByName(user.shift) : null;
     const branchRow = await loadBranchIp(user?.branch);
     const networkConfigured =
-      parseOfficeIps(branchRow?.ip_address).length > 0 || Boolean(branchGeofence(branchRow));
+      parseOfficeIps(branchRow?.ip_address).length > 0 && Boolean(branchGeofence(branchRow));
 
     const todayRaw =
       rows.find((r) => pgDateKey(r.work_date) === parts.dateKey) ||

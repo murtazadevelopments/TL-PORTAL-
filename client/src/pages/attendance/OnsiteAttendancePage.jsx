@@ -28,25 +28,33 @@ function formatKarachiTime(iso) {
 }
 
 function readCheckInCoords() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      resolve({ coords: null, locationUnavailable: true });
+      reject(new Error('This browser cannot share location. Use Chrome or Safari with Location Services on.'));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        resolve({
-          coords: {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          },
-          locationUnavailable: false,
-        });
+        const latitude = pos.coords.latitude;
+        const longitude = pos.coords.longitude;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) {
+          reject(new Error('Could not read a valid GPS position. Turn on Location Services and try again.'));
+          return;
+        }
+        resolve({ latitude, longitude });
       },
-      () => {
-        resolve({ coords: null, locationUnavailable: true });
+      (err) => {
+        if (err?.code === 1) {
+          reject(new Error('Location is required to check in. Allow GPS for this site, then try again.'));
+          return;
+        }
+        if (err?.code === 3) {
+          reject(new Error('Location request timed out. Turn on GPS and try again.'));
+          return;
+        }
+        reject(new Error('Could not read your GPS position. Turn on Location Services and try again.'));
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
   });
 }
@@ -89,16 +97,12 @@ export default function OnsiteAttendancePage() {
     setCheckingIn(true);
     setError('');
     setStatus('');
-    let locationUnavailable = false;
     try {
-      const located = await readCheckInCoords();
-      locationUnavailable = located.locationUnavailable;
-      const { data: payload } = await api.post(
-        '/api/attendance/onsite-check-in',
-        located.coords
-          ? { latitude: located.coords.latitude, longitude: located.coords.longitude }
-          : {}
-      );
+      const coords = await readCheckInCoords();
+      const { data: payload } = await api.post('/api/attendance/onsite-check-in', {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
       setStatus(
         payload.status === 'on_time'
           ? 'Checked in on time.'
@@ -108,16 +112,7 @@ export default function OnsiteAttendancePage() {
       );
       await load();
     } catch (err) {
-      const apiMessage = err.response?.data?.message || 'Check-in failed.';
-      const code = err.response?.data?.code;
-      const networkDenied = err.response?.status === 403;
-      setError(
-        code === 'night_checkin_window'
-          ? apiMessage
-          : networkDenied && locationUnavailable
-            ? 'Enable location access for check-in, or connect to branch WiFi/LAN'
-            : apiMessage
-      );
+      setError(err.response?.data?.message || err.message || 'Check-in failed.');
     } finally {
       setCheckingIn(false);
     }
@@ -133,8 +128,8 @@ export default function OnsiteAttendancePage() {
         <div>
           <h1>My attendance</h1>
           <p className="muted">
-            Check in from your branch network or while on site (GPS). Status follows your shift (on time / late / absent).
-            Your office is recorded as{' '}
+            Check in only when you are on the assigned office Wi‑Fi and at the office GPS location.
+            Status follows your shift (on time / late / absent). Your office is recorded as{' '}
             {data?.branch_name || user?.branch || 'your assigned branch'} — never as a raw IP.
           </p>
         </div>
@@ -224,8 +219,9 @@ export default function OnsiteAttendancePage() {
         )}
         {!data?.network_configured && !today && (
           <p className="muted">
-            No office IP or GPS location is saved for {data?.branch_name || user?.branch || 'your branch'} yet.
-            Set them on Manage Branches for that same branch.
+            Office Wi‑Fi IP and GPS location must both be saved for{' '}
+            {data?.branch_name || user?.branch || 'your branch'}. Set them on Manage Branches for that
+            same branch.
           </p>
         )}
       </section>

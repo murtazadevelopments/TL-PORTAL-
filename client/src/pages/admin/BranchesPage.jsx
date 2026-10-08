@@ -107,7 +107,7 @@ export default function BranchesPage() {
       setNewName('');
       setSuccess(
         canEditIps
-          ? `Branch “${data.name}” created. Add office IPs or GPS with Edit check-in.`
+          ? `Branch “${data.name}” created. Add office IPs and GPS with Edit check-in.`
           : `Branch “${data.name}” created.`
       );
     } catch (err) {
@@ -342,7 +342,7 @@ export default function BranchesPage() {
             <h2>Office check-in</h2>
             <p className="muted">
               {editing.name} — add every public IPv4, or an IPv6 prefix like 2407:aa80:14:3c96::/64.
-              Check-in matches any exact IP or prefix, or GPS within the radius below.
+              Check-in requires the assigned office IP/prefix and GPS within the radius below. Both must match.
             </p>
             <div className="branches-ip-list">
               {(editIps.length ? editIps : ['']).map((ip, idx) => (

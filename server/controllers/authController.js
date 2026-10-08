@@ -11,7 +11,6 @@ const {
   notifyPasswordReset,
 } = require('../services/notifications');
 const { recordSuccessfulLogin } = require('../services/loginActivity');
-const { parseGpsHints } = require('../utils/requestMeta');
 const { writeAuditLog } = require('../utils/auditLog');
 const { frontendBaseUrl } = require('../utils/frontendUrl');
 const {
