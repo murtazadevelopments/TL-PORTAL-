@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
@@ -8,6 +9,7 @@ import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
   canViewTeamAttendance,
+  hasPermission,
   isCeo,
 } from '../../utils/permissions';
 import './AttendanceAdminPage.css';
@@ -217,6 +219,7 @@ export default function AttendanceAdminPage() {
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
+  const canExport = hasPermission(permissions, 'attendance:export', user?.role);
 
   const [date, setDate] = useState(() => clampAttendanceDate(karachiDateKey()));
   const [search, setSearch] = useState('');
@@ -539,7 +542,14 @@ export default function AttendanceAdminPage() {
     <div className="admin-page page-panel attendance-admin">
       <div className="attendance-hero">
         <div>
-          <h1>Team attendance</h1>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+            <h1>Team attendance</h1>
+            {canExport && (
+              <Link to="/admin/attendance/export" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                Export attendance
+              </Link>
+            )}
+          </div>
           <p className="muted">
             {mode === 'onsite'
               ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'

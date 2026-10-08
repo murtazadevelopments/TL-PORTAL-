@@ -18,6 +18,7 @@ const AccountDocuments = lazy(() => import('./pages/account/AccountDocuments'));
 const AccountSecurity = lazy(() => import('./pages/account/AccountSecurity'));
 const EmployeesPage = lazy(() => import('./pages/admin/EmployeesPage'));
 const EmployeeExportPage = lazy(() => import('./pages/admin/EmployeeExportPage'));
+const AttendanceExportPage = lazy(() => import('./pages/admin/AttendanceExportPage'));
 const LockedAccountsPage = lazy(() => import('./pages/admin/LockedAccountsPage'));
 const DeactivatedEmployeesPage = lazy(() => import('./pages/admin/DeactivatedEmployeesPage'));
 const RolesPage = lazy(() => import('./pages/admin/RolesPage'));
@@ -74,6 +75,7 @@ function App() {
               <Route path="/admin/employees" element={<EmployeesPage />} />
               <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
               <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
+              <Route path="/admin/attendance/export" element={<AttendanceExportPage />} />
               <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance" replace />} />
               <Route path="/admin/messages" element={<ComposeMessagePage />} />
               <Route path="/admin/locked" element={<LockedAccountsPage />} />

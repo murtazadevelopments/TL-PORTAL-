@@ -29,6 +29,7 @@ function defaultScopesFromUser(user) {
     'employees:edit',
     'employees:remote',
     'employees:export',
+    'attendance:export',
     'attendance:view',
     'attendance:edit',
     'sales:targets',
@@ -61,6 +62,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     'employees:edit': { type: 'all' },
     'employees:remote': { type: 'all' },
     'employees:export': { type: 'all' },
+    'attendance:export': { type: 'all' },
     'attendance:view': { type: 'all' },
     'attendance:edit': { type: 'all' },
     'sales:targets': { type: 'team', values: [] },
@@ -133,6 +135,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
         'employees:edit': { type: 'all' },
         'employees:remote': { type: 'all' },
         'employees:export': { type: 'all' },
+        'attendance:export': { type: 'all' },
         'attendance:view': { type: 'all' },
         'attendance:edit': { type: 'all' },
       });
@@ -240,7 +243,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                   ? 'Edit employees'
                   : key === 'employees:export'
                     ? 'Export employee data'
-                    : key === 'employees:remote'
+                    : key === 'attendance:export'
+                      ? 'Export attendance records'
+                      : key === 'employees:remote'
                       ? 'Remote employees'
                       : key === 'attendance:view'
                         ? 'View attendance'

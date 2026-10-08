@@ -98,6 +98,9 @@ export function buildSidebarGroups(
     if (canViewTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance' });
     }
+    if (hasPermission(permissions, 'attendance:export', role)) {
+      employeeItems.push({ to: '/admin/attendance/export', label: 'Export attendance' });
+    }
     if (
       hasPermission(permissions, 'accounts:unlock', role) ||
       hasPermission(permissions, 'employees:deactivate', role)
