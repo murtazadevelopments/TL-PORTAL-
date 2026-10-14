@@ -4,7 +4,6 @@ import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import { formatTimeAmPm } from '../../utils/timeAmPm';
-import { readCheckInGps } from '../../utils/readCheckInGps';
 import './AttendancePage.css';
 
 function statusLabel(status) {
@@ -67,11 +66,11 @@ export default function OnsiteAttendancePage() {
     setError('');
     setStatus('');
     try {
-      const coords = await readCheckInGps();
-      const { data: payload } = await api.post('/api/attendance/onsite-check-in', {
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      });
+      const { data: payload } = await api.post(
+        '/api/attendance/onsite-check-in',
+        {},
+        { skipSuccessPopup: true }
+      );
       setStatus(
         payload.status === 'on_time'
           ? 'Checked in on time.'
@@ -97,8 +96,8 @@ export default function OnsiteAttendancePage() {
         <div>
           <h1>My attendance</h1>
           <p className="muted">
-            Check in only when you are on the assigned office Wi‑Fi and at the office GPS location.
-            Status follows your shift (on time / late / absent). Your office is recorded as{' '}
+            Check in from the assigned office Wi‑Fi. Status follows your shift (on time / late /
+            absent). Your office is recorded as{' '}
             {data?.branch_name || user?.branch || 'your assigned branch'} — never as a raw IP.
           </p>
         </div>
@@ -167,10 +166,7 @@ export default function OnsiteAttendancePage() {
         ) : (
           <p className="muted">Not checked in yet.</p>
         )}
-        <p className="muted">
-          Check-in needs the office internet IP and live GPS. On the phone app, allow Location for
-          Textured Lab Portal (system GPS on is not enough if the app is blocked).
-        </p>
+        <p className="muted">Connect to the assigned office Wi‑Fi, then tap Check in. GPS is not required.</p>
         <button
           type="button"
           className="btn btn-primary"
@@ -192,9 +188,8 @@ export default function OnsiteAttendancePage() {
         )}
         {!data?.network_configured && !today && (
           <p className="muted">
-            Office Wi‑Fi IP and GPS location must both be saved for{' '}
-            {data?.branch_name || user?.branch || 'your branch'}. Set them on Manage Branches for that
-            same branch.
+            No office Wi‑Fi IP is saved for {data?.branch_name || user?.branch || 'your branch'} yet.
+            Set it on Manage Branches for that same branch.
           </p>
         )}
       </section>
