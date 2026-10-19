@@ -9,10 +9,10 @@ import api from '../api/client';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
-import InstallAppModal from '../components/InstallAppModal';
 import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
+import InstallAppButton from '../components/InstallAppButton';
 import { SalesLeaveGuardProvider, useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import './AppShell.css';
 
@@ -247,6 +247,7 @@ function ShellInner() {
         />
 
         <div className="sidebar-footer">
+          <InstallAppButton />
           <HardRefreshButton block />
           <button
             type="button"
@@ -347,7 +348,6 @@ function ShellInner() {
         )}
         <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
       </main>
-      {!profileLocked && <InstallAppModal />}
       {showBirthday && (
         <BirthdayCelebration
           user={user}

@@ -71,7 +71,7 @@ export default function SettingsPage() {
 
       <section style={{ marginTop: '1.25rem' }}>
         <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>Install</h2>
-        <p className="muted">Install Textured Lab Portal on this device.</p>
+        <p className="muted">Tap once to install the app on this phone.</p>
         {isInstalledPwa() ? (
           <p className="success" style={{ marginTop: '0.65rem' }}>
             App is installed on this device.

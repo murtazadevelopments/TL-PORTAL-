@@ -4,6 +4,7 @@ import { startAuthentication } from '@simplewebauthn/browser';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import PasswordInput from '../components/PasswordInput';
+import InstallAppButton from '../components/InstallAppButton';
 import logo from '../assets/logo.webp';
 
 function supportsWebAuthn() {
@@ -195,6 +196,8 @@ function SignIn() {
           <button type="submit" className="btn btn-primary" disabled={loading || bioLoading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <InstallAppButton />
 
           {webauthnOk && hasPasskey && (
             <button

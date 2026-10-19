@@ -5,6 +5,11 @@
 
 let deferredPrompt = null;
 const listeners = new Set();
+const OPEN_HELP_EVENT = 'tl-open-install';
+
+function ua() {
+  return typeof navigator === 'undefined' ? '' : navigator.userAgent || '';
+}
 
 function notify() {
   listeners.forEach((fn) => fn(deferredPrompt));
@@ -34,11 +39,52 @@ export function isStandalonePwa() {
 
 export function isIosDevice() {
   if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
   return (
-    /iPad|iPhone|iPod/.test(ua) ||
+    /iPad|iPhone|iPod/.test(ua()) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   );
+}
+
+export function isAndroidDevice() {
+  return /Android/i.test(ua());
+}
+
+export function isPhoneOrTablet() {
+  if (typeof navigator === 'undefined') return false;
+  if (isIosDevice() || isAndroidDevice()) return true;
+  return /Mobile|Tablet/i.test(ua());
+}
+
+export function isInAppBrowser() {
+  const text = ua();
+  return /FBAN|FBAV|Instagram|Line\/|Twitter|WhatsApp|Snapchat|TikTok|Bytedance|GSA\/|; wv\)|WebView/i.test(
+    text
+  );
+}
+
+export function isIosChromeOrOther() {
+  return isIosDevice() && /CriOS|FxiOS|EdgiOS|OPiOS|OPT\//i.test(ua());
+}
+
+export function canNativeInstall() {
+  return Boolean(getDeferredInstallPrompt()?.prompt);
+}
+
+/**
+ * native — Chrome/Edge Android prompt
+ * ios-safari — Share → Add to Home Screen
+ * ios-other — must open Safari first
+ * in-app — Facebook/Instagram/Gmail webview
+ * manual — Chrome menu / desktop browser
+ * installed
+ */
+export function getInstallKind() {
+  if (isStandalonePwa()) return 'installed';
+  if (isInAppBrowser()) return 'in-app';
+  if (isIosChromeOrOther()) return 'ios-other';
+  if (isIosDevice()) return 'ios-safari';
+  if (canNativeInstall()) return 'native';
+  return 'manual';
 }
 
 export function startPwaInstallCapture() {
@@ -89,4 +135,38 @@ export function promptInstallApp() {
   return event.userChoice
     .then((choice) => choice || { outcome: 'dismissed' })
     .catch(() => ({ outcome: 'unavailable' }));
+}
+
+export function requestInstallHelp() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(OPEN_HELP_EVENT));
+}
+
+export function subscribeInstallHelp(listener) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(OPEN_HELP_EVENT, listener);
+  return () => window.removeEventListener(OPEN_HELP_EVENT, listener);
+}
+
+export async function copyPortalLink() {
+  const url = `${window.location.origin}/`;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const input = document.createElement('input');
+    input.value = url;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+    return true;
+  } catch {
+    return false;
+  }
 }

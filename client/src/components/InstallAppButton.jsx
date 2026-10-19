@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { isStandalonePwa, promptInstallApp, subscribeInstallPrompt } from '../pwaInstall';
+import {
+  isIosDevice,
+  isStandalonePwa,
+  promptInstallApp,
+  subscribeInstallPrompt,
+} from '../pwaInstall';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import './InstallAppButton.css';
 
-/**
- * One-tap native install (Chrome / Edge / Android).
- * Does not show Add to Home Screen instructions unless Install cannot run.
- */
 function InstallAppButton() {
   const [installed, setInstalled] = useState(() => isStandalonePwa());
   const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState('');
 
   useEffect(() => {
     if (isStandalonePwa()) {
@@ -19,6 +21,7 @@ function InstallAppButton() {
     const unsub = subscribeInstallPrompt(() => {});
     function onInstalled() {
       setInstalled(true);
+      setHint('');
     }
     window.addEventListener('appinstalled', onInstalled);
     return () => {
@@ -28,13 +31,21 @@ function InstallAppButton() {
   }, []);
 
   async function handleInstall() {
-    const pending = promptInstallApp();
+    setHint('');
     setBusy(true);
     try {
-      const choice = await pending;
+      const choice = await promptInstallApp();
       if (choice?.outcome === 'accepted') {
         setInstalled(true);
         await enablePushNotificationsSafe();
+        return;
+      }
+      if (choice?.outcome === 'unavailable') {
+        setHint(
+          isIosDevice()
+            ? 'Tap Share, then Add to Home Screen.'
+            : 'Tap the browser menu ⋮, then Install app.'
+        );
       }
     } finally {
       setBusy(false);
@@ -51,8 +62,9 @@ function InstallAppButton() {
         disabled={busy}
         onClick={handleInstall}
       >
-        {busy ? 'Opening…' : 'Install'}
+        {busy ? 'Installing…' : 'Install app'}
       </button>
+      {hint ? <p className="install-app-hint">{hint}</p> : null}
     </div>
   );
 }
