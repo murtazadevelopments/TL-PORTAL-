@@ -67,9 +67,10 @@ function getFile(req, field) {
 }
 
 function sendSignupNotifications(user) {
-  return notifyAfterResponse('signup-notify', user?.id, () =>
-    Promise.all([notifyUserSignup(user), notifyDesignatedNewSignup(user)])
-  );
+  return notifyAfterResponse('signup-notify', user?.id, async () => {
+    await notifyUserSignup(user);
+    await notifyDesignatedNewSignup(user);
+  });
 }
 
 function digitsOnly(value) {
@@ -292,16 +293,16 @@ async function signup(req, res) {
 
     const user = await attachReadableUrls(userRow);
 
-    // Pending approval — do not issue a JWT. Respond before email so a hanging
-    // Resend call cannot block the client (Hostinger may not flush until the handler returns).
-    res.status(201).json({
+    // Send mail before the HTTP response so Hostinger cannot freeze the
+    // isolate after res.json and drop the Resend call.
+    await sendSignupNotifications(user);
+
+    return res.status(201).json({
       user,
       pendingApproval: true,
       message:
         'Your account has been created and is pending admin approval. You will be able to sign in once an administrator activates your account.',
     });
-    await sendSignupNotifications(user);
-    return;
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'account already exists' });
@@ -477,9 +478,8 @@ async function forgotUsername(req, res) {
       console.log(
         `[forgot-username] email=${email} matches=${rows.length} usernames=${rows.map((r) => r.username).join(',')}`
       );
-      res.json(generic);
       await notifyAfterResponse('forgot-username', rows[0].id, () => notifyUsernameReminder(rows));
-      return;
+      return res.json(generic);
     }
 
     console.warn(`[forgot-username] no account with a username for email=${email}`);
@@ -507,16 +507,29 @@ async function forgotPassword(req, res) {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, username, email, is_active, blocked_at
-       FROM users
-       WHERE lower(trim(email)) = $1
-       LIMIT 1`,
+      `
+        SELECT id, name, username, email, is_active, blocked_at, role
+        FROM users
+        WHERE lower(trim(email)) = $1
+           OR lower(trim(username)) = $1
+        ORDER BY id ASC
+      `,
       [email]
     );
 
-    const user = rows[0];
-    let sendResetMail = null;
-    if (user && user.is_active !== false && !user.blocked_at) {
+    const usernameMatch = rows.filter(
+      (row) => String(row.username || '').trim().toLowerCase() === email
+    );
+    const candidates = (usernameMatch.length ? usernameMatch : rows).filter(
+      (row) => !row.blocked_at
+    );
+
+    if (!candidates.length) {
+      console.warn(`[forgot-password] no sendable account for identifier=${email}`);
+      return res.json(generic);
+    }
+
+    for (const user of candidates) {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -528,14 +541,14 @@ async function forgotPassword(req, res) {
       );
 
       const resetUrl = `${frontendBaseUrl()}/reset-password?token=${rawToken}`;
-      sendResetMail = () => notifyPasswordReset(user, resetUrl);
+      console.log(
+        `[forgot-password] sending username=${user.username} id=${user.id} to=${user.email}`
+      );
+      await notifyAfterResponse('forgot-password', user.id, () =>
+        notifyPasswordReset(user, resetUrl)
+      );
     }
-
-    res.json(generic);
-    if (sendResetMail) {
-      await notifyAfterResponse('forgot-password', user.id, sendResetMail);
-    }
-    return;
+    return res.json(generic);
   } catch (err) {
     console.error('forgotPassword error:', err);
     return res.json(generic);

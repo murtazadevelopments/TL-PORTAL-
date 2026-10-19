@@ -208,29 +208,45 @@ async function notifyDesignatedNewSignup(user) {
 
   const when = formatTimestamp(user.created_at || new Date());
   const to = [...emails];
+  const { frontendBaseUrl } = require('../utils/frontendUrl');
+  const approveUrl = `${frontendBaseUrl()}/admin/employees?status=pending`;
+  const employment =
+    user.employment_type === 'remote'
+      ? 'Remote'
+      : user.employment_type === 'onsite'
+        ? 'Onsite'
+        : user.employment_type || '—';
+  const who = user.name || user.username || 'A candidate';
+  const subject = `Pending approval: ${who} (${user.username || 'new account'})`;
+  const text = [
+    'A portal account is waiting for approval.',
+    '',
+    `Name: ${who}`,
+    `Username: ${user.username || '—'}`,
+    `Email: ${user.email || '—'}`,
+    `Team: ${user.department || '—'}`,
+    `Employment type: ${employment}`,
+    `Signed up: ${when}`,
+    '',
+    `Open pending employees: ${approveUrl}`,
+  ].join('\n');
+
   const result = await sendEmailSafe({
     emailType: 'new_signup_recipient',
     to,
-    subject: `New employee signup: ${user.name || user.username}`,
+    subject,
+    text,
     html: `
-      <p>A new employee account was created on Textured Lab Portal.</p>
-      <ul>
-        <li><strong>Name:</strong> ${escapeHtml(user.name)}</li>
-        <li><strong>Employee ID:</strong> ${escapeHtml(user.employee_id || 'Not assigned yet')}</li>
-        <li><strong>Username:</strong> ${escapeHtml(user.username)}</li>
-        <li><strong>Email:</strong> ${escapeHtml(user.email)}</li>
-        <li><strong>Department:</strong> ${escapeHtml(user.department || '—')}</li>
-        <li><strong>Employment type:</strong> ${escapeHtml(
-          user.employment_type === 'remote'
-            ? 'Remote'
-            : user.employment_type === 'onsite'
-              ? 'Onsite'
-              : user.employment_type || '—'
-        )}</li>
-        <li><strong>Designation:</strong> ${escapeHtml(user.designation || '—')}</li>
-        <li><strong>Signed up:</strong> ${escapeHtml(when)}</li>
-      </ul>
-      <p>Assign an Employee ID in the admin panel when ready.</p>
+      <p>A portal account is waiting for approval.</p>
+      <p>
+        Name: ${escapeHtml(who)}<br/>
+        Username: ${escapeHtml(user.username || '—')}<br/>
+        Email: ${escapeHtml(user.email || '—')}<br/>
+        Team: ${escapeHtml(user.department || '—')}<br/>
+        Employment type: ${escapeHtml(employment)}<br/>
+        Signed up: ${escapeHtml(when)}
+      </p>
+      <p><a href="${escapeHtml(approveUrl)}">Open pending employees</a></p>
     `,
   });
 
@@ -243,16 +259,30 @@ async function notifyAdminsNewSignup(user) {
 }
 
 async function notifyUserSignup(user) {
-  if (!user?.email) return;
+  const to = String(user?.email || '')
+    .trim()
+    .toLowerCase();
+  if (!to) {
+    console.warn(`[signup-notify] skip welcome — user id=${user?.id} has no email`);
+    return null;
+  }
   await sendEmailSafe({
     emailType: 'user_signup',
-    to: user.email,
-    subject: 'Welcome to Textured Lab — account created',
+    to,
+    subject: 'Your Textured Lab Portal account is pending approval',
+    text: [
+      `Hi ${user.name || ''},`,
+      '',
+      'Your Textured Lab Portal account was created and is waiting for admin approval.',
+      `Username: ${user.username || ''}`,
+      '',
+      'You can sign in after an administrator activates the account. You will get another email when that happens.',
+    ].join('\n'),
     html: `
-      <p>Congrats, <strong>${escapeHtml(user.name)}</strong>!</p>
-      <p>Your employee portal account has been created and is <strong>pending admin approval</strong>.</p>
-      <p>Username: <strong>${escapeHtml(user.username)}</strong></p>
-      <p>You will be able to sign in after an administrator activates your account. You will receive another email when that happens.</p>
+      <p>Hi ${escapeHtml(user.name || '')},</p>
+      <p>Your Textured Lab Portal account was created and is waiting for admin approval.</p>
+      <p>Username: <strong>${escapeHtml(user.username || '')}</strong></p>
+      <p>You can sign in after an administrator activates the account. You will get another email when that happens.</p>
     `,
   });
 }
@@ -352,14 +382,22 @@ async function notifySalesPinOtp(user, otp) {
 }
 
 async function notifyPasswordReset(user, resetUrl) {
-  if (!user?.email) return;
+  const to = String(user?.email || '')
+    .trim()
+    .toLowerCase();
+  if (!to) {
+    console.warn(`[forgot-password] skip email — user id=${user?.id} has no email`);
+    return null;
+  }
   await sendEmailSafe({
     emailType: 'password_reset',
-    to: user.email,
-    subject: 'Reset your Textured Lab Portal password',
+    to,
+    subject: `Reset your Textured Lab Portal password (${user.username || 'account'})`,
     html: `
       <p>Hi ${escapeHtml(user.name || '')},</p>
-      <p>We received a password reset request. Click the link below (expires in 1 hour):</p>
+      <p>We received a password reset request for username <strong>${escapeHtml(
+        user.username || ''
+      )}</strong>. Click the link below (expires in 1 hour):</p>
       <p><a href="${escapeHtml(resetUrl)}">${escapeHtml(resetUrl)}</a></p>
       <p>If you did not request this, you can ignore this email.</p>
     `,

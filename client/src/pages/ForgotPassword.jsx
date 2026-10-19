@@ -36,16 +36,16 @@ function ForgotPassword() {
           <p className="brand-name">Textured Lab Portal</p>
         </div>
         <h1>Forgot password</h1>
-        <p className="muted">Enter your email and we&apos;ll send a reset link.</p>
+        <p className="muted">Enter your email or username and we&apos;ll send a reset link.</p>
         <form onSubmit={handleSubmit} className="form">
           <label>
-            Email
+            Email or username
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </label>
           {error && <p className="error">{error}</p>}
