@@ -1,4 +1,4 @@
-const NOTIFY_TIMEOUT_MS = 5000;
+const NOTIFY_TIMEOUT_MS = 25000;
 
 /**
  * Best-effort side notification after the HTTP response is already sent.

@@ -245,6 +245,7 @@ async function notifyAdminsNewSignup(user) {
 async function notifyUserSignup(user) {
   if (!user?.email) return;
   await sendEmailSafe({
+    emailType: 'user_signup',
     to: user.email,
     subject: 'Welcome to Textured Lab — account created',
     html: `
@@ -353,6 +354,7 @@ async function notifySalesPinOtp(user, otp) {
 async function notifyPasswordReset(user, resetUrl) {
   if (!user?.email) return;
   await sendEmailSafe({
+    emailType: 'password_reset',
     to: user.email,
     subject: 'Reset your Textured Lab Portal password',
     html: `

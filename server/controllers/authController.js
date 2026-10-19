@@ -300,7 +300,7 @@ async function signup(req, res) {
       message:
         'Your account has been created and is pending admin approval. You will be able to sign in once an administrator activates your account.',
     });
-    void sendSignupNotifications(user);
+    await sendSignupNotifications(user);
     return;
   } catch (err) {
     if (err.code === '23505') {
@@ -487,7 +487,7 @@ async function forgotUsername(req, res) {
         `[forgot-username] email=${email} matches=${rows.length} usernames=${rows.map((r) => r.username).join(',')}`
       );
       res.json(generic);
-      void notifyAfterResponse('forgot-username', rows[0].id, () => notifyUsernameReminder(rows));
+      await notifyAfterResponse('forgot-username', rows[0].id, () => notifyUsernameReminder(rows));
       return;
     }
 
@@ -517,7 +517,9 @@ async function forgotPassword(req, res) {
 
     const { rows } = await pool.query(
       `SELECT id, name, username, email, is_active, blocked_at
-       FROM users WHERE email = $1 LIMIT 1`,
+       FROM users
+       WHERE lower(trim(email)) = $1
+       LIMIT 1`,
       [email]
     );
 
@@ -540,7 +542,7 @@ async function forgotPassword(req, res) {
 
     res.json(generic);
     if (sendResetMail) {
-      void notifyAfterResponse('forgot-password', user.id, sendResetMail);
+      await notifyAfterResponse('forgot-password', user.id, sendResetMail);
     }
     return;
   } catch (err) {

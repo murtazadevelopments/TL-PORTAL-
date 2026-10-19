@@ -1042,12 +1042,12 @@ async function updateEmployee(req, res) {
 
     res.json(redactSalary(employee, false));
     if (changed.length) {
-      void notifyAfterResponse('employee-admin-updated', employee.id, () =>
+      await notifyAfterResponse('employee-admin-updated', employee.id, () =>
         notifyEmployeeAdminUpdated(employee, changed)
       );
     }
     if (becameActive) {
-      void notifyAfterResponse('account-approved', employee.id, () =>
+      await notifyAfterResponse('account-approved', employee.id, () =>
         notifyAccountApproved(employee)
       );
     }
