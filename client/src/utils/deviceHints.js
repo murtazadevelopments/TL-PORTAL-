@@ -149,11 +149,15 @@ async function readPublicIp() {
   }
 }
 
-export async function collectDeviceHints() {
+export async function collectDeviceHints({ forLogin = false } = {}) {
   const hints = {
     mobile: Boolean(navigator.userAgentData?.mobile),
     platform: navigator.userAgentData?.platform || navigator.platform || '',
   };
+
+  if (forLogin) {
+    return hints;
+  }
 
   try {
     const uaData = navigator.userAgentData;

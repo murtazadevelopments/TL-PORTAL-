@@ -76,8 +76,13 @@ function SignIn() {
     setLoading(true);
 
     try {
-      const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      let deviceHints = {};
+      try {
+        const { collectDeviceHints } = await import('../utils/deviceHints');
+        deviceHints = await collectDeviceHints({ forLogin: true });
+      } catch {
+        deviceHints = {};
+      }
       const { data } = await api.post('/api/auth/login', {
         username: form.username.trim().toLowerCase(),
         password: form.password,
@@ -116,8 +121,13 @@ function SignIn() {
         optionsJSON: options,
         useBrowserAutofill: false,
       });
-      const { collectDeviceHints } = await import('../utils/deviceHints');
-      const deviceHints = await collectDeviceHints();
+      let deviceHints = {};
+      try {
+        const { collectDeviceHints } = await import('../utils/deviceHints');
+        deviceHints = await collectDeviceHints({ forLogin: true });
+      } catch {
+        deviceHints = {};
+      }
       const { data } = await api.post('/api/auth/webauthn/login-verify', {
         username,
         response: assertion,

@@ -331,7 +331,7 @@ async function login(req, res) {
     const normalizedUsername = String(username).trim().toLowerCase();
 
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE username = $1 LIMIT 1',
+      'SELECT * FROM users WHERE lower(trim(username)) = $1 LIMIT 1',
       [normalizedUsername]
     );
 
@@ -358,15 +358,6 @@ async function login(req, res) {
       return res.status(403).json({
         message: 'This account has been blocked. Contact an administrator.',
         code: 'ACCOUNT_BLOCKED',
-      });
-    }
-
-    if (user.locked_at) {
-      return res.status(403).json({
-        message:
-          'Account locked due to too many failed attempts. Contact your admin.',
-        code: 'ACCOUNT_LOCKED',
-        accountLocked: true,
       });
     }
 

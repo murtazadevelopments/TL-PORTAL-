@@ -427,14 +427,6 @@ async function loginVerify(req, res) {
         code: 'ACCOUNT_BLOCKED',
       });
     }
-    if (user.locked_at) {
-      return res.status(403).json({
-        message:
-          'Account locked due to too many failed attempts. Contact your admin.',
-        code: 'ACCOUNT_LOCKED',
-        accountLocked: true,
-      });
-    }
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
