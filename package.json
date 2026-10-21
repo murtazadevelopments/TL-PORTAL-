@@ -5,6 +5,7 @@
   "description": "Textured Lab employee portal — Express API + Vite React client",
   "scripts": {
     "build": "node scripts/hostinger-build.js",
+    "build:deploy": "npm run build --prefix client && node scripts/sync-client-dist.js",
     "start": "node server/index.js",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client"

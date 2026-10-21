@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <title>Refreshing Textured Lab Portal…</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #05060b;
+        color: #e8eaef;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+      }
+      p {
+        opacity: 0.85;
+        max-width: 28rem;
+        text-align: center;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Clearing old app cache… You will be redirected automatically.</p>
+    <script>
+      (async function () {
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+          localStorage.removeItem('tl-pwa-bust');
+        } catch (e) {}
+        location.replace('/?pwa=fresh');
+      })();
+    </script>
+  </body>
+</html>

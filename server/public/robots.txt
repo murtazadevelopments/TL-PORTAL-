@@ -1,0 +1,3 @@
+# Textured Lab Portal is an authenticated employee workspace — do not index.
+User-agent: *
+Disallow: /
