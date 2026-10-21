@@ -1,19 +1,12 @@
-# Hostinger / Apache / LiteSpeed — SPA fallback for React Router
-# Must sit next to index.html in the site document root (public_html).
-#
-# Preferred: attach texturedlab.org to the Hostinger Node.js app so /api and the
-# UI share one origin. Then this file is unused.
-#
-# Split deploy (static public_html + Node on *.hostingersite.com): proxy /api
-# so the browser never talks to the preview hostname (office LAN / iPhone fail).
+# Copied into client/dist. Unused when texturedlab.org is attached to the Node app.
+# SPA fallback only — do not proxy to *.hostingersite.com.
+# Split-host proxy example: docs/htaccess-api-proxy.example
 
 ErrorDocument 404 /index.html
 
 AddType application/javascript .mjs
 AddType text/javascript .mjs
 
-# Stop week-long CDN caching of the service worker and app shell.
-# (Do not apply long-cache rules to *.js here — that would override tl-sw.js.)
 <IfModule mod_headers.c>
   <FilesMatch "^(index\.html|tl-sw\.js|tl-sw-.*\.js|sw\.js|registerSW\.js|manifest\.json|pwa-reset\.html|workbox-.*\.js)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
@@ -23,24 +16,12 @@ AddType text/javascript .mjs
   </FilesMatch>
 </IfModule>
 
-<IfModule mod_proxy.c>
-  ProxyPreserveHost Off
-  ProxyPass /api https://mediumpurple-chicken-145151.hostingersite.com/api
-  ProxyPassReverse /api https://mediumpurple-chicken-145151.hostingersite.com/api
-</IfModule>
-
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
 
   RewriteRule ^index\.html$ - [L]
   RewriteRule ^pwa-reset\.html$ - [L]
-
-  # Same-origin /api → Node app (LiteSpeed reverse proxy)
-  RewriteCond %{HTTP_HOST} ^(www\.)?texturedlab\.org$ [NC]
-  RewriteRule ^api(/.*)?$ https://mediumpurple-chicken-145151.hostingersite.com/api$1 [P,L,QSA]
-
-  # Do not SPA-fallback API paths if proxy is unavailable
   RewriteRule ^api(/|$) - [L]
 
   RewriteCond %{REQUEST_FILENAME} !-f

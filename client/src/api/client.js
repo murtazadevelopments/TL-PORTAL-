@@ -3,10 +3,9 @@ import { sanitizePublicError, sanitizePublicPayload, attachNetworkErrorMessage }
 import { showSuccess } from '../utils/successPopup';
 
 /**
- * Backend origin (no trailing slash). Paths in the app are always `/api/...`.
- *
- * Production on texturedlab.org must stay same-origin. Calling the Hostinger
- * preview hostname (*.hostingersite.com) fails on office LAN and many iPhones.
+ * Backend origin (no trailing slash). App paths are always `/api/...`.
+ * Production: empty so the browser calls the current origin (texturedlab.org).
+ * Dev: empty uses the Vite proxy to localhost:5001.
  */
 function normalizeBaseUrl(value) {
   if (value === undefined || value === null) return '';
@@ -16,21 +15,10 @@ function normalizeBaseUrl(value) {
 }
 
 function resolveBaseUrl() {
-  const configured = normalizeBaseUrl(
+  if (!import.meta.env.DEV) return '';
+  return normalizeBaseUrl(
     import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL
   );
-
-  if (import.meta.env.DEV) return configured;
-  if (typeof window === 'undefined') return configured;
-  if (!configured) return '';
-
-  try {
-    if (new URL(configured).origin === window.location.origin) return configured;
-  } catch {
-    return '';
-  }
-
-  return '';
 }
 
 const baseURL = resolveBaseUrl();

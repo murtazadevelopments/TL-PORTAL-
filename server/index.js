@@ -10,11 +10,11 @@ const fs = require('fs');
 const { sanitizePublicJson } = require('./utils/sanitizePublicJson');
 
 const app = express();
-// Hostinger / proxies: so req.ip and x-forwarded-for are correct for login emails
-app.set('trust proxy', true);
+// Hostinger sits in front of Node — first hop only, for req.ip and HTTPS.
+app.set('trust proxy', 1);
 app.use(compression());
 
-// JWT is sent as Authorization: Bearer; credentials enabled for cookie-ready CORS.
+// JWT is Authorization: Bearer (not cookies). CORS for local Vite and the public site.
 const defaultOrigins = [
   'https://texturedlab.org',
   'https://www.texturedlab.org',
@@ -29,7 +29,7 @@ function parseOrigins(value) {
     .filter(Boolean);
 }
 
-// Merge env + defaults so Hostinger ALLOWED_ORIGINS cannot drop known frontends
+// Extra origins from env (local Vite is already in defaults). Same-origin production needs no CORS.
 const originsFromEnv = parseOrigins(
   process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGINS
 );
@@ -70,14 +70,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Vite build output is client/dist → copied to server/public by root `npm run build`.
-// Optional when the frontend is deployed separately (FTP → public_html).
+// Built SPA: client/dist from root `npm run build`. Fallback: server/public (legacy copy).
+const clientDistDir = path.join(__dirname, '..', 'client', 'dist');
 const publicDir = path.join(__dirname, 'public');
-const spaIndex = path.join(publicDir, 'index.html');
+const spaDir = fs.existsSync(path.join(clientDistDir, 'index.html'))
+  ? clientDistDir
+  : publicDir;
+const spaIndex = path.join(spaDir, 'index.html');
 const spaEnabled = fs.existsSync(spaIndex);
-const apiOnlyMode =
-  /^(1|true|yes)$/i.test(String(process.env.API_ONLY || '')) ||
-  /^(0|false|no)$/i.test(String(process.env.SERVE_SPA || ''));
 
 function healthPayload() {
   return {
@@ -163,6 +163,12 @@ try {
   });
 }
 
+if (!apiBootError) {
+  app.use('/api', (req, res) => {
+    res.status(404).json({ message: 'Not found.' });
+  });
+}
+
 // Vite build may already be defined above for healthPayload — reuse those consts.
 /** Never let CDNs cache the service worker / app shell for a week (stuck mobile PWAs). */
 function setSpaCacheHeaders(res, filePath) {
@@ -192,7 +198,7 @@ function setSpaCacheHeaders(res, filePath) {
   }
 }
 
-if (spaEnabled && !apiOnlyMode) {
+if (spaEnabled) {
   // One-visit PWA reset page (also reachable if SW is stuck on an old shell).
   app.get('/pwa-reset', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -227,13 +233,13 @@ if (spaEnabled && !apiOnlyMode) {
   });
 
   app.use(
-    express.static(publicDir, {
+    express.static(spaDir, {
       index: false,
       setHeaders: setSpaCacheHeaders,
     })
   );
 
-  // Express 5: bare "*" is invalid — use a named splat. Registered LAST so /api/* stays intact.
+  // Express 5: named splat. /api already returned JSON 404 above.
   app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     if (req.path === '/pwa-reset') return next();
@@ -243,29 +249,22 @@ if (spaEnabled && !apiOnlyMode) {
     return res.sendFile(spaIndex);
   });
 } else {
-  // API-only: frontend is deployed separately (FTP → public_html) or SERVE_SPA=false
   app.get('/', (req, res) => {
     res.json({ ...healthPayload(), health: '/api/health', spa: false });
   });
-  if (apiOnlyMode) {
-    console.log(
-      'API-only mode (API_ONLY/SERVE_SPA). Frontend is expected on a separate host (e.g. FTP public_html).'
-    );
-  } else if (!spaEnabled) {
-    console.log(
-      'SPA not bundled (no server/public/index.html). Safe to ignore if the frontend is deployed separately via FTP; for unified Node+SPA run root `npm run build`, or set API_ONLY=true to silence this.'
-    );
-  }
+  console.log(
+    'SPA missing (no client/dist/index.html). Run repo-root `npm run build` so Node can serve the UI.'
+  );
 }
 
 const PORT = Number(process.env.PORT) || 5001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on 0.0.0.0:${PORT}`);
   console.log('CORS origins:', allowedOrigins.join(', '));
-  if (spaEnabled && !apiOnlyMode) {
-    console.log(`SPA enabled from ${publicDir}`);
+  if (spaEnabled) {
+    console.log(`SPA enabled from ${spaDir}`);
   } else {
-    console.log('SPA not served by this process (API-only / separate frontend deploy)');
+    console.log('SPA not served (client/dist missing)');
   }
   if (apiBootError) {
     console.error('API routes unavailable until env is fixed:', apiBootError.message);
