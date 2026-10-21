@@ -21,7 +21,12 @@ import {
   LIVENESS_MS,
 } from '../../lib/faceAttendance';
 import { hoursRangeLabel, pickHourFromPayload } from '../../utils/clockHours';
+import AttendanceGuideModal, {
+  hasSeenAttendanceGuide,
+  markAttendanceGuideSeen,
+} from '../../components/AttendanceGuideModal';
 import OnsiteAttendancePage from './OnsiteAttendancePage';
+import './AttendancePage.css';
 
 function formatRemainMs(ms) {
   const total = Math.max(0, Math.round(Number(ms) / 1000));
@@ -87,6 +92,7 @@ export default function AttendancePage() {
   const [attendanceEnabled, setAttendanceEnabled] = useState(true);
   const [checksPerShift, setChecksPerShift] = useState(5);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const isRemote = user?.employment_type === 'remote';
   const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
@@ -167,6 +173,16 @@ export default function AttendancePage() {
       setModelsReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isRemote) return undefined;
+    if (!hasSeenAttendanceGuide('remote')) setGuideOpen(true);
+  }, [isRemote]);
+
+  function closeGuide() {
+    markAttendanceGuideSeen('remote');
+    setGuideOpen(false);
+  }
 
   useEffect(() => {
     if (!isRemote) return undefined;
@@ -415,18 +431,26 @@ export default function AttendancePage() {
       <div className="attendance-hero">
         <div>
           <h1>My attendance</h1>
-          <p className="muted">
-            {isRemote
-              ? 'Within 15 minutes: on time. After 15 minutes: late. After 40 minutes: absent.'
-              : 'Face check-in is only for remote employees.'}
-          </p>
+          <p className="muted">Face check-in during your shift.</p>
         </div>
-        {canSeeAdmin && (
-          <Link className="btn btn-ghost" to="/admin/attendance">
-            Team dashboard
-          </Link>
-        )}
+        <div className="attendance-hero-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setGuideOpen(true)}>
+            How it works
+          </button>
+          {canSeeAdmin && (
+            <Link className="btn btn-ghost" to="/admin/attendance">
+              Team dashboard
+            </Link>
+          )}
+        </div>
       </div>
+
+      <AttendanceGuideModal
+        open={guideOpen}
+        mode="remote"
+        checksPerShift={checksPerShift}
+        onClose={closeGuide}
+      />
 
       <div className="attendance-summary">
         <div className="attendance-stat">

@@ -4,6 +4,10 @@ import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import { formatTimeAmPm } from '../../utils/timeAmPm';
+import AttendanceGuideModal, {
+  hasSeenAttendanceGuide,
+  markAttendanceGuideSeen,
+} from '../../components/AttendanceGuideModal';
 import './AttendancePage.css';
 
 function statusLabel(status) {
@@ -34,6 +38,7 @@ export default function OnsiteAttendancePage() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const canSeeAdmin =
     canAccessAdmin(user?.role) && canViewTeamAttendance(user?.role, permissions);
@@ -44,6 +49,15 @@ export default function OnsiteAttendancePage() {
     });
     setData(payload);
   }, []);
+
+  useEffect(() => {
+    if (!hasSeenAttendanceGuide('onsite')) setGuideOpen(true);
+  }, []);
+
+  function closeGuide() {
+    markAttendanceGuideSeen('onsite');
+    setGuideOpen(false);
+  }
 
   useEffect(() => {
     let active = true;
@@ -96,17 +110,23 @@ export default function OnsiteAttendancePage() {
         <div>
           <h1>My attendance</h1>
           <p className="muted">
-            Check in from the assigned office Wi‑Fi. Status follows your shift (on time / late /
-            absent). Your office is recorded as{' '}
-            {data?.branch_name || user?.branch || 'your assigned branch'} — never as a raw IP.
+            Check in from the assigned office Wi‑Fi. Your office is{' '}
+            {data?.branch_name || user?.branch || 'your assigned branch'}.
           </p>
         </div>
-        {canSeeAdmin && (
-          <Link className="btn btn-ghost" to="/admin/attendance">
-            Team dashboard
-          </Link>
-        )}
+        <div className="attendance-hero-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setGuideOpen(true)}>
+            How it works
+          </button>
+          {canSeeAdmin && (
+            <Link className="btn btn-ghost" to="/admin/attendance">
+              Team dashboard
+            </Link>
+          )}
+        </div>
       </div>
+
+      <AttendanceGuideModal open={guideOpen} mode="onsite" onClose={closeGuide} />
 
       <div className="attendance-summary">
         <div className="attendance-stat">

@@ -1,10 +1,11 @@
 # Hostinger / Apache / LiteSpeed — SPA fallback for React Router
 # Must sit next to index.html in the site document root (public_html).
 #
-# IMPORTANT: If this domain should run the Node API + SPA together,
-# attach texturedlab.org to the Hostinger Node.js app (not static public_html).
-# While public_html is static-only, never rewrite /api/* to index.html —
-# that makes /api/health look like a "redirect" to the React home page.
+# Preferred: attach texturedlab.org to the Hostinger Node.js app so /api and the
+# UI share one origin. Then this file is unused.
+#
+# Split deploy (static public_html + Node on *.hostingersite.com): proxy /api
+# so the browser never talks to the preview hostname (office LAN / iPhone fail).
 
 ErrorDocument 404 /index.html
 
@@ -22,6 +23,12 @@ AddType text/javascript .mjs
   </FilesMatch>
 </IfModule>
 
+<IfModule mod_proxy.c>
+  ProxyPreserveHost Off
+  ProxyPass /api https://mediumpurple-chicken-145151.hostingersite.com/api
+  ProxyPassReverse /api https://mediumpurple-chicken-145151.hostingersite.com/api
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -29,7 +36,11 @@ AddType text/javascript .mjs
   RewriteRule ^index\.html$ - [L]
   RewriteRule ^pwa-reset\.html$ - [L]
 
-  # Do not SPA-fallback API paths (Node must own these when domain is on the app)
+  # Same-origin /api → Node app (LiteSpeed reverse proxy)
+  RewriteCond %{HTTP_HOST} ^(www\.)?texturedlab\.org$ [NC]
+  RewriteRule ^api(/.*)?$ https://mediumpurple-chicken-145151.hostingersite.com/api$1 [P,L,QSA]
+
+  # Do not SPA-fallback API paths if proxy is unavailable
   RewriteRule ^api(/|$) - [L]
 
   RewriteCond %{REQUEST_FILENAME} !-f

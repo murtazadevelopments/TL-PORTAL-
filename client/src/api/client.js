@@ -3,9 +3,10 @@ import { sanitizePublicError, sanitizePublicPayload, attachNetworkErrorMessage }
 import { showSuccess } from '../utils/successPopup';
 
 /**
- * Backend origin from Vite env (no trailing slash).
- * Supports VITE_API_BASE_URL (preferred) and legacy VITE_API_URL.
- * Paths in the app are always `/api/...` so we never get `//api`.
+ * Backend origin (no trailing slash). Paths in the app are always `/api/...`.
+ *
+ * Production on texturedlab.org must stay same-origin. Calling the Hostinger
+ * preview hostname (*.hostingersite.com) fails on office LAN and many iPhones.
  */
 function normalizeBaseUrl(value) {
   if (value === undefined || value === null) return '';
@@ -14,9 +15,25 @@ function normalizeBaseUrl(value) {
   return trimmed.replace(/\/+$/, '');
 }
 
-const baseURL = normalizeBaseUrl(
-  import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL
-);
+function resolveBaseUrl() {
+  const configured = normalizeBaseUrl(
+    import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL
+  );
+
+  if (import.meta.env.DEV) return configured;
+  if (typeof window === 'undefined') return configured;
+  if (!configured) return '';
+
+  try {
+    if (new URL(configured).origin === window.location.origin) return configured;
+  } catch {
+    return '';
+  }
+
+  return '';
+}
+
+const baseURL = resolveBaseUrl();
 
 const api = axios.create({
   baseURL,

@@ -22,6 +22,13 @@
   max-width: 100%;
 }
 
+.attendance-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .attendance-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
