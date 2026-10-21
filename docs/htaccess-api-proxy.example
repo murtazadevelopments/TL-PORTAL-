@@ -1,0 +1,22 @@
+# Reference only — do not use this as the live site config.
+# If texturedlab.org is still on static public_html while Node runs elsewhere,
+# this Apache/LiteSpeed snippet proxies /api to the Node process so the
+# browser stays same-origin. Preferred: attach texturedlab.org to the Node app.
+
+ErrorDocument 404 /index.html
+
+<IfModule mod_proxy.c>
+  ProxyPreserveHost Off
+  ProxyPass /api http://127.0.0.1:5001/api
+  ProxyPassReverse /api http://127.0.0.1:5001/api
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^api(/.*)?$ http://127.0.0.1:5001/api$1 [P,L,QSA]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_URI} !^/api
+  RewriteRule . /index.html [L]
+</IfModule>
