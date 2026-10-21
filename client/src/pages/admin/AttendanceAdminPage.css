@@ -123,6 +123,13 @@
   justify-content: flex-end;
 }
 
+.attendance-card-toggles {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
 .attendance-admin .attendance-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -10,7 +10,7 @@ async function loadRemote(userId) {
   const { rows } = await pool.query(
     `
       SELECT id, name, username, email, employment_type, work_start_hour, work_end_hour, is_active, status,
-             remote_check_count
+             remote_check_count, flexible_hours
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -24,7 +24,7 @@ async function ensureActiveShiftChallenges(now = new Date()) {
   const { rows: remotes } = await pool.query(
     `
       SELECT id, name, username, email, employee_id, employment_type, work_start_hour, work_end_hour,
-             remote_check_count
+             remote_check_count, flexible_hours
       FROM users
       WHERE is_active = true
         AND status = 'active'

@@ -25,7 +25,8 @@ export function AuthUserProvider({ children }) {
         (err.response?.status === 403 &&
           (code === 'ACCOUNT_BLOCKED' ||
             code === 'ACCOUNT_DEACTIVATED' ||
-            code === 'ACCOUNT_LOCKED'))
+            code === 'ACCOUNT_LOCKED' ||
+            code === 'ACCOUNT_RESIGNED'))
       ) {
         localStorage.removeItem('token');
         navigate('/', { replace: true });

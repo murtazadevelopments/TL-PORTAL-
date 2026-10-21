@@ -18,6 +18,7 @@ const {
   setUserAttendanceEnabled,
   rejectIfUserAttendanceStopped,
 } = require('../utils/attendanceEnabled');
+const { userFlexibleHours, setUserFlexibleHours } = require('../utils/flexibleHours');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -57,6 +58,7 @@ const isLateCheckIn = pick(attendanceDays, 'islatecheckin');
 const refreshAttendanceDay = pick(attendanceDays, 'refreshattendanceday');
 const monthHistory = pick(attendanceDays, 'monthhistory');
 const upsertAttendanceDay = pick(attendanceDays, 'upsertattendanceday');
+const formatDurationMinutes = pick(attendanceDays, 'formatdurationminutes');
 
 const recentScores = [];
 const checkInAttempts = new Map();
@@ -89,7 +91,7 @@ async function loadUser(userId) {
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count
+             remote_check_count, flexible_hours
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -131,6 +133,7 @@ async function getEnrollment(req, res) {
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
       checks_per_shift: remoteChallenges.checkCountFromUser(user),
+      flexible_hours: userFlexibleHours(user),
       ...enrollmentPublic(rows[0]),
     });
   } catch (err) {
@@ -163,34 +166,38 @@ async function saveEnrollment(req, res) {
       `SELECT id FROM face_enrollments WHERE user_id = $1 LIMIT 1`,
       [req.user.id]
     );
+    if (existing[0]) {
+      return res.status(409).json({
+        message: 'Your face is already enrolled. Enrollment can only be done once.',
+      });
+    }
 
     const { rows } = await pool.query(
       `
         INSERT INTO face_enrollments (user_id, embedding, sample_count, enrolled_at, updated_at)
         VALUES ($1, $2::jsonb, $3, NOW(), NOW())
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-          embedding = EXCLUDED.embedding,
-          sample_count = EXCLUDED.sample_count,
-          updated_at = NOW()
+        ON CONFLICT (user_id) DO NOTHING
         RETURNING sample_count, enrolled_at, updated_at
       `,
       [req.user.id, JSON.stringify(embedding), sampleCount]
     );
+    if (!rows[0]) {
+      return res.status(409).json({
+        message: 'Your face is already enrolled. Enrollment can only be done once.',
+      });
+    }
 
     await writeAuditLog({
       actorId: req.user.id,
       actorUsername: req.user.username || user.username,
-      action: existing[0] ? 'face_reenroll' : 'face_enroll',
+      action: 'face_enroll',
       targetTable: 'face_enrollments',
       targetId: req.user.id,
-      reason: existing[0]
-        ? 'Remote employee re-enrolled face template'
-        : 'Remote employee enrolled face template',
+      reason: 'Remote employee enrolled face template',
     });
 
     return res.json({
-      message: existing[0] ? 'Face template updated.' : 'Face enrolled.',
+      message: 'Face enrolled.',
       ...enrollmentPublic(rows[0]),
     });
   } catch (err) {
@@ -261,11 +268,13 @@ async function getMyAttendance(req, res) {
             ...pub,
             seq,
             label:
-              seq === 1
-                ? `Shift start (${remoteChallenges.formatClock(row.scheduled_at)})`
-                : pub.state === 'upcoming'
-                  ? `Availability check ${seq}`
-                  : `Check ${seq} (${remoteChallenges.formatClock(row.scheduled_at)})`,
+              row.kind === 'checkout'
+                ? 'Check out'
+                : seq === 1
+                  ? `First check-in (${remoteChallenges.formatClock(row.scheduled_at)})`
+                  : pub.state === 'upcoming'
+                    ? `Availability check ${seq}`
+                    : `Check ${seq} (${remoteChallenges.formatClock(row.scheduled_at)})`,
             log: log
               ? {
                   id: log.id,
@@ -283,21 +292,30 @@ async function getMyAttendance(req, res) {
     const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now);
     const canCheckIn = Boolean(attendanceEnabled && !sundayHoliday && opened?.pub?.can_check_in);
     const month = await monthHistory(user, shiftDate.slice(0, 7));
+    const todayMeta = (month.days || []).find((d) => d.date === shiftDate) || {};
+    const flexible = userFlexibleHours(user);
     return res.json({
       date: shiftDate,
       timezone: TIMEZONE,
       current_hour_key: opened?.pub?.hour_key || null,
       attendance_enabled: attendanceEnabled,
+      flexible_hours: flexible,
       can_check_in: canCheckIn,
       open_check: opened?.pub || null,
       work_start_hour: hours.start,
       work_end_hour: hours.end,
-      work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
+      work_hours_label: flexible
+        ? `Flexible · assigned ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`
+        : `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
       start_window_minutes: remoteChallenges.START_ON_TIME_MINUTES,
       late_after_minutes: remoteChallenges.LATE_AFTER_MINUTES,
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
       checks_per_shift: remoteChallenges.checkCountFromUser(user),
+      duration_minutes: todayMeta.duration_minutes ?? null,
+      duration_label: todayMeta.duration_label || '',
+      checked_out_at: todayMeta.checked_out_at || null,
+      first_check_in: todayMeta.first_check_in || null,
       holiday: sundayHoliday,
       timeline: sundayHoliday ? [] : timeline,
       month: month.month,
@@ -336,8 +354,9 @@ async function checkIn(req, res) {
     const opened = remoteChallenges.openChallenge(challengeRows, now);
     if (!opened) {
       return res.status(400).json({
-        message:
-          'No attendance check is open right now. Wait for your shift-start window or a random availability ping.',
+        message: userFlexibleHours(user)
+          ? 'No attendance check is open right now. Start with first check-in, wait for a random ping, or check out when you finish.'
+          : 'No attendance check is open right now. Wait for your shift-start window or a random availability ping.',
       });
     }
     const challenge = opened.row;
@@ -363,7 +382,7 @@ async function checkIn(req, res) {
     }
     const stored = parseEmbedding(enrolled[0].embedding);
     if (!stored) {
-      return res.status(500).json({ message: 'Stored face template is invalid. Please re-enroll.' });
+      return res.status(500).json({ message: 'Stored face template is invalid. Ask an admin for help.' });
     }
 
     const { rows: already } = await pool.query(
@@ -386,7 +405,12 @@ async function checkIn(req, res) {
     const distance = euclideanDistance(stored, probe);
     const matched = isFaceMatch(distance);
     const suspicious = rememberScore(req.user.id, distance);
-    const late = matched && now.getTime() >= new Date(challenge.late_at).getTime();
+    const flexible = userFlexibleHours(user);
+    const skipLate =
+      challenge.kind === 'checkout' ||
+      (flexible && (challenge.kind === 'start' || Number(challenge.seq) === 1));
+    const late =
+      matched && !skipLate && now.getTime() >= new Date(challenge.late_at).getTime();
     const status = !matched ? 'failed' : late ? 'late' : 'verified';
 
     const { rows } = await pool.query(
@@ -402,8 +426,15 @@ async function checkIn(req, res) {
 
     if (matched) {
       await remoteChallenges.markChallengeResult(challenge, status, rows[0].id);
+      if (flexible && (challenge.kind === 'start' || Number(challenge.seq) === 1)) {
+        await remoteChallenges.scheduleFlexibleFollowUps(user, shiftDate, now);
+      }
+      if (challenge.kind === 'checkout') {
+        await remoteChallenges.cancelPendingFollowUps(user.id, shiftDate);
+      }
       await refreshAttendanceDay(user, hourKey.slice(0, 10), {
-        firstCheckIn: rows[0].checked_in_at,
+        firstCheckIn: challenge.kind === 'checkout' ? undefined : rows[0].checked_in_at,
+        checkedOutAt: challenge.kind === 'checkout' ? rows[0].checked_in_at : undefined,
       });
     }
 
@@ -445,10 +476,28 @@ async function checkIn(req, res) {
       });
     }
 
+    let durationMinutes = null;
+    if (matched && challenge.kind === 'checkout') {
+      const first = (
+        await pool.query(
+          `
+            SELECT first_check_in, duration_minutes, checked_out_at
+            FROM attendance_days
+            WHERE user_id = $1 AND date_key = $2
+            LIMIT 1
+          `,
+          [user.id, shiftDate]
+        )
+      ).rows[0];
+      durationMinutes = first?.duration_minutes ?? null;
+    }
     return res.status(201).json({
       matched,
       status,
       hour_key: hourKey,
+      kind: challenge.kind,
+      duration_minutes: durationMinutes,
+      duration_label: formatDurationMinutes ? formatDurationMinutes(durationMinutes) : '',
       log: {
         id: rows[0].id,
         status: rows[0].status,
@@ -517,7 +566,7 @@ async function adminOverview(req, res) {
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at, attendance_enabled, remote_check_count
+               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -578,11 +627,12 @@ async function adminOverview(req, res) {
 
     const { rows: dayRows } = ids.length
       ? await pool.query(
-          `SELECT user_id, status FROM attendance_days WHERE date_key = $1 AND user_id = ANY($2::int[])`,
+          `SELECT user_id, status, first_check_in, checked_out_at, duration_minutes FROM attendance_days WHERE date_key = $1 AND user_id = ANY($2::int[])`,
           [dateKey, ids]
         )
       : { rows: [] };
     const dayByUser = new Map(dayRows.map((d) => [String(d.user_id), d.status]));
+    const dayMetaByUser = new Map(dayRows.map((d) => [String(d.user_id), d]));
 
     const employees = people
       .map((person) => {
@@ -606,7 +656,7 @@ async function adminOverview(req, res) {
             ...pub,
             seq,
             hour_key: row.hour_key,
-            label: seq === 1 ? 'Start' : `Check ${seq}`,
+            label: row.kind === 'checkout' ? 'Check out' : seq === 1 ? 'Start' : `Check ${seq}`,
             state,
             method: log?.method || null,
           };
@@ -656,6 +706,8 @@ async function adminOverview(req, res) {
         }
 
         const hours = workHoursFromUser(person);
+        const dayMeta = dayMetaByUser.get(String(person.id));
+        const flexible = userFlexibleHours(person);
         return {
           id: person.id,
           employee_id: person.employee_id,
@@ -670,7 +722,9 @@ async function adminOverview(req, res) {
             : person.profile_picture_url,
           work_start_hour: hours.start,
           work_end_hour: hours.end,
-          work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
+          work_hours_label: flexible
+            ? `Flexible · ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`
+            : `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
           day_status: rowStatus,
           can_manual: employeeMatchesScope(person, editScope),
           can_toggle_attendance: employeeMatchesScope(person, editScope),
@@ -684,7 +738,14 @@ async function adminOverview(req, res) {
           slots,
           latest,
           attendance_enabled: userAttendanceEnabled(person),
+          flexible_hours: flexible,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
+          duration_minutes: dayMeta?.duration_minutes ?? null,
+          duration_label: formatDurationMinutes
+            ? formatDurationMinutes(dayMeta?.duration_minutes)
+            : '',
+          checked_out_at: dayMeta?.checked_out_at || null,
+          first_check_in: dayMeta?.first_check_in || null,
           can_check_in_request: Boolean(userAttendanceEnabled(person) && requestGate.allowed),
           check_in_request_reason: userAttendanceEnabled(person) ? requestGate.reason : 'stopped',
           check_in_request_available_at: requestGate.available_at,
@@ -1064,6 +1125,63 @@ async function putUserAttendanceEnabled(req, res) {
   }
 }
 
+async function putUserFlexibleHours(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Flexible hours are only for remote employees.' });
+    }
+
+    if (!isCeoRole(req.user?.role)) {
+      const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+      }
+    }
+
+    const raw = req.body?.enabled;
+    const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    await setUserFlexibleHours(targetId, enabled);
+    const updated = await loadUser(targetId);
+    const now = new Date();
+    const shiftDate =
+      remoteChallenges.activeShiftDate(now, updated) ||
+      remoteChallenges.currentShiftDateKey(now, updated);
+    if (shiftDate && !isSundayDateKey(shiftDate) && userAttendanceEnabled(updated)) {
+      await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
+      await remoteChallenges.ensureChallengesForUser(updated, shiftDate);
+    }
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: enabled ? 'attendance.flexible_on' : 'attendance.flexible_off',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: enabled
+        ? `Turned flexible hours on for ${target.name || target.username}`
+        : `Turned flexible hours off for ${target.name || target.username}`,
+    });
+    return res.json({
+      enabled: userFlexibleHours(updated),
+      checks_per_shift: remoteChallenges.checkCountFromUser(updated),
+      message: enabled
+        ? `Flexible hours are on for ${target.name || target.username}. They get 3 checks: first check-in, one random, then check-out.`
+        : `Flexible hours are off for ${target.name || target.username}. Fixed shift times apply again.`,
+    });
+  } catch (err) {
+    console.error('putUserFlexibleHours error:', err);
+    return res.status(500).json({ message: 'Server error saving flexible hours.' });
+  }
+}
+
 async function adminSetHours(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1372,4 +1490,5 @@ module.exports = {
   adminDeleteRemoteDay,
   markMissedSlots,
   putUserAttendanceEnabled,
+  putUserFlexibleHours,
 };

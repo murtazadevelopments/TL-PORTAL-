@@ -4,19 +4,23 @@ export function teamNameFrom(value) {
   return String(value.name || value.department || value.team || '').trim();
 }
 
-export function mergeTeamNames(...lists) {
-  const names = [];
-  for (const list of lists) {
-    for (const item of list || []) {
-      const name = teamNameFrom(item);
-      if (name) names.push(name);
-    }
+export function uniqueTeamNames(list) {
+  const seen = new Map();
+  for (const item of list || []) {
+    const name = teamNameFrom(item);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
   }
-  return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+export function mergeTeamNames(...lists) {
+  return uniqueTeamNames(lists.flatMap((list) => list || []));
 }
 
 export function matchesTeamFilter(row, team) {
-  const wanted = String(team || '').trim();
+  const wanted = String(team || '').trim().toLowerCase();
   if (!wanted || wanted === 'all') return true;
-  return teamNameFrom(row.department || row.team) === wanted;
+  return teamNameFrom(row.department || row.team).toLowerCase() === wanted;
 }

@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { matchesTeamFilter } from '../../utils/teamNames';
+import PasswordInput from '../../components/PasswordInput';
 import '../admin/AdminDashboard.css';
 import './TeamLeaderDashboard.css';
 
@@ -104,18 +105,17 @@ function TPinModal({ open, title, onCancel, onConfirm, busy }) {
         <h2 id="tl-tpin-title">{title || 'Confirm with T-Pin'}</h2>
         <p className="muted">Enter your T-Pin to save all changes on this tab.</p>
         <form className="form" onSubmit={submit}>
-          <label>
-            T-Pin
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              disabled={busy}
-              autoFocus
-            />
-          </label>
+          <PasswordInput
+            label="T-Pin"
+            name="t_pin"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            autoFocus
+            maxLength={8}
+          />
           {localError && <p className="error">{localError}</p>}
           <div className="tl-modal-actions">
             <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
@@ -509,53 +509,49 @@ export default function TeamLeaderDashboard() {
           {error && <p className="error">{error}</p>}
 
           <form className="form tl-setup-form" onSubmit={handleSetupTPin}>
-            <label>
-              Account password
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={setupForm.current_password}
-                onChange={(e) =>
-                  setSetupForm((f) => ({ ...f, current_password: e.target.value }))
-                }
-                required
-                disabled={setupBusy}
-              />
-            </label>
-            <label>
-              New T-Pin (4–8 digits)
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                value={setupForm.t_pin}
-                onChange={(e) =>
-                  setSetupForm((f) => ({
-                    ...f,
-                    t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
-                  }))
-                }
-                required
-                disabled={setupBusy}
-              />
-            </label>
-            <label>
-              Confirm T-Pin
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                value={setupForm.confirm}
-                onChange={(e) =>
-                  setSetupForm((f) => ({
-                    ...f,
-                    confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
-                  }))
-                }
-                required
-                disabled={setupBusy}
-              />
-            </label>
+            <PasswordInput
+              label="Account password"
+              name="current_password"
+              autoComplete="current-password"
+              value={setupForm.current_password}
+              onChange={(e) =>
+                setSetupForm((f) => ({ ...f, current_password: e.target.value }))
+              }
+              required
+              disabled={setupBusy}
+            />
+            <PasswordInput
+              label="New T-Pin (4–8 digits)"
+              name="t_pin"
+              inputMode="numeric"
+              autoComplete="new-password"
+              value={setupForm.t_pin}
+              onChange={(e) =>
+                setSetupForm((f) => ({
+                  ...f,
+                  t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                }))
+              }
+              required
+              disabled={setupBusy}
+              maxLength={8}
+            />
+            <PasswordInput
+              label="Confirm T-Pin"
+              name="confirm_t_pin"
+              inputMode="numeric"
+              autoComplete="new-password"
+              value={setupForm.confirm}
+              onChange={(e) =>
+                setSetupForm((f) => ({
+                  ...f,
+                  confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
+                }))
+              }
+              required
+              disabled={setupBusy}
+              maxLength={8}
+            />
             <button type="submit" className="btn btn-primary" disabled={setupBusy}>
               {setupBusy ? 'Saving T-Pin…' : 'Save T-Pin & continue'}
             </button>
@@ -844,51 +840,48 @@ export default function TeamLeaderDashboard() {
             <h2>Change T-Pin</h2>
             <p className="muted">Enter your current T-Pin, then choose a new 4–8 digit pin.</p>
             <form className="form" onSubmit={handleSetupTPin}>
-              <label>
-                Current T-Pin
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={setupForm.current_t_pin}
-                  onChange={(e) =>
-                    setSetupForm((f) => ({
-                      ...f,
-                      current_t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                New T-Pin
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={setupForm.t_pin}
-                  onChange={(e) =>
-                    setSetupForm((f) => ({
-                      ...f,
-                      t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label>
-                Confirm T-Pin
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={setupForm.confirm}
-                  onChange={(e) =>
-                    setSetupForm((f) => ({
-                      ...f,
-                      confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
-                    }))
-                  }
-                  required
-                />
-              </label>
+              <PasswordInput
+                label="Current T-Pin"
+                name="current_t_pin"
+                inputMode="numeric"
+                value={setupForm.current_t_pin}
+                onChange={(e) =>
+                  setSetupForm((f) => ({
+                    ...f,
+                    current_t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                  }))
+                }
+                required
+                maxLength={8}
+              />
+              <PasswordInput
+                label="New T-Pin"
+                name="new_t_pin"
+                inputMode="numeric"
+                value={setupForm.t_pin}
+                onChange={(e) =>
+                  setSetupForm((f) => ({
+                    ...f,
+                    t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                  }))
+                }
+                required
+                maxLength={8}
+              />
+              <PasswordInput
+                label="Confirm T-Pin"
+                name="confirm_t_pin"
+                inputMode="numeric"
+                value={setupForm.confirm}
+                onChange={(e) =>
+                  setSetupForm((f) => ({
+                    ...f,
+                    confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
+                  }))
+                }
+                required
+                maxLength={8}
+              />
               <div className="tl-modal-actions">
                 <button
                   type="button"

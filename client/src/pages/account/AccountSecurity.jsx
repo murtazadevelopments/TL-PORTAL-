@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { startRegistration } from '@simplewebauthn/browser';
 import api from '../../api/client';
+import PasswordInput from '../../components/PasswordInput';
 
 export default function AccountSecurity() {
   const navigate = useNavigate();
@@ -221,47 +222,38 @@ export default function AccountSecurity() {
             </button>
           ) : (
             <form onSubmit={handleChangePassword} className="form" style={{ marginTop: 0 }}>
-              <label>
-                Current password
-                <input
-                  type="password"
-                  name="current_password"
-                  value={passwordForm.current_password}
-                  onChange={(e) =>
-                    setPasswordForm((prev) => ({ ...prev, current_password: e.target.value }))
-                  }
-                  required
-                  autoComplete="current-password"
-                />
-              </label>
-              <label>
-                New password
-                <input
-                  type="password"
-                  name="new_password"
-                  value={passwordForm.new_password}
-                  onChange={(e) =>
-                    setPasswordForm((prev) => ({ ...prev, new_password: e.target.value }))
-                  }
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label>
-                Confirm new password
-                <input
-                  type="password"
-                  name="confirm_password"
-                  value={passwordForm.confirm_password}
-                  onChange={(e) =>
-                    setPasswordForm((prev) => ({ ...prev, confirm_password: e.target.value }))
-                  }
-                  required
-                  minLength={6}
-                  autoComplete="new-password"
-                />
-              </label>
+              <PasswordInput
+                name="current_password"
+                label="Current password"
+                value={passwordForm.current_password}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, current_password: e.target.value }))
+                }
+                required
+                autoComplete="current-password"
+              />
+              <PasswordInput
+                name="new_password"
+                label="New password"
+                value={passwordForm.new_password}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, new_password: e.target.value }))
+                }
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+              <PasswordInput
+                name="confirm_password"
+                label="Confirm new password"
+                value={passwordForm.confirm_password}
+                onChange={(e) =>
+                  setPasswordForm((prev) => ({ ...prev, confirm_password: e.target.value }))
+                }
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
               {passwordError && <p className="error">{passwordError}</p>}
               {passwordSuccess && <p className="success">{passwordSuccess}</p>}
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>

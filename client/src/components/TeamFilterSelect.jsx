@@ -1,16 +1,15 @@
 import useTeamOptions from '../hooks/useTeamOptions';
-import { mergeTeamNames } from '../utils/teamNames';
+import { uniqueTeamNames } from '../utils/teamNames';
 
 export default function TeamFilterSelect({
   value = 'all',
   onChange,
-  extraNames = [],
   className = 'filter-select',
   allLabel = 'All',
   disabled = false,
 }) {
   const { names, loading } = useTeamOptions();
-  const options = mergeTeamNames(names, extraNames);
+  const options = uniqueTeamNames(names);
   const current = value || 'all';
 
   return (

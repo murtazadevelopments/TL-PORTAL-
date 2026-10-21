@@ -13,7 +13,16 @@ function pick(obj, name) {
 const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
-const { shiftBounds, planChallengeTimes, hourKeyForSeq, checkCountFromUser, sortRemoteChecks, addDaysKey } = require('./remoteCheckWindows');
+const {
+  shiftBounds,
+  planChallengeTimes,
+  hourKeyForSeq,
+  checkCountFromUser,
+  sortRemoteChecks,
+  addDaysKey,
+  userFlexibleHours,
+  flexibleDayBounds,
+} = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
 const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
@@ -36,8 +45,18 @@ function isRemoteUser(user) {
   return normalizeEmploymentType(user?.employment_type) === 'remote';
 }
 
-function remoteSlotLabel(seq) {
-  return Number(seq) === 1 ? 'Start' : `Check ${Number(seq)}`;
+function formatDurationMinutes(mins) {
+  const n = Math.max(0, Math.round(Number(mins) || 0));
+  if (!Number.isFinite(Number(mins)) || mins == null) return '';
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  if (h <= 0) return `${m}m`;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+function remoteSlotLabel(seq, kind) {
+  if (kind === 'checkout') return 'Check out';
+  return Number(seq) === 1 || kind === 'start' ? 'Start' : `Check ${Number(seq)}`;
 }
 
 function slotsFromChallenges(challengeRows, logsByHour, now) {
@@ -49,7 +68,7 @@ function slotsFromChallenges(challengeRows, logsByHour, now) {
       seq,
       kind: row.kind,
       hour_key: row.hour_key,
-      label: remoteSlotLabel(seq),
+      label: remoteSlotLabel(seq, row.kind),
       state: challengeSlotState(log || row, now),
       method: log?.method || null,
       checked_in_at: log?.checked_in_at || null,
@@ -65,7 +84,7 @@ function plannedRemoteSlots(dateKey, user, now) {
     seq: row.seq,
     kind: row.kind,
     hour_key: hourKeyForSeq(dateKey, row.seq),
-    label: remoteSlotLabel(row.seq),
+    label: remoteSlotLabel(row.seq, row.kind),
     state: 'pending',
     method: null,
     checked_in_at: null,
@@ -74,14 +93,17 @@ function plannedRemoteSlots(dateKey, user, now) {
 }
 
 function emptyRemoteSlots(dateKey, user) {
-  return Array.from({ length: checkCountFromUser(user) }, (_, i) => {
+  const count = checkCountFromUser(user);
+  const flexible = userFlexibleHours(user);
+  return Array.from({ length: count }, (_, i) => {
     const seq = i + 1;
+    const kind = seq === 1 ? 'start' : flexible && seq === count ? 'checkout' : 'random';
     return {
       hour: seq,
       seq,
-      kind: seq === 1 ? 'start' : 'random',
-      hour_key: hourKeyForSeq(dateKey, seq),
-      label: remoteSlotLabel(seq),
+      kind,
+      hour_key: kind === 'checkout' ? `${dateKey}-cout` : hourKeyForSeq(dateKey, seq),
+      label: remoteSlotLabel(seq, kind),
       state: 'pending',
       method: null,
       checked_in_at: null,
@@ -91,7 +113,8 @@ function emptyRemoteSlots(dateKey, user) {
 }
 
 function isChallengeKey(hourKey) {
-  return /-c\d+$/.test(String(hourKey || ''));
+  const key = String(hourKey || '');
+  return /-c\d+$/.test(key) || /-cout$/.test(key);
 }
 
 function hourFromKey(hourKey) {
@@ -112,6 +135,21 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
     const good = challengeLogs.filter((l) => l.status === 'verified' || l.status === 'late');
     const startLog = challengeLogs.find((l) => String(l.hour_key).endsWith('-c1'));
     const needed = checkCountFromUser(user);
+    if (userFlexibleHours(user)) {
+      const checkoutLog = challengeLogs.find((l) => String(l.hour_key).endsWith('-cout'));
+      const checkedOut = Boolean(
+        checkoutLog && (checkoutLog.status === 'verified' || checkoutLog.status === 'late')
+      );
+      if (checkedOut && startLog) {
+        return good.some((l) => l.status === 'late') ? 'late' : 'present';
+      }
+      const { end } = flexibleDayBounds(dateKey);
+      if (now.getTime() >= end.getTime()) return 'absent';
+      if (good.length) {
+        return good.some((l) => l.status === 'late') || startLog?.status === 'late' ? 'late' : 'pending';
+      }
+      return 'pending';
+    }
     if (startLog?.status === 'late' || good.some((l) => l.status === 'late')) {
       if (good.length >= needed) return 'late';
     }
@@ -166,12 +204,16 @@ async function logsForDate(userId, dateKey) {
 async function upsertAttendanceDay(userId, dateKey, status, extra = {}) {
   await pool.query(
     `
-      INSERT INTO attendance_days (user_id, date_key, status, first_check_in, note, marked_by, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      INSERT INTO attendance_days (
+        user_id, date_key, status, first_check_in, checked_out_at, duration_minutes, note, marked_by, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
       ON CONFLICT (user_id, date_key)
       DO UPDATE SET
         status = EXCLUDED.status,
         first_check_in = COALESCE(EXCLUDED.first_check_in, attendance_days.first_check_in),
+        checked_out_at = COALESCE(EXCLUDED.checked_out_at, attendance_days.checked_out_at),
+        duration_minutes = COALESCE(EXCLUDED.duration_minutes, attendance_days.duration_minutes),
         note = COALESCE(EXCLUDED.note, attendance_days.note),
         marked_by = COALESCE(EXCLUDED.marked_by, attendance_days.marked_by),
         updated_at = NOW()
@@ -180,9 +222,11 @@ async function upsertAttendanceDay(userId, dateKey, status, extra = {}) {
       userId,
       dateKey,
       status,
-      extra.firstCheckIn || null,
+      extra.firstCheckIn || extra.first_check_in || null,
+      extra.checkedOutAt || extra.checked_out_at || null,
+      extra.durationMinutes ?? extra.duration_minutes ?? null,
       extra.note || null,
-      extra.markedBy || null,
+      extra.markedBy || extra.marked_by || null,
     ]
   );
 }
@@ -195,8 +239,32 @@ async function refreshAttendanceDay(user, dateKey, extra = {}) {
   const logs = await logsForDate(user.id, dateKey);
   const status = extra.forceStatus || computeDayStatus(logs, user, dateKey);
   const firstGood = logs.find((l) => l.status === 'verified' || l.status === 'late');
+  let checkedOutAt = extra.checkedOutAt || extra.checked_out_at || null;
+  if (!checkedOutAt && isRemoteUser(user) && userFlexibleHours(user)) {
+    const remoteChallenges = require('./remoteAttendanceChallenges');
+    const rows = await remoteChallenges.loadChallenges(user.id, dateKey);
+    const checkout = rows.find(
+      (row) => row.kind === 'checkout' && ['verified', 'late'].includes(row.status)
+    );
+    if (checkout) {
+      const log = logs.find(
+        (l) => l.hour_key === checkout.hour_key && ['verified', 'late'].includes(l.status)
+      );
+      checkedOutAt = log?.checked_in_at || null;
+    }
+  }
+  const firstCheckIn = extra.firstCheckIn || extra.first_check_in || firstGood?.checked_in_at || null;
+  let durationMinutes = extra.durationMinutes ?? extra.duration_minutes ?? null;
+  if (firstCheckIn && checkedOutAt) {
+    durationMinutes = Math.max(
+      0,
+      Math.round((new Date(checkedOutAt).getTime() - new Date(firstCheckIn).getTime()) / 60000)
+    );
+  }
   await upsertAttendanceDay(user.id, dateKey, status, {
-    firstCheckIn: extra.firstCheckIn || firstGood?.checked_in_at || null,
+    firstCheckIn,
+    checkedOutAt,
+    durationMinutes,
     note: extra.note,
     markedBy: extra.markedBy,
   });
@@ -288,7 +356,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
 
   const { rows: dayRows } = await pool.query(
     `
-      SELECT date_key, status, first_check_in, note
+      SELECT date_key, status, first_check_in, checked_out_at, duration_minutes, note
       FROM attendance_days
       WHERE user_id = $1
         AND date_key LIKE $2
@@ -298,6 +366,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
   const leaveByDate = new Map(
     dayRows.filter((d) => d.status === 'leave').map((d) => [d.date_key, d])
   );
+  const dayMeta = new Map(dayRows.map((d) => [d.date_key, d]));
 
   let challengeRows = (
     await pool.query(
@@ -355,7 +424,15 @@ async function monthHistory(user, monthKey, now = new Date()) {
     if (isSundayDateKey(dateKey)) {
       return { date: dateKey, status: 'holiday', slots: [] };
     }
-    return buildDayRecord(dateKey, user, logs, now, dayChallenges);
+    const rec = buildDayRecord(dateKey, user, logs, now, dayChallenges);
+    const stored = dayMeta.get(dateKey);
+    if (stored) {
+      rec.first_check_in = stored.first_check_in || rec.first_check_in || null;
+      rec.checked_out_at = stored.checked_out_at || null;
+      rec.duration_minutes = stored.duration_minutes ?? null;
+      rec.duration_label = formatDurationMinutes(stored.duration_minutes);
+    }
+    return rec;
   });
 
   const hours = workHoursFromUser(user);
@@ -391,6 +468,7 @@ module.exports = {
   buildDayRecord,
   monthHistory,
   tallyDays,
+  formatDurationMinutes,
   isLateCheckIn,
   isWithinWorkHours,
 };

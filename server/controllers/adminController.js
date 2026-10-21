@@ -19,7 +19,11 @@ const {
   normalizeScope,
   employmentAccessWhere,
 } = require('../utils/employeeScope');
-const { ensureBlockedColumn } = require('../utils/accountStatus');
+const {
+  ensureBlockedColumn,
+  RESIGNED_REASON,
+  isResignedAccount,
+} = require('../utils/accountStatus');
 const { ensureUsersBranchNotEnumLocked } = require('../utils/usersBranchConstraint');
 const {
   missingEmployeePortalFields,
@@ -65,7 +69,7 @@ const LIST_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
   department, designation, status, branch, shift, salary, date_of_joining,
   education, last_job_status, employment_type, staff_kind, profile_picture_url, created_at, is_active,
-  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+  failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
@@ -85,7 +89,7 @@ const DETAIL_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+  failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
   profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
@@ -294,15 +298,18 @@ async function listEmployees(req, res) {
 
 async function getEmployeeById(req, res) {
   try {
+    await ensureBlockedColumn();
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
     await ensureLowerStaffExtraColumns();
     await ensureSalaryColumn();
+    await ensureAttendanceTables();
     const { id } = req.params;
 
     const { rows } = await pool.query(
       `
-        SELECT ${DETAIL_COLUMNS}
+        SELECT ${DETAIL_COLUMNS},
+               attendance_enabled, remote_check_count, flexible_hours
         FROM users
         WHERE id = $1 AND is_active = true
         LIMIT 1
@@ -337,10 +344,7 @@ async function getEmployeeById(req, res) {
     }
 
     const withDocs = withDocumentPresence(await attachReadableUrls(rows[0]));
-    const employee = redactSalary(
-      withDocs,
-      isLowerStaff(rows[0]) && canManageLowerStaff(req)
-    );
+    const employee = redactSalary(withDocs, true);
     employee.profile_picture_on_file = Boolean(withDocs.profile_picture_on_file);
     employee.cnic_front_on_file = Boolean(withDocs.cnic_front_on_file);
     employee.cnic_back_on_file = Boolean(withDocs.cnic_back_on_file);
@@ -729,7 +733,7 @@ async function createEmployee(req, res) {
     }
     const catalogShift = (await findShiftName(shift)) || String(shift || '').trim();
     if (!['active', 'inactive'].includes(status)) {
-      return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
+      return res.status(400).json({ message: 'Status must be "active" or "inactive" for a new employee.' });
     }
 
     const lastJobStatus = body.last_job_status
@@ -813,7 +817,7 @@ async function createEmployee(req, res) {
       ]
     );
 
-    const employee = redactSalary(await attachReadableUrls(rows[0]), false);
+    const employee = redactSalary(await attachReadableUrls(rows[0]), true);
     try {
       await writeAuditLog({
         actorId: req.user.id,
@@ -946,8 +950,18 @@ async function updateEmployee(req, res) {
     next.work_start_hour = hours.start;
     next.work_end_hour = hours.end;
 
-    if (!['active', 'inactive'].includes(next.status)) {
-      return res.status(400).json({ message: 'Status must be "active" or "inactive".' });
+    if (!['active', 'inactive', 'resigned'].includes(next.status)) {
+      return res.status(400).json({ message: 'Status must be "active", "inactive", or "resigned".' });
+    }
+    if (isResignedAccount(before) && next.status !== 'resigned') {
+      return res.status(400).json({
+        message: 'This employee resigned. Status cannot be changed, and they cannot sign in.',
+      });
+    }
+    if (next.status === 'resigned' && !isResignedAccount(before)) {
+      return res.status(400).json({
+        message: 'To set status to resigned, use Resign and enter the last day in office.',
+      });
     }
 
     const catalogDesignation = await findDesignationName(next.designation, {
@@ -1040,7 +1054,7 @@ async function updateEmployee(req, res) {
       }
     }
 
-    res.json(redactSalary(employee, false));
+    res.json(redactSalary(employee, true));
     if (changed.length) {
       await notifyAfterResponse('employee-admin-updated', employee.id, () =>
         notifyEmployeeAdminUpdated(employee, changed)
@@ -1338,6 +1352,7 @@ async function listLockedAccounts(req, res) {
         SELECT
           id, employee_id, username, name, email, role, status, department, branch,
           failed_login_attempts, locked_at, blocked_at, blocked_reason,
+          last_day_in_office, resigned_at,
           is_active, created_at
         FROM users
         WHERE locked_at IS NOT NULL OR blocked_at IS NOT NULL
@@ -1510,7 +1525,7 @@ async function unblockAccount(req, res) {
 
     const { rows: existingRows } = await pool.query(
       `
-        SELECT id, username, role, branch, department, is_active, blocked_at
+        SELECT id, username, role, branch, department, is_active, blocked_at, blocked_reason, resigned_at
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -1520,6 +1535,12 @@ async function unblockAccount(req, res) {
     const target = existingRows[0];
     if (!target || target.is_active === false) {
       return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    if (isResignedAccount(target)) {
+      return res.status(400).json({
+        message: 'This employee resigned. The account stays blocked and cannot be unblocked.',
+      });
     }
 
     const scopes = await resolvePermissionScopes(req);
@@ -1572,6 +1593,248 @@ async function unblockAccount(req, res) {
   }
 }
 
+function parseLastDayInOffice(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return raw;
+}
+
+/**
+ * PUT /api/admin/employees/:id/resign
+ * Records last day in office, then blocks the ID with reason resigned.
+ */
+async function markEmployeeResigned(req, res) {
+  try {
+    await ensureBlockedColumn();
+    const { id } = req.params;
+    const lastDay = parseLastDayInOffice(req.body?.last_day_in_office);
+
+    if (!lastDay) {
+      return res.status(400).json({ message: 'Last day in office is required (YYYY-MM-DD).' });
+    }
+
+    if (String(id) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot mark your own account as resigned.' });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, name, role, branch, department, is_active,
+               blocked_at, blocked_reason, resigned_at, last_day_in_office
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+    const target = existingRows[0];
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeRoleName(target.role) === 'ceo') {
+      return res.status(403).json({ message: 'CEO accounts cannot be marked resigned.' });
+    }
+    if (isResignedAccount(target)) {
+      return res.status(400).json({ message: 'This employee has already resigned.' });
+    }
+
+    const scopes = await resolvePermissionScopes(req);
+    const editScope = scopes['employees:edit']
+      ? scopeForPermission(scopes, 'employees:edit')
+      : scopeForPermission(scopes, 'employees:view');
+    if (!employeeMatchesScope(target, editScope)) {
+      return res.status(403).json({
+        message: 'This employee is outside your assigned scope.',
+      });
+    }
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET last_day_in_office = $2::date,
+            resigned_at = NOW(),
+            blocked_at = NOW(),
+            blocked_reason = $3,
+            status = 'resigned',
+            updated_at = NOW()
+        WHERE id = $1
+          AND LOWER(TRIM(COALESCE(role, ''))) <> 'ceo'
+        RETURNING id, employee_id, username, name, email, role, status,
+                  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+                  last_day_in_office, resigned_at, is_active
+      `,
+      [id, lastDay, RESIGNED_REASON]
+    );
+
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'employee_resigned',
+        targetTable: 'users',
+        targetId: rows[0].id,
+        reason: `Resigned ${rows[0].username}; last day in office ${lastDay}`,
+      });
+    } catch (auditErr) {
+      console.warn('employee_resigned audit failed:', auditErr.message || auditErr);
+    }
+
+    res.json({
+      message: 'Employee marked resigned. The ID is blocked and cannot sign in.',
+      user: rows[0],
+    });
+    queueCeoBranchManagerNotice(req, {
+      action: 'Marked employee resigned',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
+  } catch (err) {
+    console.error('markEmployeeResigned error:', err);
+    return res.status(500).json({ message: 'Server error marking employee resigned.' });
+  }
+}
+
+async function loadMessageSender(req) {
+  const { rows: senderRows } = await pool.query(
+    `
+      SELECT id, name, username, role
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [req.user.id]
+  );
+  return (
+    senderRows[0] || {
+      id: req.user.id,
+      name: req.user.name,
+      username: req.user.username,
+      role: req.user.role,
+    }
+  );
+}
+
+function profileAlertSkipReason(target) {
+  if (isLowerStaff(target)) return 'lower';
+  if (String(target.status || '').toLowerCase() !== 'active') return 'pending';
+  const missing = missingEmployeePortalFields(withDocumentPresence(target));
+  if (!missing.length) return 'complete';
+  if (profileAlertCount(target) >= PROFILE_ALERT_MAX) return 'locked';
+  const cooldown = profileAlertCooldown(target);
+  if (cooldown.active) return 'cooldown';
+  return null;
+}
+
+async function dispatchProfileAlert(req, target, sender) {
+  const missing = missingEmployeePortalFields(withDocumentPresence(target));
+  const labels = missing.map((f) => f.label);
+  const fieldList = formatFieldList(missing);
+  const currentCount = profileAlertCount(target);
+  const nextCount = currentCount + 1;
+  const lockNow = nextCount >= PROFILE_ALERT_MAX;
+  const firstName = String(target.name || target.username || 'there').split(' ')[0];
+  const subject = 'Please complete your portal profile';
+  const messageBody =
+    `Hi ${firstName},\n\n` +
+    'Please complete the following fields in your portal profile. ' +
+    'These are fields you fill yourself (not assigned by admin):\n\n' +
+    labels.map((l) => `• ${l}`).join('\n') +
+    (lockNow
+      ? `\n\nThis was reminder ${PROFILE_ALERT_MAX} of ${PROFILE_ALERT_MAX}. Until these employee fields are complete, you will only see the missing items — not the dashboard.\n\n`
+      : '\n\nOpen My Account → Profile and save the missing details.\n\n') +
+    '— Textured Lab Portal';
+
+  const result = await deliverOneMessage({
+    sender,
+    recipient: target,
+    subject,
+    messageBody,
+    deliveryMethod: 'portal',
+    emailIfPushUndelivered: true,
+    pushPayload: {
+      title: lockNow ? 'Complete your profile to continue' : 'Complete your portal profile',
+      body: lockNow
+        ? 'Your portal is limited to missing employee fields until you finish them.'
+        : `Please fill: ${labels.slice(0, 4).join(', ')}${labels.length > 4 ? '…' : ''}`,
+      url: '/account',
+      tag: 'profile-alert',
+      urgency: 'high',
+      pushOpts: { requireEnabled: false, urgency: 'high' },
+    },
+  });
+
+  const sentAt = new Date();
+  await pool.query(
+    `
+      UPDATE users
+      SET profile_alert_at = NOW(),
+          profile_alert_sent_at = NOW(),
+          profile_alert_fields = $2,
+          profile_alert_count = $3,
+          profile_incomplete_locked_at = CASE WHEN $4 THEN NOW() ELSE profile_incomplete_locked_at END,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [target.id, JSON.stringify(labels), nextCount, lockNow]
+  );
+
+  try {
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username || null,
+      action: 'profile_alert_sent',
+      targetTable: 'users',
+      targetId: target.id,
+      reason: `Asked ${target.username || target.name} to complete: ${fieldList} (${nextCount}/${PROFILE_ALERT_MAX})`,
+    });
+  } catch (auditErr) {
+    console.warn('profile_alert_sent audit failed:', auditErr.message || auditErr);
+  }
+
+  const viaPush = Number(result?.pushSent) > 0;
+  const viaEmail = Boolean(result?.emailSent);
+  const channel = viaPush
+    ? 'They got a phone notification.'
+    : viaEmail
+      ? 'They do not have the app, so the alert was emailed.'
+      : 'They will see a banner in the portal. Email could not be sent.';
+  const nextHint = lockNow
+    ? 'Their portal is now limited to incomplete employee fields until they finish.'
+    : `This was reminder ${nextCount} of ${PROFILE_ALERT_MAX}. Next alert is available after 24 hours.`;
+
+  return {
+    id: target.id,
+    message: `Alert sent (${nextCount} of ${PROFILE_ALERT_MAX}). ${channel} ${nextHint}`,
+    missingFields: labels,
+    emailSent: viaEmail,
+    pushSent: viaPush,
+    emailError: result?.emailError || null,
+    profileAlertSentAt: sentAt.toISOString(),
+    profileAlertCount: nextCount,
+    profileIncompleteLocked: lockNow,
+    profileIncompleteLockedAt: lockNow ? sentAt.toISOString() : target.profile_incomplete_locked_at || null,
+  };
+}
+
+function employeeInAlertScope(target, scopes, access) {
+  const remote = isRemoteEmployment(target.employment_type);
+  if (remote && !access.canRemoteDirectory) return false;
+  if (!remote && !access.canOnsiteDirectory) return false;
+  const viewScope = remote
+    ? scopeForPermission(scopes, 'employees:remote')
+    : scopeForPermission(scopes, 'employees:view');
+  return employeeMatchesScope(target, viewScope);
+}
 
 /**
  * POST /api/admin/employees/:id/profile-alert
@@ -1599,47 +1862,31 @@ async function sendProfileAlert(req, res) {
 
     const scopes = await resolvePermissionScopes(req);
     const access = directoryAccess(req);
-    const remote = isRemoteEmployment(target.employment_type);
-    if (remote && !access.canRemoteDirectory) {
+    if (!employeeInAlertScope(target, scopes, access)) {
       return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
-    }
-    if (!remote && !access.canOnsiteDirectory) {
-      return res.status(403).json({ message: 'This employee is outside your assigned scope.' });
-    }
-    const viewScope = remote
-      ? scopeForPermission(scopes, 'employees:remote')
-      : scopeForPermission(scopes, 'employees:view');
-    if (!employeeMatchesScope(target, viewScope)) {
-      return res.status(403).json({
-        message: 'This employee is outside your assigned scope.',
-      });
     }
 
-    if (String(target.status || '').toLowerCase() !== 'active') {
+    const skip = profileAlertSkipReason(target);
+    if (skip === 'pending') {
       return res.status(400).json({
         message: 'Approve this account before sending a profile alert. Pending people cannot sign in yet.',
       });
     }
-
-    const missing = missingEmployeePortalFields(withDocumentPresence(target));
-    if (!missing.length) {
+    if (skip === 'complete') {
       return res.status(400).json({
         message: 'This employee has already filled their portal fields.',
       });
     }
-
-    const currentCount = profileAlertCount(target);
-    if (currentCount >= PROFILE_ALERT_MAX) {
+    if (skip === 'locked') {
       return res.status(400).json({
         message:
           `This employee already had ${PROFILE_ALERT_MAX} profile alerts. Their portal is limited to incomplete employee fields until they finish.`,
         code: 'PROFILE_ALERT_LIMIT',
-        profileAlertCount: currentCount,
+        profileAlertCount: profileAlertCount(target),
       });
     }
-
-    const cooldown = profileAlertCooldown(target);
-    if (cooldown.active) {
+    if (skip === 'cooldown') {
+      const cooldown = profileAlertCooldown(target);
       return res.status(429).json({
         message: `Alert already sent. You can send another after ${cooldown.remainingLabel}.`,
         retryAfterMs: cooldown.remainingMs,
@@ -1648,108 +1895,9 @@ async function sendProfileAlert(req, res) {
       });
     }
 
-    const labels = missing.map((f) => f.label);
-    const fieldList = formatFieldList(missing);
-    const nextCount = currentCount + 1;
-    const lockNow = nextCount >= PROFILE_ALERT_MAX;
-    const firstName = String(target.name || target.username || 'there').split(' ')[0];
-    const subject = 'Please complete your portal profile';
-    const messageBody =
-      `Hi ${firstName},\n\n` +
-      'Please complete the following fields in your portal profile. ' +
-      'These are fields you fill yourself (not assigned by admin):\n\n' +
-      labels.map((l) => `• ${l}`).join('\n') +
-      (lockNow
-        ? `\n\nThis was reminder ${PROFILE_ALERT_MAX} of ${PROFILE_ALERT_MAX}. Until these employee fields are complete, you will only see the missing items — not the dashboard.\n\n`
-        : '\n\nOpen My Account → Profile and save the missing details.\n\n') +
-      '— Textured Lab Portal';
-
-    const { rows: senderRows } = await pool.query(
-      `
-        SELECT id, name, username, role
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-      `,
-      [req.user.id]
-    );
-    const sender = senderRows[0] || {
-      id: req.user.id,
-      name: req.user.name,
-      username: req.user.username,
-      role: req.user.role,
-    };
-
-    const result = await deliverOneMessage({
-      sender,
-      recipient: target,
-      subject,
-      messageBody,
-      deliveryMethod: 'portal',
-      emailIfPushUndelivered: true,
-      pushPayload: {
-        title: lockNow ? 'Complete your profile to continue' : 'Complete your portal profile',
-        body: lockNow
-          ? 'Your portal is limited to missing employee fields until you finish them.'
-          : `Please fill: ${labels.slice(0, 4).join(', ')}${labels.length > 4 ? '…' : ''}`,
-        url: '/account',
-        tag: 'profile-alert',
-        urgency: 'high',
-        pushOpts: { requireEnabled: false, urgency: 'high' },
-      },
-    });
-
-    const sentAt = new Date();
-    await pool.query(
-      `
-        UPDATE users
-        SET profile_alert_at = NOW(),
-            profile_alert_sent_at = NOW(),
-            profile_alert_fields = $2,
-            profile_alert_count = $3,
-            profile_incomplete_locked_at = CASE WHEN $4 THEN NOW() ELSE profile_incomplete_locked_at END,
-            updated_at = NOW()
-        WHERE id = $1
-      `,
-      [id, JSON.stringify(labels), nextCount, lockNow]
-    );
-
-    try {
-      await writeAuditLog({
-        actorId: req.user.id,
-        actorUsername: req.user.username || null,
-        action: 'profile_alert_sent',
-        targetTable: 'users',
-        targetId: target.id,
-        reason: `Asked ${target.username || target.name} to complete: ${fieldList} (${nextCount}/${PROFILE_ALERT_MAX})`,
-      });
-    } catch (auditErr) {
-      console.warn('profile_alert_sent audit failed:', auditErr.message || auditErr);
-    }
-
-    const viaPush = Number(result?.pushSent) > 0;
-    const viaEmail = Boolean(result?.emailSent);
-    const channel = viaPush
-      ? 'They got a phone notification.'
-      : viaEmail
-        ? 'They do not have the app, so the alert was emailed.'
-        : 'They will see a banner in the portal. Email could not be sent.';
-
-    const nextHint = lockNow
-      ? 'Their portal is now limited to incomplete employee fields until they finish.'
-      : `This was reminder ${nextCount} of ${PROFILE_ALERT_MAX}. Next alert is available after 24 hours.`;
-
-    res.json({
-      message: `Alert sent (${nextCount} of ${PROFILE_ALERT_MAX}). ${channel} ${nextHint}`,
-      missingFields: labels,
-      emailSent: viaEmail,
-      pushSent: viaPush,
-      emailError: result?.emailError || null,
-      profileAlertSentAt: sentAt.toISOString(),
-      profileAlertCount: nextCount,
-      profileIncompleteLocked: lockNow,
-      profileIncompleteLockedAt: lockNow ? sentAt.toISOString() : target.profile_incomplete_locked_at || null,
-    });
+    const sender = await loadMessageSender(req);
+    const payload = await dispatchProfileAlert(req, target, sender);
+    res.json(payload);
     queueCeoBranchManagerNotice(req, {
       action: 'Sent profile alert',
       targetName: target.name || target.username,
@@ -1759,6 +1907,100 @@ async function sendProfileAlert(req, res) {
   } catch (err) {
     console.error('sendProfileAlert error:', err);
     return res.status(500).json({ message: 'Server error sending profile alert.' });
+  }
+}
+
+/**
+ * POST /api/admin/employees/profile-alert-bulk
+ * One-click alert for every incomplete profile in the admin's directory.
+ */
+async function sendBulkProfileAlert(req, res) {
+  try {
+    await ensureProfileAlertColumns();
+    await ensureEmploymentTypeColumn();
+    await ensureStaffKindColumn();
+    const scopes = await resolvePermissionScopes(req);
+    const access = directoryAccess(req);
+    const filter = employmentAccessWhere({
+      canOnsite: access.canOnsiteDirectory,
+      canRemote: access.canRemoteDirectory,
+      onsiteScope: scopeForPermission(scopes, 'employees:view'),
+      remoteScope: scopeForPermission(scopes, 'employees:remote'),
+      startIndex: 1,
+    });
+
+    const { rows } = await pool.query(
+      `
+        SELECT ${LIST_COLUMNS}
+        FROM users
+        WHERE is_active = true
+        ${filter.sql}
+        AND COALESCE(staff_kind, 'portal') <> 'lower'
+        ORDER BY name ASC NULLS LAST, id ASC
+      `,
+      filter.params
+    );
+
+    const sender = await loadMessageSender(req);
+    const sent = [];
+    const skipped = { pending: 0, complete: 0, locked: 0, cooldown: 0, error: 0 };
+
+    for (const row of rows) {
+      if (!employeeInAlertScope(row, scopes, access)) continue;
+      const skip = profileAlertSkipReason(row);
+      if (skip === 'pending') {
+        skipped.pending += 1;
+        continue;
+      }
+      if (skip === 'complete' || skip === 'lower') {
+        skipped.complete += 1;
+        continue;
+      }
+      if (skip === 'locked') {
+        skipped.locked += 1;
+        continue;
+      }
+      if (skip === 'cooldown') {
+        skipped.cooldown += 1;
+        continue;
+      }
+      try {
+        const payload = await dispatchProfileAlert(req, row, sender);
+        sent.push({
+          id: payload.id,
+          profileAlertSentAt: payload.profileAlertSentAt,
+          profileAlertCount: payload.profileAlertCount,
+          profileIncompleteLockedAt: payload.profileIncompleteLockedAt,
+        });
+      } catch (err) {
+        console.error('bulk profile alert failed:', row.id, err.message || err);
+        skipped.error += 1;
+      }
+    }
+
+    if (sent.length) {
+      queueCeoBranchManagerNotice(req, {
+        action: 'Sent bulk profile alert',
+        targetName: `${sent.length} incomplete profile${sent.length === 1 ? '' : 's'}`,
+        details: [`Sent: ${sent.length}`],
+      });
+    }
+
+    const parts = [`Alert sent to ${sent.length} incomplete profile${sent.length === 1 ? '' : 's'}.`];
+    if (skipped.cooldown) parts.push(`${skipped.cooldown} already alerted in the last 24 hours.`);
+    if (skipped.locked) parts.push(`${skipped.locked} already at the ${PROFILE_ALERT_MAX}-alert limit.`);
+    if (skipped.pending) parts.push(`${skipped.pending} still pending approval.`);
+    if (skipped.error) parts.push(`${skipped.error} could not be sent.`);
+
+    return res.json({
+      message: parts.join(' '),
+      sentCount: sent.length,
+      skipped,
+      updates: sent,
+    });
+  } catch (err) {
+    console.error('sendBulkProfileAlert error:', err);
+    return res.status(500).json({ message: 'Server error sending profile alerts.' });
   }
 }
 
@@ -1919,6 +2161,8 @@ module.exports = {
   unlockAccount,
   blockAccount,
   unblockAccount,
+  markEmployeeResigned,
   sendProfileAlert,
+  sendBulkProfileAlert,
   sendPhotoAlert,
 };

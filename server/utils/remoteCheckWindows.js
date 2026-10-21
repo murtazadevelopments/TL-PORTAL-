@@ -7,9 +7,18 @@ const CHECK_COUNT = DEFAULT_CHECK_COUNT;
 const MIN_CHECK_COUNT = 1;
 const MAX_CHECK_COUNT = 8;
 const RANDOM_COUNT = DEFAULT_CHECK_COUNT - 1;
+const FLEXIBLE_DEFAULT_CHECK_COUNT = 3;
+
+function userFlexibleHours(user) {
+  return user?.flexible_hours === true;
+}
 
 function checkCountFromUser(user) {
   const n = Number(user?.remote_check_count ?? user?.checks_per_shift);
+  if (userFlexibleHours(user)) {
+    if (!Number.isFinite(n)) return FLEXIBLE_DEFAULT_CHECK_COUNT;
+    return Math.min(MAX_CHECK_COUNT, Math.max(2, Math.floor(n)));
+  }
   if (!Number.isFinite(n)) return DEFAULT_CHECK_COUNT;
   return Math.min(MAX_CHECK_COUNT, Math.max(MIN_CHECK_COUNT, Math.floor(n)));
 }
@@ -42,6 +51,11 @@ function hourKeyForSeq(shiftDate, seq) {
   return `${shiftDate}-c${seq}`;
 }
 
+function hourKeyForChallenge(shiftDate, row) {
+  if (row?.kind === 'checkout') return `${shiftDate}-cout`;
+  return hourKeyForSeq(shiftDate, row?.seq);
+}
+
 function shiftBounds(shiftDate, userOrHours) {
   const hours =
     userOrHours && typeof userOrHours.start === 'number'
@@ -65,9 +79,38 @@ function currentShiftDateKey(now, user) {
   return parts.dateKey;
 }
 
+function flexibleDayBounds(shiftDate) {
+  const start = zonedInstant(shiftDate, 0, 0);
+  const end = zonedInstant(addDaysKey(shiftDate, 1), 0, 0);
+  return { start, end };
+}
+
+function flexibleStartWindows(shiftDate) {
+  const { start, end } = flexibleDayBounds(shiftDate);
+  return {
+    scheduled_at: start,
+    late_at: new Date(end.getTime() - 60 * 1000),
+    absent_at: end,
+  };
+}
+
+function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date()) {
+  const { end } = flexibleDayBounds(shiftDate);
+  const at = scheduledAt instanceof Date ? scheduledAt : new Date(scheduledAt);
+  return {
+    scheduled_at: at,
+    late_at: new Date(end.getTime() - 60 * 1000),
+    absent_at: end,
+  };
+}
+
 function activeShiftDate(now, user) {
-  const hours = workHoursFromUser(user);
   const today = zonedParts(now).dateKey;
+  if (userFlexibleHours(user)) {
+    if (isSundayDateKey(today)) return null;
+    return today;
+  }
+  const hours = workHoursFromUser(user);
   const yesterday = addDaysKey(today, -1);
   const candidates = hours.overnight ? [yesterday, today] : [today];
   const lead = GENERATE_LEAD_MINUTES * 60 * 1000;
@@ -226,6 +269,18 @@ function randomWindowStart(start, now, existing = [], firstAt = null) {
 }
 
 function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
+  if (userFlexibleHours(user)) {
+    const windows = flexibleStartWindows(shiftDate);
+    return [
+      {
+        seq: 1,
+        kind: 'start',
+        scheduled_at: windows.scheduled_at,
+        late_at: windows.late_at,
+        absent_at: windows.absent_at,
+      },
+    ];
+  }
   const { start, end } = shiftBounds(shiftDate, user);
   const { earliest, latest } = randomBounds(start, end);
   const first = {
@@ -288,16 +343,19 @@ function formatClock(date) {
 }
 
 function sortRemoteChecks(rows) {
-  const list = [...(rows || [])];
-  const start = list.filter((row) => Number(row.seq) === 1 || row.kind === 'start');
-  const rest = list
-    .filter((row) => Number(row.seq) !== 1 && row.kind !== 'start')
-    .sort((a, b) => {
-      const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
-      const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
-      return ta - tb;
-    });
-  return [...start, ...rest];
+  const rank = (row) => {
+    if (row.kind === 'start' || Number(row.seq) === 1) return 0;
+    if (row.kind === 'checkout') return 2;
+    return 1;
+  };
+  return [...(rows || [])].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const ta = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
+    const tb = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+    return ta - tb;
+  });
 }
 
 module.exports = {
@@ -306,6 +364,8 @@ module.exports = {
   MAX_CHECK_COUNT,
   CHECK_COUNT,
   RANDOM_COUNT,
+  FLEXIBLE_DEFAULT_CHECK_COUNT,
+  userFlexibleHours,
   checkCountFromUser,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
@@ -316,7 +376,11 @@ module.exports = {
   addDaysKey,
   zonedInstant,
   hourKeyForSeq,
+  hourKeyForChallenge,
   shiftBounds,
+  flexibleDayBounds,
+  flexibleStartWindows,
+  flexibleCheckoutWindows,
   currentShiftDateKey,
   activeShiftDate,
   windowsForScheduled,

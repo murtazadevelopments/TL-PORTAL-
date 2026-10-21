@@ -10,6 +10,7 @@ const { attachReadableUrls } = require('../utils/storageUrls');
 const { frontendBaseUrl, PUBLIC_FRONTEND_URL } = require('../utils/frontendUrl');
 const { recordSuccessfulLogin } = require('../services/loginActivity');
 const jwt = require('jsonwebtoken');
+const { blockedLoginMessage } = require('../utils/accountStatus');
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
@@ -423,14 +424,14 @@ async function loginVerify(req, res) {
       });
     }
     if (user.blocked_at) {
-      return res.status(403).json({
-        message: 'This account has been blocked. Contact an administrator.',
-        code: 'ACCOUNT_BLOCKED',
-      });
+      return res.status(403).json(blockedLoginMessage(user));
     }
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
+    if (accountStatus === 'resigned') {
+      return res.status(403).json(blockedLoginMessage(user));
+    }
     const role = String(user.role || '')
       .trim()
       .toLowerCase();

@@ -23,8 +23,28 @@ export function markAttendanceGuideSeen(mode) {
   }
 }
 
-function remoteSteps(checksPerShift) {
-  const n = Number(checksPerShift) > 0 ? Number(checksPerShift) : 5;
+function remoteSteps(checksPerShift, flexibleHours) {
+  const n = Number(checksPerShift) > 0 ? Number(checksPerShift) : flexibleHours ? 3 : 5;
+  if (flexibleHours) {
+    return [
+      {
+        title: 'Enroll your face once',
+        body: 'Allow the camera. Sit in good light, look into the circle, then tap Enroll face.',
+      },
+      {
+        title: `${n} checks, no fixed start time`,
+        body: 'First check-in when you start. Then one random check during assigned hours. Check out when you finish.',
+      },
+      {
+        title: 'Tap Check in now, then Check out',
+        body: 'When a check opens, tap the button. After check-out, your total time for the day is saved.',
+      },
+      {
+        title: 'Don’t miss the random check',
+        body: 'If a random ping is open, complete it before check-out. Sunday is a holiday.',
+      },
+    ];
+  }
   return [
     {
       title: 'Enroll your face once',
@@ -78,10 +98,11 @@ export default function AttendanceGuideModal({
   open,
   mode = 'remote',
   checksPerShift = 5,
+  flexibleHours = false,
   onClose,
 }) {
   const isOnsite = mode === 'onsite';
-  const steps = isOnsite ? onsiteSteps() : remoteSteps(checksPerShift);
+  const steps = isOnsite ? onsiteSteps() : remoteSteps(checksPerShift, flexibleHours);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -121,7 +142,9 @@ export default function AttendanceGuideModal({
         <p className="att-guide-lead">
           {isOnsite
             ? 'Short steps for checking in from the office.'
-            : 'Short steps for face check-in during your shift.'}
+            : flexibleHours
+              ? 'Short steps for flexible remote hours: start, random check, then check-out.'
+              : 'Short steps for face check-in during your shift.'}
         </p>
         <ol className="att-guide-steps">
           {steps.map((step, index) => (

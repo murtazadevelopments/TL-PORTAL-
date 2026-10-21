@@ -19,6 +19,7 @@ const {
 } = require('../utils/employmentType');
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
+const { blockedLoginMessage } = require('../utils/accountStatus');
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -356,15 +357,15 @@ async function login(req, res) {
     }
 
     if (user.blocked_at) {
-      return res.status(403).json({
-        message: 'This account has been blocked. Contact an administrator.',
-        code: 'ACCOUNT_BLOCKED',
-      });
+      return res.status(403).json(blockedLoginMessage(user));
     }
 
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
+    if (accountStatus === 'resigned') {
+      return res.status(403).json(blockedLoginMessage(user));
+    }
     const role = String(user.role || '')
       .trim()
       .toLowerCase();

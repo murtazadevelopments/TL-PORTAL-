@@ -43,7 +43,8 @@
 .cnic-viewer-stage {
   position: relative;
   flex: 1;
-  min-height: 220px;
+  min-height: 0;
+  overflow: auto;
   display: grid;
   place-items: center;
   padding: 0.85rem;
@@ -54,7 +55,10 @@
 
 .cnic-viewer-canvas {
   max-width: 100%;
+  max-height: calc(100vh - 10.5rem);
+  width: auto;
   height: auto;
+  object-fit: contain;
   display: block;
   border-radius: 10px;
 }

@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { blockedLoginMessage } = require('../utils/accountStatus');
 
 function normalizeRole(role) {
   return String(role || '')
@@ -29,18 +30,19 @@ function requireRole(...allowedRoles) {
       }
 
       const { rows } = await pool.query(
-        'SELECT role, is_active, blocked_at FROM users WHERE id = $1 LIMIT 1',
+        'SELECT role, is_active, blocked_at, blocked_reason, resigned_at FROM users WHERE id = $1 LIMIT 1',
         [req.user.id]
       );
 
       const row = rows[0];
       if (!row || row.is_active === false || row.blocked_at) {
+        const blocked = row?.blocked_at ? blockedLoginMessage(row) : null;
         return res.status(403).json({
           error: 'Forbidden: insufficient permissions',
-          message: row?.blocked_at
-            ? 'This account has been blocked. Contact an administrator.'
+          message: blocked
+            ? blocked.message
             : 'This account has been deactivated. Contact an administrator.',
-          code: row?.blocked_at ? 'ACCOUNT_BLOCKED' : 'ACCOUNT_DEACTIVATED',
+          code: blocked ? blocked.code : 'ACCOUNT_DEACTIVATED',
         });
       }
 

@@ -255,21 +255,15 @@ async function listMessageRecipients(req, res) {
     let teams = [];
     try {
       const { rows } = await pool.query(
-        `SELECT id, name FROM teams ORDER BY name ASC`
+        `
+          SELECT DISTINCT ON (LOWER(TRIM(name))) id, name
+          FROM teams
+          ORDER BY LOWER(TRIM(name)) ASC, id ASC
+        `
       );
       teams = rows;
     } catch {
       /* teams table optional */
-    }
-
-    // Also include departments present on users but missing from catalog
-    const deptSet = new Set(teams.map((t) => String(t.name).trim().toLowerCase()));
-    for (const r of recipients) {
-      const d = String(r.department || '').trim();
-      if (d && !deptSet.has(d.toLowerCase())) {
-        teams.push({ id: null, name: d });
-        deptSet.add(d.toLowerCase());
-      }
     }
     teams.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 

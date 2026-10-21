@@ -208,6 +208,16 @@ async function runEnsureAttendanceTables() {
   `);
   const { ensureAttendanceEnabledColumn } = require('./attendanceEnabled');
   await ensureAttendanceEnabledColumn();
+  const { ensureFlexibleHoursColumn } = require('./flexibleHours');
+  await ensureFlexibleHoursColumn();
+  await pool.query(`
+    ALTER TABLE attendance_days
+      ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ
+  `);
+  await pool.query(`
+    ALTER TABLE attendance_days
+      ADD COLUMN IF NOT EXISTS duration_minutes INTEGER
+  `);
 }
 
 module.exports = { ensureAttendanceTables, persistUserWorkHours, persistRemoteCheckCount };

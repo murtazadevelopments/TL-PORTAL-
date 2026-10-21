@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { canManageSalesTargets, isCeo } from '../../utils/permissions';
 import { describeEmployeeScope } from '../../utils/employeeScope';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import { showSuccess } from '../../utils/successPopup';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { useRegisterSalesLeaveLock } from '../../context/SalesLeaveGuard';
 import ConfirmPinModal from './ConfirmPinModal';
+import PasswordInput from '../../components/PasswordInput';
 import { readStoredSalesPin, storeSalesPin } from './salesPinStorage';
 import '../admin/AdminDashboard.css';
 import '../team-leader/TeamLeaderDashboard.css';
@@ -90,41 +93,37 @@ function PinGate({ configured, busy, error, onSetPin, onUnlock, onForgot }) {
       </p>
       <form className="form tl-setup-form" onSubmit={submit}>
         {!configured && (
-          <label>
-            Account password
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={busy}
-            />
-          </label>
+          <PasswordInput
+            label="Account password"
+            name="account_password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+          />
         )}
-        <label>
-          Sales PIN
-          <input
-            type="password"
+        <PasswordInput
+          label="Sales PIN"
+          name="sales_pin"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+          disabled={busy}
+          autoFocus
+          maxLength={8}
+        />
+        {!configured && (
+          <PasswordInput
+            label="Confirm PIN"
+            name="confirm_pin"
             inputMode="numeric"
             autoComplete="one-time-code"
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
             disabled={busy}
-            autoFocus
+            maxLength={8}
           />
-        </label>
-        {!configured && (
-          <label>
-            Confirm PIN
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              disabled={busy}
-            />
-          </label>
         )}
         {(localError || error) && <p className="error">{localError || error}</p>}
         <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -261,29 +260,27 @@ function RecoverPinPanel({ busy, error, onBusy, onError, onCancel, onDone }) {
       )}
       {step === 'pin' && (
         <form className="form tl-setup-form" onSubmit={savePin}>
-          <label>
-            New sales PIN
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="new-password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              disabled={busy}
-              autoFocus
-            />
-          </label>
-          <label>
-            Confirm new PIN
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              disabled={busy}
-            />
-          </label>
+          <PasswordInput
+            label="New sales PIN"
+            name="new_sales_pin"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            autoFocus
+            maxLength={8}
+          />
+          <PasswordInput
+            label="Confirm new PIN"
+            name="confirm_sales_pin"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            maxLength={8}
+          />
           {(localError || error) && <p className="error">{localError || error}</p>}
           <div className="tl-modal-actions" style={{ marginTop: 0, justifyContent: 'flex-start' }}>
             <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
@@ -417,7 +414,8 @@ export default function SalesTargetsDashboard() {
           status === 401 ||
           code === 'ACCOUNT_BLOCKED' ||
           code === 'ACCOUNT_DEACTIVATED' ||
-          code === 'ACCOUNT_LOCKED'
+          code === 'ACCOUNT_LOCKED' ||
+          code === 'ACCOUNT_RESIGNED'
         ) {
           localStorage.removeItem('token');
           navigate('/', { replace: true });
@@ -735,18 +733,10 @@ export default function SalesTargetsDashboard() {
     setPinError('');
   }
 
-  const teamOptions = useMemo(
-    () =>
-      [...new Set(agents.map((row) => String(row.department || '').trim()).filter(Boolean))].sort(
-        (a, b) => a.localeCompare(b)
-      ),
-    [agents]
-  );
-
   const visibleAgents = useMemo(() => {
     const q = query.trim().toLowerCase();
     return agents.filter((row) => {
-      if (teamFilter !== 'all' && String(row.department || '').trim() !== teamFilter) return false;
+      if (!matchesTeamFilter(row, teamFilter)) return false;
       if (statusFilter !== 'all' && row.status !== statusFilter) return false;
       if (newOnly && !isRecentlyAdded(row.created_at)) return false;
       if (!q) return true;
@@ -848,14 +838,11 @@ export default function SalesTargetsDashboard() {
             />
             <label>
               Team
-              <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-                <option value="all">All assigned teams</option>
-                {teamOptions.map((team) => (
-                  <option key={team} value={team}>
-                    {team}
-                  </option>
-                ))}
-              </select>
+              <TeamFilterSelect
+                value={teamFilter}
+                onChange={setTeamFilter}
+                allLabel="All assigned teams"
+              />
             </label>
             <label>
               Status

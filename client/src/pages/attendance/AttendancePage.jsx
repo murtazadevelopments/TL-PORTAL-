@@ -91,6 +91,8 @@ export default function AttendancePage() {
   const [sundayHoliday, setSundayHoliday] = useState(false);
   const [attendanceEnabled, setAttendanceEnabled] = useState(true);
   const [checksPerShift, setChecksPerShift] = useState(5);
+  const [flexibleHours, setFlexibleHours] = useState(false);
+  const [durationLabel, setDurationLabel] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -117,6 +119,8 @@ export default function AttendancePage() {
     setOpenCheck(att.open_check || null);
     setSundayHoliday(Boolean(att.holiday));
     setAttendanceEnabled(att.attendance_enabled !== false);
+    setFlexibleHours(Boolean(att.flexible_hours));
+    setDurationLabel(att.duration_label || '');
     setChecksPerShift(Number(att.checks_per_shift) > 0 ? Number(att.checks_per_shift) : 5);
   }, []);
 
@@ -287,6 +291,7 @@ export default function AttendancePage() {
   }
 
   async function handleEnroll() {
+    if (enrollment?.enrolled) return;
     setError('');
     setStatus('');
     setPhase('enroll');
@@ -401,12 +406,14 @@ export default function AttendancePage() {
       });
       setRing('success');
       setProgress(100);
-      setHint('Checked in');
-      setDetail('This check is recorded');
+      setHint(data.kind === 'checkout' ? 'Checked out' : 'Checked in');
+      setDetail(data.kind === 'checkout' ? 'Your day duration is saved' : 'This check is recorded');
       setStatus(
-        data.status === 'late'
-          ? 'Checked in late for this availability check.'
-          : 'Checked in on time for this availability check.'
+        data.kind === 'checkout'
+          ? `Checked out.${data.duration_label ? ` Today’s duration: ${data.duration_label}.` : ''}`
+          : data.status === 'late'
+            ? 'Checked in late for this availability check.'
+            : 'Checked in on time for this availability check.'
       );
       await load();
     } catch (err) {
@@ -431,7 +438,11 @@ export default function AttendancePage() {
       <div className="attendance-hero">
         <div>
           <h1>My attendance</h1>
-          <p className="muted">Face check-in during your shift.</p>
+          <p className="muted">
+            {flexibleHours
+              ? 'Flexible hours: check in when you start, one random ping, then check out.'
+              : 'Face check-in during your shift.'}
+          </p>
         </div>
         <div className="attendance-hero-actions">
           <button type="button" className="btn btn-ghost" onClick={() => setGuideOpen(true)}>
@@ -449,6 +460,7 @@ export default function AttendancePage() {
         open={guideOpen}
         mode="remote"
         checksPerShift={checksPerShift}
+        flexibleHours={flexibleHours}
         onClose={closeGuide}
       />
 
@@ -476,9 +488,13 @@ export default function AttendancePage() {
       </div>
       {workHoursLabel ? (
         <p className="muted">
-          Your working hours: {workHoursLabel}. Check-in is only open during an active availability
-          check.
+          {flexibleHours
+            ? `Assigned hours for random checks: ${workHoursLabel}. First check-in and check-out can happen anytime today.`
+            : `Your working hours: ${workHoursLabel}. Check-in is only open during an active availability check.`}
         </p>
+      ) : null}
+      {flexibleHours && durationLabel ? (
+        <p className="success">Today’s duration after check-out: {durationLabel}</p>
       ) : null}
       {!attendanceEnabled ? (
         <p className="attendance-open-banner">Attendance is paused for your account. Check-in will open again when an admin turns it on.</p>
@@ -486,10 +502,18 @@ export default function AttendancePage() {
         <p className="attendance-open-banner">Sunday is a holiday. Attendance checks are not required.</p>
       ) : openCheck?.can_check_in ? (
         <p className="attendance-open-banner">
-          Check {openCheck.seq} of {checksPerShift} is open
-          {remainFromCheck(openCheck, nowTick, 'late_at') > 0
+          {openCheck.kind === 'checkout'
+            ? 'Check out is open — tap when you finish for the day.'
+            : openCheck.kind === 'start' && flexibleHours
+              ? 'First check-in is open — tap when you start work.'
+              : `Check ${openCheck.seq} of ${checksPerShift} is open`}
+          {openCheck.kind !== 'checkout' &&
+          !(openCheck.kind === 'start' && flexibleHours) &&
+          remainFromCheck(openCheck, nowTick, 'late_at') > 0
             ? ` — ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'late_at'))} left to be on time.`
-            : ` — you will be marked late. Absent in ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'absent_at'))}.`}
+            : openCheck.kind !== 'checkout' && !(openCheck.kind === 'start' && flexibleHours)
+              ? ` — you will be marked late. Absent in ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'absent_at'))}.`
+              : ''}
         </p>
       ) : null}
 
@@ -518,19 +542,26 @@ export default function AttendancePage() {
                 {phase === 'enroll' ? 'Capturing…' : 'Enroll face'}
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
-                  onClick={handleCheckIn}
-                >
-                  {phase === 'checkin' ? 'Checking in…' : !attendanceEnabled ? 'Attendance off' : canCheckIn ? 'Check in now' : sundayHoliday ? 'Sunday holiday' : 'Waiting for next check'}
-                </button>
-                <button type="button" className="btn btn-ghost" disabled={phase !== 'idle' || !modelsReady} onClick={handleEnroll}>
-                  Re-enroll
-                </button>
-              </>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
+                onClick={handleCheckIn}
+              >
+                {phase === 'checkin'
+                  ? openCheck?.kind === 'checkout'
+                    ? 'Checking out…'
+                    : 'Checking in…'
+                  : !attendanceEnabled
+                    ? 'Attendance off'
+                    : canCheckIn
+                      ? openCheck?.kind === 'checkout'
+                        ? 'Check out now'
+                        : 'Check in now'
+                      : sundayHoliday
+                        ? 'Sunday holiday'
+                        : 'Waiting for next check'}
+              </button>
             )}
           </div>
           {enrollment?.enrolled && (
@@ -567,7 +598,10 @@ export default function AttendancePage() {
           {days.map((day) => (
             <li key={day.date} className={`attendance-day ${day.status}`}>
               <span className="attendance-day-date">{day.date}</span>
-              <span className="attendance-day-status">{friendlyDayStatus(day.status)}</span>
+              <span className="attendance-day-status">
+                {friendlyDayStatus(day.status)}
+                {day.duration_label ? ` · ${day.duration_label}` : ''}
+              </span>
             </li>
           ))}
           {days.length === 0 && <li className="muted">No daily records yet this month.</li>}

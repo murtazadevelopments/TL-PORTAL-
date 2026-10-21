@@ -52,6 +52,17 @@ export default function CnicProtectedViewer({
   const [paused, setPaused] = useState(false);
   const sideLabel = cnicSideLabel(docType);
 
+  const fitCanvas = useCallback((bitmap) => {
+    const canvas = canvasRef.current;
+    const source = bitmap || bitmapRef.current;
+    if (!canvas || !source) return;
+    const maxW = Math.min(920, Math.max(280, window.innerWidth - 72));
+    const maxH = Math.max(220, window.innerHeight - 200);
+    const scale = Math.min(1, maxW / source.width, maxH / source.height);
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+  }, []);
+
   const paint = useCallback((hidden) => {
     const canvas = canvasRef.current;
     const bitmap = bitmapRef.current;
@@ -101,13 +112,7 @@ export default function CnicProtectedViewer({
           return;
         }
         bitmapRef.current = bitmap;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const maxW = Math.min(920, window.innerWidth - 48);
-          const scale = Math.min(1, maxW / bitmap.width);
-          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        }
+        fitCanvas(bitmap);
         setStatus('ready');
         paint(false);
       } catch (err) {
@@ -138,7 +143,17 @@ export default function CnicProtectedViewer({
         bitmapRef.current = null;
       }
     };
-  }, [open, userId, docType, paint]);
+  }, [open, userId, docType, paint, fitCanvas]);
+
+  useEffect(() => {
+    if (!open || status !== 'ready') return undefined;
+    function onResize() {
+      fitCanvas();
+      paint(paused);
+    }
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [open, status, paused, fitCanvas, paint]);
 
   useEffect(() => {
     if (open && status === 'ready') paint(paused);

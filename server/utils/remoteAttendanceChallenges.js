@@ -6,6 +6,7 @@ const {
   CHECK_COUNT,
   checkCountFromUser,
   hourKeyForSeq,
+  hourKeyForChallenge,
   activeShiftDate,
   currentShiftDateKey,
   planChallengeTimes,
@@ -14,6 +15,13 @@ const {
   windowsForScheduled,
   shiftBounds,
   isWithinShift,
+  userFlexibleHours,
+  flexibleDayBounds,
+  flexibleStartWindows,
+  flexibleCheckoutWindows,
+  pickRandomInstants,
+  seededRandom,
+  MIN_CHECK_GAP_MINUTES,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
   ABSENT_AFTER_MINUTES,
@@ -27,7 +35,7 @@ async function ensureChallengeTable() {
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       shift_date          TEXT NOT NULL,
       seq                 INTEGER NOT NULL CHECK (seq >= 1 AND seq <= 12),
-      kind                TEXT NOT NULL CHECK (kind IN ('start', 'random')),
+      kind                TEXT NOT NULL CHECK (kind IN ('start', 'random', 'checkout')),
       hour_key            TEXT NOT NULL,
       scheduled_at       TIMESTAMPTZ NOT NULL,
       late_at             TIMESTAMPTZ NOT NULL,
@@ -66,6 +74,19 @@ async function ensureChallengeTable() {
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS remote_check_count INTEGER NOT NULL DEFAULT 5
   `);
+  await pool.query(
+    `ALTER TABLE attendance_challenges DROP CONSTRAINT IF EXISTS attendance_challenges_kind_check`
+  );
+  await pool.query(`
+    DO $$
+    BEGIN
+      ALTER TABLE attendance_challenges
+        ADD CONSTRAINT attendance_challenges_kind_check
+        CHECK (kind IN ('start', 'random', 'checkout'));
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
 }
 
 async function loadChallenges(userId, shiftDate) {
@@ -97,11 +118,18 @@ async function minuteTaken(userId, at) {
   return Boolean(rows[0]);
 }
 
+function windowsForPlanRow(user, shiftDate, kind, at) {
+  if (kind === 'checkout') return flexibleCheckoutWindows(shiftDate, at);
+  if (kind === 'start' && userFlexibleHours(user)) return flexibleStartWindows(shiftDate);
+  return windowsForScheduled(at);
+}
+
 async function insertPlan(user, shiftDate, plan) {
-  const { start, end } = shiftBounds(shiftDate, user);
+  const flexible = userFlexibleHours(user);
+  const { start, end } = flexible ? flexibleDayBounds(shiftDate) : shiftBounds(shiftDate, user);
   for (const row of plan) {
     let at = new Date(row.scheduled_at);
-    if (row.kind !== 'start') {
+    if (row.kind !== 'start' && row.kind !== 'checkout') {
       if (!isWithinShift(at, start, end)) continue;
       for (let n = 0; n < 40; n += 1) {
         if (!(await minuteTaken(user.id, at))) break;
@@ -117,7 +145,7 @@ async function insertPlan(user, shiftDate, plan) {
       }
       if (!isWithinShift(at, start, end)) continue;
     }
-    const windows = windowsForScheduled(at);
+    const windows = windowsForPlanRow(user, shiftDate, row.kind, at);
     await pool.query(
       `
         INSERT INTO attendance_challenges (
@@ -135,13 +163,136 @@ async function insertPlan(user, shiftDate, plan) {
         shiftDate,
         row.seq,
         row.kind,
-        hourKeyForSeq(shiftDate, row.seq),
-        at,
+        hourKeyForChallenge(shiftDate, row),
+        windows.scheduled_at || at,
         windows.late_at,
         windows.absent_at,
       ]
     );
   }
+}
+
+const DONE_STATES = new Set(['verified', 'late', 'missed']);
+
+async function cancelPendingFollowUps(userId, shiftDate) {
+  await pool.query(
+    `
+      DELETE FROM attendance_challenges
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND kind IN ('random', 'checkout')
+        AND status IN ('pending', 'notified')
+    `,
+    [userId, shiftDate]
+  );
+}
+
+async function scheduleFlexibleFollowUps(user, shiftDate, now = new Date()) {
+  const checkCount = checkCountFromUser(user);
+  const existing = await loadChallenges(user.id, shiftDate);
+  const startRow = existing.find((row) => Number(row.seq) === 1 || row.kind === 'start');
+  if (!startRow || !DONE_STATES.has(startRow.status) || startRow.status === 'missed') {
+    return loadChallenges(user.id, shiftDate);
+  }
+  if (existing.some((row) => row.kind === 'checkout' && DONE_STATES.has(row.status))) {
+    return existing;
+  }
+
+  const have = new Set(existing.map((row) => Number(row.seq)));
+  const assigned = shiftBounds(shiftDate, user);
+  const day = flexibleDayBounds(shiftDate);
+  const randomCount = Math.max(0, checkCount - 2);
+  const gapMs = MIN_CHECK_GAP_MINUTES * 60 * 1000;
+  const fromMs = Math.max(now.getTime() + 5 * 60 * 1000, assigned.start.getTime());
+  let untilMs = assigned.end.getTime() - 40 * 60 * 1000;
+  if (untilMs < assigned.start.getTime()) untilMs = assigned.end.getTime() - 60 * 1000;
+  untilMs = Math.min(untilMs, day.end.getTime() - 60 * 1000);
+
+  const plan = [];
+  if (randomCount > 0 && untilMs > fromMs) {
+    const rng = seededRandom(`${user.id}|${shiftDate}|flex-randoms`);
+    const instants = pickRandomInstants(
+      new Date(fromMs),
+      new Date(untilMs),
+      randomCount,
+      gapMs,
+      rng,
+      []
+    );
+    instants.forEach((at, i) => {
+      const seq = i + 2;
+      if (!have.has(seq)) {
+        plan.push({ seq, kind: 'random', scheduled_at: at });
+      }
+    });
+  }
+  if (!existing.some((row) => row.kind === 'checkout')) {
+    let seq = checkCount;
+    while (have.has(seq) && seq < 12) seq += 1;
+    if (!have.has(seq)) {
+      plan.push({ seq, kind: 'checkout', scheduled_at: now });
+    }
+  }
+  if (plan.length) await insertPlan(user, shiftDate, plan);
+  return loadChallenges(user.id, shiftDate);
+}
+
+async function ensureFlexibleChallenges(user, shiftDate, now) {
+  const checkCount = checkCountFromUser(user);
+  const startWindows = flexibleStartWindows(shiftDate);
+  await pool.query(
+    `
+      DELETE FROM attendance_challenges
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND seq > $3
+        AND status IN ('pending', 'notified')
+    `,
+    [user.id, shiftDate, checkCount]
+  );
+
+  let existing = await loadChallenges(user.id, shiftDate);
+  const startRow = existing.find((row) => Number(row.seq) === 1 || row.kind === 'start');
+  const startDone = startRow && DONE_STATES.has(startRow.status);
+  if (!startDone) {
+    await pool.query(
+      `
+        DELETE FROM attendance_challenges
+        WHERE user_id = $1
+          AND shift_date = $2
+          AND seq > 1
+          AND status IN ('pending', 'notified')
+      `,
+      [user.id, shiftDate]
+    );
+  }
+
+  if (!startRow) {
+    await insertPlan(user, shiftDate, [
+      { seq: 1, kind: 'start', scheduled_at: startWindows.scheduled_at },
+    ]);
+  } else if (['pending', 'notified'].includes(startRow.status)) {
+    await pool.query(
+      `
+        UPDATE attendance_challenges
+        SET scheduled_at = $3, late_at = $4, absent_at = $5, kind = 'start'
+        WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'notified')
+      `,
+      [startRow.id, user.id, startWindows.scheduled_at, startWindows.late_at, startWindows.absent_at]
+    );
+  }
+
+  existing = await loadChallenges(user.id, shiftDate);
+  const start = existing.find((row) => Number(row.seq) === 1 || row.kind === 'start');
+  const checkoutDone = existing.some((row) => row.kind === 'checkout' && DONE_STATES.has(row.status));
+  if (checkoutDone) {
+    await cancelPendingFollowUps(user.id, shiftDate);
+    return loadChallenges(user.id, shiftDate);
+  }
+  if (start && DONE_STATES.has(start.status) && start.status !== 'missed') {
+    return scheduleFlexibleFollowUps(user, shiftDate, now);
+  }
+  return loadChallenges(user.id, shiftDate);
 }
 
 async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
@@ -157,6 +308,9 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
       [user.id, shiftDate]
     );
     return [];
+  }
+  if (userFlexibleHours(user)) {
+    return ensureFlexibleChallenges(user, shiftDate, now);
   }
   const { start, end } = shiftBounds(shiftDate, user);
   await pool.query(
@@ -236,7 +390,18 @@ async function updateChallengeSchedule(userId, challengeId, scheduledAt) {
   if (!Number.isFinite(at.getTime())) {
     throw new Error('Invalid scheduled time.');
   }
-  const windows = windowsForScheduled(at);
+  const current = (
+    await pool.query(
+      `SELECT kind, shift_date FROM attendance_challenges WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [challengeId, userId]
+    )
+  ).rows[0];
+  const windows =
+    current?.kind === 'checkout'
+      ? flexibleCheckoutWindows(current.shift_date, at)
+      : current?.kind === 'start'
+        ? windowsForScheduled(at)
+        : windowsForScheduled(at);
   const { rows } = await pool.query(
     `
       UPDATE attendance_challenges
@@ -286,11 +451,13 @@ function publicChallenge(row, { revealFuture = false, now = new Date() } = {}) {
     seq: row.seq,
     kind: row.kind,
     hour_key: row.hour_key,
-    label: hidden
+    label:     hidden
       ? `Availability check ${row.seq}`
-      : row.seq === 1
-        ? `Shift start (${formatClock(scheduled)})`
-        : `Check ${row.seq} (${formatClock(scheduled)})`,
+      : row.kind === 'checkout'
+        ? 'Check out'
+        : row.seq === 1 || row.kind === 'start'
+          ? `First check-in (${formatClock(scheduled)})`
+          : `Check ${row.seq} (${formatClock(scheduled)})`,
     scheduled_at: hidden ? null : row.scheduled_at,
     late_at: hidden ? null : row.late_at,
     absent_at: hidden ? null : row.absent_at,
@@ -305,7 +472,13 @@ function publicChallenge(row, { revealFuture = false, now = new Date() } = {}) {
 
 function openChallenge(rows, now = new Date()) {
   const pubs = rows.map((row) => ({ row, pub: publicChallenge(row, { now }) }));
-  return pubs.find((item) => item.pub.can_check_in) || null;
+  const open = pubs.filter((item) => item.pub.can_check_in);
+  return (
+    open.find((item) => item.row.kind === 'random') ||
+    open.find((item) => item.row.kind === 'start') ||
+    open.find((item) => item.row.kind === 'checkout') ||
+    null
+  );
 }
 
 async function markChallengeResult(challenge, status, logId) {
@@ -330,6 +503,7 @@ async function dueNotifications(now = new Date()) {
         AND c.status = 'pending'
         AND c.scheduled_at <= $1
         AND c.absent_at > $1
+        AND c.kind <> 'checkout'
         AND u.is_active = true
         AND u.status = 'active'
         AND u.employment_type = 'remote'
@@ -382,6 +556,8 @@ module.exports = {
   loadChallenges,
   ensureChallengesForUser,
   dropOpenChallenges,
+  cancelPendingFollowUps,
+  scheduleFlexibleFollowUps,
   updateChallengeSchedule,
   reopenForImmediateCheck,
   realignRandomSeqs,
@@ -397,4 +573,5 @@ module.exports = {
   workHoursFromUser,
   formatClock,
   sortRemoteChecks,
+  userFlexibleHours,
 };

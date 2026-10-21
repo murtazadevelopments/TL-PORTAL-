@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import PasswordInput from '../../components/PasswordInput';
 
 export default function ConfirmPinModal({ open, title, description, confirmLabel, busy, error, onCancel, onConfirm }) {
   const [pin, setPin] = useState('');
@@ -28,18 +29,17 @@ export default function ConfirmPinModal({ open, title, description, confirmLabel
         <h2>{title || 'Confirm with sales PIN'}</h2>
         <p className="muted">{description || 'Enter your PIN to save all changes.'}</p>
         <form className="form" onSubmit={submit}>
-          <label>
-            Sales PIN
-            <input
-              type="password"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
-              disabled={busy}
-              autoFocus
-            />
-          </label>
+          <PasswordInput
+            label="Sales PIN"
+            name="sales_pin"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            autoFocus
+            maxLength={8}
+          />
           {(localError || error) && <p className="error">{localError || error}</p>}
           <div className="tl-modal-actions">
             <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>

@@ -8,9 +8,10 @@ async function listTeams(req, res) {
   try {
     const { rows } = await pool.query(
       `
-        SELECT id, name, created_by, created_at
+        SELECT DISTINCT ON (LOWER(TRIM(name)))
+          id, name, created_by, created_at
         FROM teams
-        ORDER BY name ASC
+        ORDER BY LOWER(TRIM(name)) ASC, id ASC
       `
     );
     return res.json(rows);

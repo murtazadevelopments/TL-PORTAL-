@@ -4,7 +4,30 @@ const ACCOUNT_CODES = {
   DEACTIVATED: 'ACCOUNT_DEACTIVATED',
   BLOCKED: 'ACCOUNT_BLOCKED',
   LOCKED: 'ACCOUNT_LOCKED',
+  RESIGNED: 'ACCOUNT_RESIGNED',
 };
+
+const RESIGNED_REASON = 'resigned';
+
+function isResignedAccount(row) {
+  if (!row) return false;
+  if (row.resigned_at) return true;
+  if (String(row.status || '').trim().toLowerCase() === RESIGNED_REASON) return true;
+  return String(row.blocked_reason || '').trim().toLowerCase() === RESIGNED_REASON;
+}
+
+function blockedLoginMessage(row) {
+  if (isResignedAccount(row)) {
+    return {
+      message: 'This account is closed because the employee resigned.',
+      code: ACCOUNT_CODES.RESIGNED,
+    };
+  }
+  return {
+    message: 'This account has been blocked. Contact an administrator.',
+    code: ACCOUNT_CODES.BLOCKED,
+  };
+}
 
 let blockedColumnReady = false;
 
@@ -13,6 +36,8 @@ async function ensureBlockedColumn() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_day_in_office DATE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
   `);
   blockedColumnReady = true;
 }
@@ -33,13 +58,10 @@ function denialForAccount(row) {
       },
     };
   }
-  if (row.blocked_at) {
+  if (row.blocked_at || isResignedAccount(row)) {
     return {
       status: 403,
-      body: {
-        message: 'This account has been blocked. Contact an administrator.',
-        code: ACCOUNT_CODES.BLOCKED,
-      },
+      body: blockedLoginMessage(row),
     };
   }
   if (row.locked_at) {
@@ -60,7 +82,7 @@ async function loadAccountStatus(userId) {
   await ensureBlockedColumn();
   const { rows } = await pool.query(
     `
-      SELECT id, is_active, locked_at, blocked_at
+      SELECT id, is_active, locked_at, blocked_at, blocked_reason, resigned_at, status
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -84,6 +106,9 @@ async function rejectIfAccountDisabled(userId, res) {
 
 module.exports = {
   ACCOUNT_CODES,
+  RESIGNED_REASON,
+  isResignedAccount,
+  blockedLoginMessage,
   ensureBlockedColumn,
   denialForAccount,
   loadAccountStatus,

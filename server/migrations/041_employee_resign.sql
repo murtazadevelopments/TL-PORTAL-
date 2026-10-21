@@ -1,0 +1,3 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS last_day_in_office DATE,
+  ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;

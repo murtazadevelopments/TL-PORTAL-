@@ -16,6 +16,7 @@ import {
   photoAlertCooldown,
   profileAlertAction,
   isProfileIncompleteLocked,
+  profileAlertCount,
   PROFILE_ALERT_MAX,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
@@ -23,6 +24,8 @@ import {
 import { ADMIN_INCOMPLETE_EVENT } from '../../components/AdminIncompleteGate';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import DesignationField from '../../components/DesignationField';
+import PasswordInput from '../../components/PasswordInput';
+import { hoursRangeLabel } from '../../utils/clockHours';
 import './AdminDashboard.css';
 
 const FALLBACK_SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -116,7 +119,8 @@ function lowerFormFromRow(row) {
 
 function parseEmployeeStatusTab(value) {
   const s = String(value || '');
-  if (s === 'pending' || s === 'active' || s === 'locked') return s;
+  if (s === 'pending' || s === 'active' || s === 'locked' || s === 'resigned') return s;
+  if (s === 'complete' || s === 'incomplete') return s;
   if (s === 'lower-staff' || s === 'subordinate-staff') return 'subordinate-staff';
   return 'all';
 }
@@ -266,6 +270,7 @@ function fullName(row) {
 function statusClass(status) {
   if (status === 'active') return 'active';
   if (status === 'inactive') return 'inactive';
+  if (status === 'resigned') return 'resigned';
   return 'unset';
 }
 
@@ -277,18 +282,153 @@ function isAccountBlocked(row) {
   return Boolean(row?.blocked_at);
 }
 
+function isResignedAccount(row) {
+  if (!row) return false;
+  if (row.resigned_at) return true;
+  if (String(row.status || '').trim().toLowerCase() === 'resigned') return true;
+  return String(row.blocked_reason || '').trim().toLowerCase() === 'resigned';
+}
+
 function isSignInDisabled(row) {
   return isAccountLocked(row) || isAccountBlocked(row);
 }
 
+function officeDateValue(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  return '';
+}
+
+function formatOfficeDate(value) {
+  const iso = officeDateValue(value);
+  if (!iso) return '';
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString();
+}
+
+function todayISODate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const MONTH_OPTIONS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
+function splitOfficeDate(value) {
+  const iso = officeDateValue(value) || todayISODate();
+  return {
+    year: iso.slice(0, 4),
+    month: iso.slice(5, 7),
+    day: iso.slice(8, 10),
+  };
+}
+
+function daysInMonth(year, month) {
+  const y = Number(year);
+  const m = Number(month);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return 31;
+  return new Date(y, m, 0).getDate();
+}
+
+function joinOfficeDate(year, month, day) {
+  const maxDay = daysInMonth(year, month);
+  const nextDay = String(Math.min(Number(day) || 1, maxDay)).padStart(2, '0');
+  return `${year}-${month}-${nextDay}`;
+}
+
+function OfficeDateSelect({ id, label, value, onChange, disabled = false }) {
+  const parts = splitOfficeDate(value);
+  const maxDay = daysInMonth(parts.year, parts.month);
+  const thisYear = new Date().getFullYear();
+  const years = [];
+  for (let year = thisYear + 1; year >= thisYear - 8; year -= 1) years.push(String(year));
+  if (!years.includes(parts.year)) years.unshift(parts.year);
+
+  function update(next) {
+    onChange(joinOfficeDate(next.year, next.month, next.day));
+  }
+
+  return (
+    <div className="office-date-field">
+      <span className="office-date-label" id={id}>
+        {label}
+      </span>
+      <div className="office-date-row" role="group" aria-labelledby={id}>
+        <label className="office-date-part">
+          <span>Day</span>
+          <select
+            value={parts.day}
+            disabled={disabled}
+            onChange={(e) => update({ ...parts, day: e.target.value.padStart(2, '0') })}
+          >
+            {Array.from({ length: maxDay }, (_, i) => String(i + 1).padStart(2, '0')).map((day) => (
+              <option key={day} value={day}>
+                {Number(day)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="office-date-part office-date-month">
+          <span>Month</span>
+          <select
+            value={parts.month}
+            disabled={disabled}
+            onChange={(e) => update({ ...parts, month: e.target.value })}
+          >
+            {MONTH_OPTIONS.map((month) => (
+              <option key={month.value} value={month.value}>
+                {month.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="office-date-part">
+          <span>Year</span>
+          <select
+            value={parts.year}
+            disabled={disabled}
+            onChange={(e) => update({ ...parts, year: e.target.value })}
+          >
+            {years.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+const EMPTY_RESIGN = { row: null, lastDay: '', saving: false, error: '' };
+
 function employmentStatusLabel(status) {
   if (status === 'active') return 'active';
   if (status === 'inactive') return 'pending';
+  if (status === 'resigned') return 'resigned';
   return status || 'unset';
 }
 
 function isApprovedEmployee(row) {
-  return String(row?.status || '').toLowerCase() === 'active';
+  return String(row?.status || '').trim().toLowerCase() === 'active';
 }
 
 function isBlank(value) {
@@ -305,11 +445,137 @@ function formatSalaryAmount(value) {
   return n.toLocaleString();
 }
 
+function lastJobLabel(value) {
+  const found = LAST_JOB_OPTIONS.find((opt) => opt.value === value);
+  return found?.label || value || '—';
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function yesNo(value) {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return '—';
+}
+
+function DetailFact({ label, children }) {
+  const empty =
+    children === null ||
+    children === undefined ||
+    children === '' ||
+    children === '—';
+  return (
+    <p>
+      <span className="label">{label}</span>
+      <strong>{empty ? '—' : children}</strong>
+    </p>
+  );
+}
+
 function missingAdminFields(row) {
   if (!row || isLowerStaffRow(row)) return [];
   return Object.keys(ADMIN_FIELD_LABELS)
     .filter((key) => key !== 'date_of_joining')
     .filter((key) => isBlank(row[key]));
+}
+
+function isIncompleteProfile(row) {
+  if (!row || isLowerStaffRow(row) || !isApprovedEmployee(row) || isAccountBlocked(row)) {
+    return false;
+  }
+  return missingAdminFields(row).length > 0 || missingEmployeePortalFields(row).length > 0;
+}
+
+function uniqueOptionNames(list, nameKey = 'name') {
+  const seen = new Map();
+  for (const item of list || []) {
+    const name = String(typeof item === 'string' ? item : item?.[nameKey] || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
+  }
+  return [...seen.values()];
+}
+
+function transferKindLabel(kind) {
+  if (kind === 'team') return 'Team';
+  if (kind === 'shift') return 'Shift';
+  if (kind === 'branch') return 'Branch';
+  return kind || '';
+}
+
+function currentTransferValue(row, kind) {
+  if (!row) return '';
+  if (kind === 'team') return String(row.department || '').trim();
+  if (kind === 'shift') return String(row.shift || '').trim();
+  if (kind === 'branch') return String(row.branch || '').trim();
+  return '';
+}
+
+const EMPTY_TRANSFER = {
+  row: null,
+  step: 'kind',
+  kind: '',
+  value: '',
+  history: [],
+  loading: false,
+  saving: false,
+  error: '',
+};
+
+function isCompleteProfile(row) {
+  if (!row || isLowerStaffRow(row) || !isApprovedEmployee(row) || isAccountBlocked(row)) {
+    return false;
+  }
+  return missingAdminFields(row).length === 0 && missingEmployeePortalFields(row).length === 0;
+}
+
+function TransferHistoryList({ userId, refreshKey = 0 }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!userId) return undefined;
+    let live = true;
+    setLoading(true);
+    api
+      .get(`/api/admin/employees/${userId}/transfers`)
+      .then(({ data }) => {
+        if (live) setRows(Array.isArray(data?.transfers) ? data.transfers : []);
+      })
+      .catch(() => {
+        if (live) setRows([]);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [userId, refreshKey]);
+
+  if (loading) return <p className="muted">Loading transfer record…</p>;
+  if (!rows.length) return <p className="muted">No team, shift, or branch transfers yet.</p>;
+  return (
+    <ol className="transfer-history">
+      {rows.map((item) => (
+        <li key={item.id}>
+          <strong>{transferKindLabel(item.kind)}</strong>
+          <span>
+            {item.from_value || 'unset'} → {item.to_value}
+          </span>
+          <span className="muted">
+            {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+            {item.actor_username ? ` · ${item.actor_username}` : ''}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function EmployeesPage() {
@@ -357,6 +623,11 @@ function EmployeesPage() {
   const [unlockingId, setUnlockingId] = useState(null);
   const [blockingId, setBlockingId] = useState(null);
   const [alertingId, setAlertingId] = useState(null);
+  const [bulkAlerting, setBulkAlerting] = useState(false);
+  const [listNotice, setListNotice] = useState('');
+  const [transfer, setTransfer] = useState(EMPTY_TRANSFER);
+  const [transferTick, setTransferTick] = useState(0);
+  const [resign, setResign] = useState(EMPTY_RESIGN);
   const [photoAlertingId, setPhotoAlertingId] = useState(null);
   const [photoConfirm, setPhotoConfirm] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -641,6 +912,122 @@ function EmployeesPage() {
     }
   }
 
+  async function handleBulkProfileAlert() {
+    if (!canSendProfileAlert || bulkAlerting) return;
+    const eligible = portalEmployees.filter((row) => {
+      if (!isApprovedEmployee(row) || isAccountBlocked(row)) return false;
+      if (!missingEmployeePortalFields(row).length) return false;
+      return !profileAlertAction(row, nowMs).disabled;
+    });
+    if (!eligible.length) {
+      setSaveError('No incomplete profiles are ready for an alert. Pending, recently alerted, or locked people are skipped.');
+      return;
+    }
+    const ok = window.confirm(
+      `Send a profile alert to ${eligible.length} employee${eligible.length === 1 ? '' : 's'} with incomplete portal fields? This is one click for everyone who can still receive an alert.`
+    );
+    if (!ok) return;
+    setBulkAlerting(true);
+    setSaveError('');
+    setListNotice('');
+    try {
+      const { data } = await api.post('/api/admin/employees/profile-alert-bulk');
+      const sentAt = data?.updates?.[0]?.profileAlertSentAt || new Date().toISOString();
+      const byId = new Map((data?.updates || []).map((row) => [String(row.id), row]));
+      setEmployees((prev) =>
+        prev.map((row) => {
+          const patch = byId.get(String(row.id));
+          if (!patch) return row;
+          return {
+            ...row,
+            profile_alert_at: patch.profileAlertSentAt || sentAt,
+            profile_alert_sent_at: patch.profileAlertSentAt || sentAt,
+            profile_alert_count: patch.profileAlertCount,
+            profile_incomplete_locked_at: patch.profileIncompleteLockedAt || null,
+          };
+        })
+      );
+      setNowMs(Date.now());
+      setListNotice(data?.message || `Alert sent to ${data?.sentCount || eligible.length} incomplete profiles.`);
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to send profile alerts.');
+    } finally {
+      setBulkAlerting(false);
+    }
+  }
+
+  async function openTransfer(row, event) {
+    event?.stopPropagation?.();
+    if (!row?.id || isLowerStaffRow(row) || !canEditEmploymentType(row.employment_type)) return;
+    setTransfer({
+      ...EMPTY_TRANSFER,
+      row,
+      loading: true,
+    });
+    try {
+      const { data } = await api.get(`/api/admin/employees/${row.id}/transfers`);
+      setTransfer((prev) =>
+        prev.row?.id === row.id
+          ? { ...prev, history: data?.transfers || [], loading: false }
+          : prev
+      );
+    } catch {
+      setTransfer((prev) =>
+        prev.row?.id === row.id ? { ...prev, history: [], loading: false } : prev
+      );
+    }
+  }
+
+  function closeTransfer() {
+    setTransfer(EMPTY_TRANSFER);
+  }
+
+  function transferOptionsForKind(kind) {
+    const current = currentTransferValue(transfer.row, kind).toLowerCase();
+    const names =
+      kind === 'team'
+        ? uniqueOptionNames(teams)
+        : kind === 'shift'
+          ? uniqueOptionNames(shifts)
+          : uniqueOptionNames(branches);
+    return names.filter((name) => name.toLowerCase() !== current);
+  }
+
+  async function submitTransfer() {
+    const row = transfer.row;
+    const kind = transfer.kind;
+    const value = String(transfer.value || '').trim();
+    if (!row?.id || !kind || !value || transfer.saving) return;
+    setTransfer((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      const { data } = await api.post(`/api/admin/employees/${row.id}/transfer`, { kind, value });
+      const patch = data?.employee || {};
+      setEmployees((prev) =>
+        prev.map((item) => (item.id === row.id ? { ...item, ...patch } : item))
+      );
+      setDetail((prev) => (prev && prev.id === row.id ? { ...prev, ...patch } : prev));
+      setEditForm((prev) =>
+        prev && detail && detail.id === row.id
+          ? {
+              ...prev,
+              department: patch.department ?? prev.department,
+              shift: patch.shift ?? prev.shift,
+              branch: patch.branch ?? prev.branch,
+            }
+          : prev
+      );
+      setListNotice(data?.message || `${transferKindLabel(kind)} updated.`);
+      setTransferTick((n) => n + 1);
+      closeTransfer();
+    } catch (err) {
+      setTransfer((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.response?.data?.message || 'Could not transfer this employee.',
+      }));
+    }
+  }
+
   function openPhotoAlertConfirm(row, event) {
     event?.stopPropagation?.();
     if (!canSendProfileAlert || !row?.id || isLowerStaffRow(row)) return;
@@ -709,6 +1096,11 @@ function EmployeesPage() {
 
   async function handleUnblockAccount(userId) {
     if (!canDeactivateEmployees || !userId) return;
+    const target = employees.find((e) => String(e.id) === String(userId)) || detail;
+    if (isResignedAccount(target)) {
+      setSaveError('This employee resigned. The account stays blocked.');
+      return;
+    }
     setBlockingId(userId);
     setSaveError('');
     try {
@@ -719,6 +1111,63 @@ function EmployeesPage() {
       setSaveError(err.response?.data?.message || 'Failed to unblock account.');
     } finally {
       setBlockingId(null);
+    }
+  }
+
+  function openResign(row, event) {
+    event?.stopPropagation?.();
+    if (!row?.id) return;
+    if (!(canDeactivateEmployees || canEditEmployees)) {
+      setSaveError('You do not have permission to mark an employee resigned.');
+      return;
+    }
+    if (isResignedAccount(row)) return;
+    if (String(row.role || '').toLowerCase() === 'ceo') return;
+    if (String(row.id) === String(currentUserId)) return;
+    setResign({
+      ...EMPTY_RESIGN,
+      row,
+      lastDay: todayISODate(),
+    });
+  }
+
+  function closeResign() {
+    if (resign.saving) return;
+    setResign(EMPTY_RESIGN);
+  }
+
+  async function submitResign() {
+    if (!resign.row?.id || !(canDeactivateEmployees || canEditEmployees)) return;
+    const lastDay = officeDateValue(resign.lastDay);
+    if (!lastDay) {
+      setResign((prev) => ({ ...prev, error: 'Last day in office is required.' }));
+      return;
+    }
+    setResign((prev) => ({ ...prev, saving: true, error: '' }));
+    setSaveError('');
+    try {
+      const { data } = await api.put(`/api/admin/employees/${resign.row.id}/resign`, {
+        last_day_in_office: lastDay,
+      });
+      const user = data?.user || {};
+      await applyAccountPatch(resign.row.id, {
+        status: user.status || 'resigned',
+        blocked_at: user.blocked_at || new Date().toISOString(),
+        blocked_reason: user.blocked_reason || 'resigned',
+        last_day_in_office: user.last_day_in_office || lastDay,
+        resigned_at: user.resigned_at || new Date().toISOString(),
+      });
+      setEditForm((prev) => ({ ...prev, status: 'resigned' }));
+      setResign(EMPTY_RESIGN);
+      setSaveSuccess(
+        data?.message || 'Employee marked resigned. The ID is blocked and cannot sign in.'
+      );
+    } catch (err) {
+      setResign((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.response?.data?.message || 'Failed to mark employee resigned.',
+      }));
     }
   }
 
@@ -734,22 +1183,29 @@ function EmployeesPage() {
   const stats = useMemo(() => {
     const total = portalEmployees.length;
     const active = portalEmployees.filter((e) => e.status === 'active').length;
-    const inactive = portalEmployees.filter((e) => e.status !== 'active').length;
+    const inactive = portalEmployees.filter(
+      (e) => e.status !== 'active' && e.status !== 'resigned' && !isResignedAccount(e)
+    ).length;
     const pendingId = portalEmployees.filter((e) => isBlank(e.employee_id)).length;
-    const locked = portalEmployees.filter((e) => isSignInDisabled(e)).length;
-    return { total, active, inactive, pendingId, locked };
+    const locked = portalEmployees.filter(
+      (e) => isSignInDisabled(e) && !isResignedAccount(e)
+    ).length;
+    const resigned = portalEmployees.filter((e) => isResignedAccount(e)).length;
+    const incomplete = portalEmployees.filter((e) => isIncompleteProfile(e)).length;
+    const complete = portalEmployees.filter((e) => isCompleteProfile(e)).length;
+    return { total, active, inactive, pendingId, locked, resigned, complete, incomplete };
   }, [portalEmployees]);
 
   const departmentOptions = useMemo(() => {
-    const fromTeams = teams.map((t) => String(t.name).trim()).filter(Boolean);
-    const fromEmployees = employees
-      .map((e) => e.department)
-      .filter((d) => d != null && String(d).trim() !== '')
-      .map((d) => String(d).trim());
-    return [...new Set([...fromTeams, ...fromEmployees])].sort((a, b) =>
-      a.localeCompare(b)
-    );
-  }, [employees, teams]);
+    const seen = new Map();
+    for (const t of teams) {
+      const name = String(t.name || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, name);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  }, [teams]);
 
   const branchOptions = useMemo(() => {
     const fromCatalog = branches.map((b) => String(b.name).trim()).filter(Boolean);
@@ -776,10 +1232,27 @@ function EmployeesPage() {
 
   const tabCounts = useMemo(() => {
     const active = portalEmployees.filter((e) => e.status === 'active').length;
-    const pending = portalEmployees.filter((e) => e.status !== 'active').length;
-    const locked = portalEmployees.filter((e) => isSignInDisabled(e)).length;
-    return { active, pending, locked, lower: lowerStaff.length };
+    const pending = portalEmployees.filter(
+      (e) => e.status !== 'active' && e.status !== 'resigned' && !isResignedAccount(e)
+    ).length;
+    const locked = portalEmployees.filter(
+      (e) => isSignInDisabled(e) && !isResignedAccount(e)
+    ).length;
+    const resigned = portalEmployees.filter((e) => isResignedAccount(e)).length;
+    const incomplete = portalEmployees.filter((e) => isIncompleteProfile(e)).length;
+    const complete = portalEmployees.filter((e) => isCompleteProfile(e)).length;
+    return { active, pending, locked, resigned, complete, incomplete, lower: lowerStaff.length };
   }, [portalEmployees, lowerStaff]);
+
+  const bulkAlertEligibleCount = useMemo(
+    () =>
+      portalEmployees.filter((row) => {
+        if (!isApprovedEmployee(row) || isAccountBlocked(row)) return false;
+        if (!missingEmployeePortalFields(row).length) return false;
+        return !profileAlertAction(row, nowMs).disabled;
+      }).length,
+    [portalEmployees, nowMs]
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -796,14 +1269,34 @@ function EmployeesPage() {
         );
       }
       if (statusTab === 'active' && e.status !== 'active') return false;
-      if (statusTab === 'pending' && e.status === 'active') return false;
+      if (
+        statusTab === 'pending' &&
+        (e.status === 'active' || e.status === 'resigned' || isResignedAccount(e))
+      ) {
+        return false;
+      }
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
-      if (statusTab === 'locked' && !isSignInDisabled(e)) return false;
-
-      if (filters.status !== 'all' && e.status !== filters.status) return false;
+      if (statusTab === 'locked' && (!isSignInDisabled(e) || isResignedAccount(e))) return false;
+      if (statusTab === 'resigned' && !isResignedAccount(e)) return false;
+      if (statusTab === 'complete' && !isCompleteProfile(e)) return false;
+      if (
+        statusTab === 'incomplete' &&
+        (!isApprovedEmployee(e) || isAccountBlocked(e) || !isIncompleteProfile(e))
+      ) {
+        return false;
+      }
+      if (
+        statusTab !== 'complete' &&
+        statusTab !== 'incomplete' &&
+        statusTab !== 'resigned' &&
+        filters.status !== 'all' &&
+        e.status !== filters.status
+      ) {
+        return false;
+      }
       if (
         filters.department !== 'all' &&
-        String(e.department || '').trim() !== filters.department
+        String(e.department || '').trim().toLowerCase() !== String(filters.department).trim().toLowerCase()
       ) {
         return false;
       }
@@ -861,7 +1354,14 @@ function EmployeesPage() {
       setDetail(mergeDocumentPresence(data, preview));
       setEditForm({
         employee_id: data.employee_id || '',
-        status: data.status === 'inactive' ? 'inactive' : data.status === 'active' ? 'active' : 'inactive',
+        status:
+          data.status === 'inactive'
+            ? 'inactive'
+            : data.status === 'active'
+              ? 'active'
+              : data.status === 'resigned'
+                ? 'resigned'
+                : 'inactive',
         department: data.department || '',
         designation: data.designation || '',
         branch: data.branch || '',
@@ -907,6 +1407,18 @@ function EmployeesPage() {
 
   function handleEditChange(e) {
     const { name, value } = e.target;
+    if (name === 'status' && value === 'resigned') {
+      if (isResignedAccount(detail) || editForm.status === 'resigned') {
+        setEditForm((prev) => ({ ...prev, status: 'resigned' }));
+        return;
+      }
+      openResign(detail);
+      return;
+    }
+    if (name === 'status' && editForm.status === 'resigned' && value !== 'resigned') {
+      setSaveError('This employee resigned. Status cannot be changed.');
+      return;
+    }
     setEditForm((prev) => ({ ...prev, [name]: value }));
     setFieldErrors((prev) => {
       if (!prev[name]) return prev;
@@ -1348,6 +1860,44 @@ function EmployeesPage() {
             <span className="stat-label">Blocked Accounts</span>
             <span className="stat-value">{stats.locked}</span>
           </article>
+          <article
+            className="stat-card active"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setStatusTab('complete');
+              setSearchParams({ status: 'complete' });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setStatusTab('complete');
+                setSearchParams({ status: 'complete' });
+              }
+            }}
+          >
+            <span className="stat-label">Completed Profiles</span>
+            <span className="stat-value">{stats.complete}</span>
+          </article>
+          <article
+            className="stat-card warn"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setStatusTab('incomplete');
+              setSearchParams({ status: 'incomplete' });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setStatusTab('incomplete');
+                setSearchParams({ status: 'incomplete' });
+              }
+            }}
+          >
+            <span className="stat-label">Incomplete Profiles</span>
+            <span className="stat-value">{stats.incomplete}</span>
+          </article>
         </section>
 
         <div className="status-tabs">
@@ -1360,6 +1910,26 @@ function EmployeesPage() {
             }}
           >
             All <span className="tab-badge">{portalEmployees.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'complete' ? 'active' : ''}`}
+            onClick={() => {
+              setStatusTab('complete');
+              setSearchParams({ status: 'complete' });
+            }}
+          >
+            Completed profiles <span className="tab-badge">{tabCounts.complete}</span>
+          </button>
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'incomplete' ? 'active' : ''}`}
+            onClick={() => {
+              setStatusTab('incomplete');
+              setSearchParams({ status: 'incomplete' });
+            }}
+          >
+            Incomplete profiles <span className="tab-badge">{tabCounts.incomplete}</span>
           </button>
           <button
             type="button"
@@ -1390,6 +1960,16 @@ function EmployeesPage() {
             }}
           >
             Blocked <span className="tab-badge">{tabCounts.locked}</span>
+          </button>
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'resigned' ? 'active' : ''}`}
+            onClick={() => {
+              setStatusTab('resigned');
+              setSearchParams({ status: 'resigned' });
+            }}
+          >
+            Resigned <span className="tab-badge">{tabCounts.resigned}</span>
           </button>
           {canAddEmployees && (
             <button
@@ -1425,6 +2005,7 @@ function EmployeesPage() {
             <option value="all">Status: All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive / Pending</option>
+            <option value="resigned">Resigned</option>
           </select>
 
           <select
@@ -1477,6 +2058,35 @@ function EmployeesPage() {
           </button>
         </div>
         )}
+
+        {statusTab === 'incomplete' && canSendProfileAlert && (
+          <div className="bulk-alert-bar">
+            <div>
+              <strong>Incomplete profiles: {tabCounts.incomplete}</strong>
+              <p className="muted" style={{ margin: '0.2rem 0 0' }}>
+                One alert goes to every approved employee who still has portal fields to fill.
+                Pending, recently alerted, and 3-alert-limit people are skipped.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary bulk-alert-btn"
+              disabled={bulkAlerting || bulkAlertEligibleCount <= 0}
+              title={
+                bulkAlertEligibleCount <= 0
+                  ? 'No incomplete profiles are ready for an alert right now.'
+                  : `Alert ${bulkAlertEligibleCount} incomplete profiles`
+              }
+              onClick={handleBulkProfileAlert}
+            >
+              {bulkAlerting
+                ? 'Sending…'
+                : `Alert all incomplete (${bulkAlertEligibleCount})`}
+            </button>
+          </div>
+        )}
+        {listNotice && <p className="success">{listNotice}</p>}
+        {saveError && !selectedId && <p className="error">{saveError}</p>}
 
         {statusTab === 'subordinate-staff' && canAddEmployees && (
           <form
@@ -1736,6 +2346,12 @@ function EmployeesPage() {
             <div className="admin-empty">
               {statusTab === 'subordinate-staff'
                 ? 'No subordinate staff yet. Add a record above.'
+                : statusTab === 'complete'
+                  ? 'No completed profiles yet.'
+                  : statusTab === 'incomplete'
+                    ? 'No incomplete profiles.'
+                    : statusTab === 'resigned'
+                      ? 'No resigned employees.'
                 : employees.length === 0
                   ? 'No employees found yet.'
                   : 'No employees match your search or filters.'}
@@ -1821,7 +2437,10 @@ function EmployeesPage() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  {canSendProfileAlert && statusTab !== 'pending' && <th>Alert</th>}
+                  {canSendProfileAlert &&
+                    statusTab !== 'pending' &&
+                    statusTab !== 'incomplete' &&
+                    statusTab !== 'complete' && <th>Alert</th>}
                   <th>Photo</th>
                   <th>Full Name</th>
                   <th>Username</th>
@@ -1831,6 +2450,9 @@ function EmployeesPage() {
                   <th>Branch</th>
                   <th>Shift</th>
                   <th>Status</th>
+                  {statusTab === 'incomplete' && <th>Alerts</th>}
+                  {canEditEmployees && <th>Transfer</th>}
+                  {canDeactivateEmployees && <th>Resign</th>}
                   {canSendMessages && <th>Message</th>}
                 </tr>
               </thead>
@@ -1843,7 +2465,10 @@ function EmployeesPage() {
                   const alertCooldown = alertAction.cooldown;
                   return (
                     <tr key={row.id} onClick={() => openDetail(row.id)}>
-                      {canSendProfileAlert && statusTab !== 'pending' && (
+                      {canSendProfileAlert &&
+                        statusTab !== 'pending' &&
+                        statusTab !== 'incomplete' &&
+                        statusTab !== 'complete' && (
                         <td className="cell-alert">
                           {isApprovedEmployee(row) && missingEmployee.length > 0 ? (
                             <button
@@ -1945,7 +2570,18 @@ function EmployeesPage() {
                           <span className={`status-pill ${statusClass(row.status)}`}>
                             {employmentStatusLabel(row.status)}
                           </span>
-                          {isAccountBlocked(row) && (
+                          {isResignedAccount(row) ? (
+                            <span
+                              className="status-pill resigned"
+                              title={
+                                formatOfficeDate(row.last_day_in_office)
+                                  ? `Last day in office ${formatOfficeDate(row.last_day_in_office)}`
+                                  : 'Resigned — ID blocked'
+                              }
+                            >
+                              resigned
+                            </span>
+                          ) : isAccountBlocked(row) ? (
                             <span
                               className="status-pill locked"
                               title={
@@ -1956,7 +2592,7 @@ function EmployeesPage() {
                             >
                               blocked
                             </span>
-                          )}
+                          ) : null}
                           {isAccountLocked(row) && (
                             <span
                               className="status-pill locked"
@@ -1998,6 +2634,7 @@ function EmployeesPage() {
                         )}
                         {canDeactivateEmployees &&
                           isAccountBlocked(row) &&
+                          !isResignedAccount(row) &&
                           String(row.id) !== String(currentUserId) && (
                           <button
                             type="button"
@@ -2016,7 +2653,59 @@ function EmployeesPage() {
                             {blockingId === row.id ? '…' : 'Unblock'}
                           </button>
                         )}
+                        {isResignedAccount(row) && formatOfficeDate(row.last_day_in_office) && (
+                          <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.78rem' }}>
+                            Last day {formatOfficeDate(row.last_day_in_office)}
+                          </p>
+                        )}
                       </td>
+                      {statusTab === 'incomplete' && (
+                        <td>
+                          <span
+                            className={`alert-count-pill${
+                              profileAlertCount(row) >= PROFILE_ALERT_MAX ? ' is-max' : ''
+                            }`}
+                            title={`${profileAlertCount(row)} of ${PROFILE_ALERT_MAX} profile alerts sent`}
+                          >
+                            {profileAlertCount(row)}/{PROFILE_ALERT_MAX}
+                          </span>
+                        </td>
+                      )}
+                      {canEditEmployees && (
+                        <td>
+                          {canEditEmploymentType(row.employment_type) && !isResignedAccount(row) ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              title={`Transfer ${fullName(row)}`}
+                              onClick={(e) => openTransfer(row, e)}
+                            >
+                              Transfer
+                            </button>
+                          ) : (
+                            <span className="muted-cell">—</span>
+                          )}
+                        </td>
+                      )}
+                      {canDeactivateEmployees && (
+                        <td>
+                          {isResignedAccount(row) ? (
+                            <span className="muted-cell">Resigned</span>
+                          ) : String(row.role || '').toLowerCase() === 'ceo' ||
+                            String(row.id) === String(currentUserId) ? (
+                            <span className="muted-cell">—</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              title={`Mark ${fullName(row)} resigned`}
+                              onClick={(e) => openResign(row, e)}
+                            >
+                              Resign
+                            </button>
+                          )}
+                        </td>
+                      )}
                       {canSendMessages && (
                         <td>
                           <button
@@ -2185,6 +2874,15 @@ function EmployeesPage() {
                       : profileAlertAction(detail, nowMs).label}
                   </button>
                 )}
+                {canEditEmploymentType(detail.employment_type) && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={(e) => openTransfer(detail, e)}
+                  >
+                    Transfer
+                  </button>
+                )}
                 <button type="button" className="icon-btn" onClick={closeDetail} aria-label="Close">
                   ×
                 </button>
@@ -2314,9 +3012,11 @@ function EmployeesPage() {
                       <span className={`status-pill ${statusClass(detail.status)}`}>
                         {employmentStatusLabel(detail.status)}
                       </span>
-                      {isAccountBlocked(detail) && (
+                      {isResignedAccount(detail) ? (
+                        <span className="status-pill resigned">resigned</span>
+                      ) : isAccountBlocked(detail) ? (
                         <span className="status-pill locked">blocked</span>
-                      )}
+                      ) : null}
                       {isAccountLocked(detail) && (
                         <span className="status-pill locked">
                           locked
@@ -2332,7 +3032,16 @@ function EmployeesPage() {
                         <span className="status-pill active">login ok</span>
                       )}
                     </div>
-                    {isAccountBlocked(detail) && (
+                    {isResignedAccount(detail) && (
+                      <p className="muted" style={{ marginTop: '0.55rem', fontSize: '0.85rem' }}>
+                        Resigned
+                        {formatOfficeDate(detail.last_day_in_office)
+                          ? ` · last day in office ${formatOfficeDate(detail.last_day_in_office)}`
+                          : ''}
+                        . This ID is blocked and cannot sign in.
+                      </p>
+                    )}
+                    {isAccountBlocked(detail) && !isResignedAccount(detail) && (
                       <div
                         style={{
                           marginTop: '0.55rem',
@@ -2394,62 +3103,95 @@ function EmployeesPage() {
 
                 <div className="detail-subsection">
                   <h3>Personal information</h3>
-                <div className="detail-grid">
-                  <p>
-                    <span className="label">Education</span>
-                    <strong>{detail.education || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Last job status</span>
-                    <strong>{detail.last_job_status || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Employment type</span>
-                    <strong>
+                  <div className="detail-grid">
+                    <DetailFact label="Full name">{fullName(detail)}</DetailFact>
+                    <DetailFact label="Username">{detail.username}</DetailFact>
+                    <DetailFact label="Role">{detail.role}</DetailFact>
+                    <DetailFact label="Date of birth">
+                      {formatOfficeDate(detail.date_of_birth)}
+                    </DetailFact>
+                    <DetailFact label="CNIC">{detail.cnic_number}</DetailFact>
+                    <DetailFact label="Education">{detail.education}</DetailFact>
+                    <DetailFact label="Last job status">
+                      {lastJobLabel(detail.last_job_status)}
+                    </DetailFact>
+                    <DetailFact label="Email">{detail.email}</DetailFact>
+                    <DetailFact label="Contact">{detail.contact_number}</DetailFact>
+                    <DetailFact label="Address">{detail.address}</DetailFact>
+                    <DetailFact label="Reference person">
+                      {detail.reference_person_name}
+                    </DetailFact>
+                    <DetailFact label="Emergency contact name">
+                      {detail.emergency_contact_name}
+                    </DetailFact>
+                    <DetailFact label="Emergency contact number">
+                      {detail.emergency_contact_number}
+                    </DetailFact>
+                  </div>
+                </div>
+
+                <div className="detail-subsection">
+                  <h3>Employment</h3>
+                  <div className="detail-grid">
+                    <DetailFact label="Employee ID">{detail.employee_id}</DetailFact>
+                    <DetailFact label="Status">
+                      {employmentStatusLabel(detail.status)}
+                    </DetailFact>
+                    <DetailFact label="Employment type">
                       {detail.employment_type === 'onsite'
                         ? 'Onsite'
                         : detail.employment_type === 'remote'
                           ? 'Remote'
-                          : detail.employment_type || '—'}
-                    </strong>
-                  </p>
-                  <p>
-                    <span className="label">Email</span>
-                    <strong>{detail.email || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">CNIC</span>
-                    <strong>{detail.cnic_number || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Contact</span>
-                    <strong>{detail.contact_number || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Address</span>
-                    <strong>{detail.address || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Account created</span>
-                    <strong>
+                          : detail.employment_type}
+                    </DetailFact>
+                    <DetailFact label="Team">{detail.department}</DetailFact>
+                    <DetailFact label="Designation">{detail.designation}</DetailFact>
+                    <DetailFact label="Branch">{detail.branch}</DetailFact>
+                    <DetailFact label="Shift">{detail.shift}</DetailFact>
+                    <DetailFact label="Date of joining">
+                      {formatOfficeDate(detail.date_of_joining)}
+                    </DetailFact>
+                    <DetailFact label="Salary">
+                      {detail.salary_hidden ? 'Hidden' : formatSalaryAmount(detail.salary)}
+                    </DetailFact>
+                    <DetailFact label="Work hours">
+                      {hoursRangeLabel(detail.work_start_hour, detail.work_end_hour) ||
+                        (detail.work_start_hour != null || detail.work_end_hour != null
+                          ? `${detail.work_start_hour ?? '—'}–${detail.work_end_hour ?? '—'}`
+                          : '')}
+                    </DetailFact>
+                    <DetailFact label="Attendance">
+                      {detail.attendance_enabled === false ? 'Off' : 'On'}
+                    </DetailFact>
+                    <DetailFact label="Flexible hours">
+                      {yesNo(Boolean(detail.flexible_hours))}
+                    </DetailFact>
+                    <DetailFact label="Remote checks">
+                      {detail.remote_check_count == null ? '' : detail.remote_check_count}
+                    </DetailFact>
+                    <DetailFact label="Last day in office">
+                      {formatOfficeDate(detail.last_day_in_office)}
+                    </DetailFact>
+                    <DetailFact label="Resigned at">
+                      {detail.resigned_at ? formatDateTime(detail.resigned_at) : ''}
+                    </DetailFact>
+                    <DetailFact label="Account created">
                       {detail.date_joined
                         ? new Date(detail.date_joined).toLocaleDateString()
-                        : '—'}
-                    </strong>
-                  </p>
-                  <p>
-                    <span className="label">Reference person</span>
-                    <strong>{detail.reference_person_name || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Emergency contact</span>
-                    <strong>
-                      {[detail.emergency_contact_name, detail.emergency_contact_number]
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </strong>
-                  </p>
-                </div>
+                        : ''}
+                    </DetailFact>
+                    <DetailFact label="Last updated">
+                      {detail.updated_at ? formatDateTime(detail.updated_at) : ''}
+                    </DetailFact>
+                    <DetailFact label="Profile alerts">
+                      {`${profileAlertCount(detail)}/${PROFILE_ALERT_MAX}`}
+                    </DetailFact>
+                    <DetailFact label="Login blocked">
+                      {isAccountBlocked(detail)
+                        ? `${yesNo(true)}${detail.blocked_reason ? ` · ${detail.blocked_reason}` : ''}`
+                        : 'No'}
+                    </DetailFact>
+                  </div>
                 </div>
 
                 <div className="detail-subsection">
@@ -2592,24 +3334,35 @@ function EmployeesPage() {
                 <div className="detail-subsection">
                 <h3>Bank details</h3>
                 <div className="detail-grid">
-                  <p>
-                    <span className="label">Bank name</span>
-                    <strong>{detail.bank_name || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Account title</span>
-                    <strong>{detail.account_title || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">IBAN</span>
-                    <strong>{detail.iban || '—'}</strong>
-                  </p>
-                  <p>
-                    <span className="label">Account number</span>
-                    <strong>{detail.account_number || '—'}</strong>
-                  </p>
+                  <DetailFact label="Bank name">{detail.bank_name}</DetailFact>
+                  <DetailFact label="Account title">{detail.account_title}</DetailFact>
+                  <DetailFact label="IBAN">{detail.iban}</DetailFact>
+                  <DetailFact label="Account number">{detail.account_number}</DetailFact>
+                </div>
                 </div>
 
+                {(detail.staff_extra_1_label ||
+                  detail.staff_extra_1_text ||
+                  extraSlotSummary(detail, 1) ||
+                  detail.staff_extra_2_label ||
+                  detail.staff_extra_2_text ||
+                  extraSlotSummary(detail, 2)) && (
+                  <div className="detail-subsection">
+                    <h3>Extra information</h3>
+                    <div className="detail-grid">
+                      <DetailFact label={detail.staff_extra_1_label || 'Extra 1'}>
+                        {detail.staff_extra_1_text || extraSlotSummary(detail, 1)}
+                      </DetailFact>
+                      <DetailFact label={detail.staff_extra_2_label || 'Extra 2'}>
+                        {detail.staff_extra_2_text || extraSlotSummary(detail, 2)}
+                      </DetailFact>
+                    </div>
+                  </div>
+                )}
+
+                <div className="detail-subsection">
+                <h3>Transfer record</h3>
+                <TransferHistoryList userId={detail.id} refreshKey={transferTick} />
                 </div>
 
                 <div className="detail-subsection">
@@ -2643,6 +3396,7 @@ function EmployeesPage() {
                       <option value="">Select status</option>
                       <option value="active">Active</option>
                       <option value="inactive">Inactive / Pending Approval</option>
+                      <option value="resigned">Resigned</option>
                     </select>
                     {fieldErrors.status && (
                       <span className="field-error">{fieldErrors.status}</span>
@@ -2943,6 +3697,7 @@ function EmployeesPage() {
                     )}
                     {canDeactivateEmployees &&
                       isAccountBlocked(detail) &&
+                      !isResignedAccount(detail) &&
                       String(detail.id) !== String(currentUserId) && (
                       <button
                         type="button"
@@ -2955,8 +3710,10 @@ function EmployeesPage() {
                     )}
                     {canDeactivateEmployees &&
                       !isAccountBlocked(detail) &&
+                      !isResignedAccount(detail) &&
                       String(detail.role || '').toLowerCase() !== 'ceo' &&
                       String(detail.id) !== String(currentUserId) && (
+                      <>
                       <button
                         type="button"
                         className="btn btn-ghost"
@@ -2965,6 +3722,15 @@ function EmployeesPage() {
                       >
                         {blockingId === detail.id ? 'Blocking…' : 'Block'}
                       </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={saving || deactivating}
+                        onClick={() => openResign(detail)}
+                      >
+                        Resign
+                      </button>
+                      </>
                     )}
                     {canDeactivateEmployees &&
                       String(detail.role || '').toLowerCase() !== 'ceo' && (
@@ -3009,6 +3775,170 @@ function EmployeesPage() {
               </>
             )}
           </aside>
+        </div>
+      )}
+
+      {transfer.row && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={closeTransfer}>
+          <div
+            className="modal-panel modal-panel-center transfer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="transfer-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="transfer-title">Transfer {fullName(transfer.row)}</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  Choose one option, then pick the new assignment.
+                </p>
+              </div>
+              <button type="button" className="icon-btn" onClick={closeTransfer} aria-label="Close">
+                ×
+              </button>
+            </div>
+            {transfer.step === 'kind' ? (
+              <div className="transfer-kind-grid">
+                {['team', 'shift', 'branch'].map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className="transfer-kind-btn"
+                    onClick={() =>
+                      setTransfer((prev) => ({
+                        ...prev,
+                        step: 'pick',
+                        kind,
+                        value: '',
+                        error: '',
+                      }))
+                    }
+                  >
+                    <strong>{transferKindLabel(kind)} transfer</strong>
+                    <span>
+                      Current:{' '}
+                      {currentTransferValue(transfer.row, kind) || 'not assigned'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="transfer-pick">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() =>
+                    setTransfer((prev) => ({ ...prev, step: 'kind', kind: '', value: '', error: '' }))
+                  }
+                >
+                  Back
+                </button>
+                <p>
+                  {transferKindLabel(transfer.kind)} transfer for{' '}
+                  <strong>{fullName(transfer.row)}</strong>
+                </p>
+                <label>
+                  New {transferKindLabel(transfer.kind).toLowerCase()}
+                  <select
+                    value={transfer.value}
+                    onChange={(e) => setTransfer((prev) => ({ ...prev, value: e.target.value }))}
+                  >
+                    <option value="">Select {transferKindLabel(transfer.kind).toLowerCase()}</option>
+                    {transferOptionsForKind(transfer.kind).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {!transferOptionsForKind(transfer.kind).length && (
+                  <p className="muted">No other {transferKindLabel(transfer.kind).toLowerCase()}s are available.</p>
+                )}
+                {transfer.error && <p className="error">{transfer.error}</p>}
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-ghost" onClick={closeTransfer}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={!transfer.value || transfer.saving}
+                    onClick={submitTransfer}
+                  >
+                    {transfer.saving ? 'Transferring…' : `Move to ${transfer.value || '…'}`}
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="transfer-history-block">
+              <h3>Transfer record</h3>
+              {transfer.loading ? (
+                <p className="muted">Loading…</p>
+              ) : transfer.history.length ? (
+                <ol className="transfer-history">
+                  {transfer.history.map((item) => (
+                    <li key={item.id}>
+                      <strong>{transferKindLabel(item.kind)}</strong>
+                      <span>
+                        {item.from_value || 'unset'} → {item.to_value}
+                      </span>
+                      <span className="muted">
+                        {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="muted">No transfers recorded yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resign.row && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={closeResign}>
+          <form
+            className="modal-panel modal-panel-center transfer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="resign-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitResign();
+            }}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="resign-title">Mark {fullName(resign.row)} resigned</h2>
+                <p className="muted" style={{ margin: 0 }}>
+                  Enter their last day in office. After that this ID is blocked with reason
+                  resigned and they cannot sign in.
+                </p>
+              </div>
+              <button type="button" className="icon-btn" onClick={closeResign} aria-label="Close">
+                ×
+              </button>
+            </div>
+            <OfficeDateSelect
+              id="resign-last-day"
+              label="Last day in office"
+              value={resign.lastDay}
+              disabled={resign.saving}
+              onChange={(lastDay) => setResign((prev) => ({ ...prev, lastDay, error: '' }))}
+            />
+            {resign.error && <p className="error">{resign.error}</p>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={closeResign} disabled={resign.saving}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={resign.saving || !resign.lastDay}>
+                {resign.saving ? 'Saving…' : 'Confirm resign and block ID'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -3075,18 +4005,16 @@ function EmployeesPage() {
                     autoComplete="off"
                   />
                 </label>
-                <label>
-                  Temporary password <span className="req-star" aria-hidden="true">*</span>
-                  <input
-                    type="text"
-                    name="password"
-                    value={addForm.password}
-                    onChange={handleAddChange}
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                  />
-                </label>
+                <PasswordInput
+                  name="password"
+                  label="Temporary password"
+                  requiredMark
+                  value={addForm.password}
+                  onChange={handleAddChange}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
                 <label>
                   Contact number <span className="req-star" aria-hidden="true">*</span>
                   <input

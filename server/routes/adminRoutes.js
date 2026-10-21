@@ -16,9 +16,15 @@ const {
   unlockAccount,
   blockAccount,
   unblockAccount,
+  markEmployeeResigned,
   sendProfileAlert,
+  sendBulkProfileAlert,
   sendPhotoAlert,
 } = require('../controllers/adminController');
+const {
+  transferEmployee,
+  listEmployeeTransfers,
+} = require('../controllers/employeeTransferController');
 const {
   getExportOptions,
   listExportPreview,
@@ -83,6 +89,7 @@ const {
   adminEmployeeDays,
   adminDeleteRemoteDay,
   putUserAttendanceEnabled,
+  putUserFlexibleHours,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
 
@@ -122,6 +129,12 @@ router.put(
   requireRole('admin'),
   requirePermission('employees:deactivate'),
   unblockAccount
+);
+router.put(
+  '/employees/:id/resign',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:deactivate', 'employees:edit', 'hr:add_employee'),
+  markEmployeeResigned
 );
 
 // Teams / departments catalog
@@ -282,6 +295,18 @@ router.put(
   requireCeoOrAnyPermission('employees:edit', 'hr:add_employee', 'employees:remote'),
   updateEmployee
 );
+router.post(
+  '/employees/:id/transfer',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:edit', 'hr:add_employee', 'employees:remote'),
+  transferEmployee
+);
+router.get(
+  '/employees/:id/transfers',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
+  listEmployeeTransfers
+);
 
 router.delete(
   '/employees/:id',
@@ -297,6 +322,12 @@ router.put(
   restoreEmployee
 );
 
+router.post(
+  '/employees/profile-alert-bulk',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('messages:send', 'employees:edit'),
+  sendBulkProfileAlert
+);
 router.post(
   '/employees/:id/profile-alert',
   requireRole('admin'),
@@ -356,6 +387,17 @@ router.put(
     'employees:edit'
   ),
   putUserAttendanceEnabled
+);
+router.put(
+  '/attendance/:userId/flexible',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:edit',
+    'employees:remote',
+    'hr:add_employee',
+    'employees:edit'
+  ),
+  putUserFlexibleHours
 );
 router.get(
   '/attendance',

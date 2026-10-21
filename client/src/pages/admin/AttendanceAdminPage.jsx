@@ -126,25 +126,51 @@ function checkInRequestButton(row) {
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
 }
 
-function EmployeeAttendanceSwitch({ row, busy, onToggle }) {
-  const on = row.attendance_enabled !== false;
-  const canToggle = row.can_toggle_attendance !== false;
+function EmployeePowerSwitch({ label, name, on, busy, disabled, onToggle }) {
   return (
     <div className={`attendance-power attendance-power-sm ${on ? '' : 'is-off'}`}>
-      <span>Attendance</span>
+      <span>{label}</span>
       <button
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={
-          on ? `Turn off attendance for ${row.name}` : `Turn on attendance for ${row.name}`
-        }
+        aria-label={on ? `Turn off ${label.toLowerCase()} for ${name}` : `Turn on ${label.toLowerCase()} for ${name}`}
         className="attendance-switch"
-        disabled={!canToggle || busy}
-        onClick={() => onToggle(row)}
+        disabled={disabled || busy}
+        onClick={onToggle}
       />
       <strong>{busy ? '…' : on ? 'On' : 'Off'}</strong>
     </div>
+  );
+}
+
+function EmployeeAttendanceSwitch({ row, busy, onToggle }) {
+  const on = row.attendance_enabled !== false;
+  const canToggle = row.can_toggle_attendance !== false;
+  return (
+    <EmployeePowerSwitch
+      label="Attendance"
+      name={row.name}
+      on={on}
+      busy={busy}
+      disabled={!canToggle}
+      onToggle={() => onToggle(row)}
+    />
+  );
+}
+
+function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
+  const on = row.flexible_hours === true;
+  const canToggle = row.can_toggle_attendance !== false;
+  return (
+    <EmployeePowerSwitch
+      label="Flexible"
+      name={row.name}
+      on={on}
+      busy={busy}
+      disabled={!canToggle}
+      onToggle={() => onToggle(row)}
+    />
   );
 }
 
@@ -275,6 +301,7 @@ export default function AttendanceAdminPage() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
@@ -580,6 +607,46 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function toggleEmployeeFlexible(row) {
+    if (!row?.id || row.can_toggle_attendance === false) return;
+    const next = row.flexible_hours !== true;
+    setTogglingFlexibleId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/flexible`, {
+        enabled: next,
+      });
+      const enabled = Boolean(payload.enabled);
+      const checks = Number(payload.checks_per_shift) > 0 ? Number(payload.checks_per_shift) : enabled ? 3 : row.checks_per_shift;
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              employees: (prev.employees || []).map((item) =>
+                item.id === row.id
+                  ? {
+                      ...item,
+                      flexible_hours: enabled,
+                      checks_per_shift: checks,
+                    }
+                  : item
+              ),
+            }
+          : prev
+      );
+      setNotice(
+        payload?.message ||
+          (enabled ? `Flexible hours are on for ${row.name}.` : `Flexible hours are off for ${row.name}.`)
+      );
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update flexible hours.');
+    } finally {
+      setTogglingFlexibleId(null);
+    }
+  }
+
   async function sendCheckInRequest(row) {
     if (row.attendance_enabled === false || !row?.id || row.can_check_in_request === false) return;
     setRequestingId(row.id);
@@ -879,16 +946,29 @@ export default function AttendanceAdminPage() {
                   </p>
                 </div>
                 <div className="attendance-card-meta">
-                  <EmployeeAttendanceSwitch
-                    row={row}
-                    busy={togglingId === row.id}
-                    onToggle={toggleEmployeeAttendance}
-                  />
+                  <div className="attendance-card-toggles">
+                    <EmployeeAttendanceSwitch
+                      row={row}
+                      busy={togglingId === row.id}
+                      onToggle={toggleEmployeeAttendance}
+                    />
+                    <EmployeeFlexibleSwitch
+                      row={row}
+                      busy={togglingFlexibleId === row.id}
+                      onToggle={toggleEmployeeFlexible}
+                    />
+                  </div>
                   <span className={`badge ${row.row_status}`}>{row.row_status}</span>
                 </div>
               </header>
               {row.attendance_enabled === false ? (
                 <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
+              ) : null}
+              {row.flexible_hours ? (
+                <p className="muted">
+                  Flexible hours: first check-in, then a random check during assigned time, then check-out.
+                  {row.duration_label ? ` Today: ${row.duration_label}.` : ''}
+                </p>
               ) : null}
               <div className="attendance-mini-slots">
                 {[...row.slots]
@@ -913,7 +993,8 @@ export default function AttendanceAdminPage() {
                         user: row,
                         work_start_hour: row.work_start_hour ?? 9,
                         work_end_hour: row.work_end_hour ?? 18,
-                        remote_check_count: row.checks_per_shift ?? 5,
+                        remote_check_count: row.checks_per_shift ?? (row.flexible_hours ? 3 : 5),
+                        flexible_hours: Boolean(row.flexible_hours),
                       })
                     }
                   >
@@ -1044,7 +1125,11 @@ export default function AttendanceAdminPage() {
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setHoursEdit(EMPTY_HOURS)}>
           <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={submitHours}>
             <h2>Working hours</h2>
-            <p className="muted">{hoursEdit.user.name} can only check in during these hours.</p>
+            <p className="muted">
+              {hoursEdit.flexible_hours
+                ? `${hoursEdit.user.name}'s assigned hours are the window for the random check. First check-in and check-out can happen anytime today.`
+                : `${hoursEdit.user.name} can only check in during these hours.`}
+            </p>
             <ClockHourSelect
               label="Start time"
               value={hoursEdit.work_start_hour}
@@ -1060,10 +1145,10 @@ export default function AttendanceAdminPage() {
               Checks per shift
               <input
                 type="number"
-                min={1}
+                min={hoursEdit.flexible_hours ? 2 : 1}
                 max={8}
                 step={1}
-                value={hoursEdit.remote_check_count ?? 5}
+                value={hoursEdit.remote_check_count ?? (hoursEdit.flexible_hours ? 3 : 5)}
                 onChange={(e) =>
                   setHoursEdit((h) => ({
                     ...h,
@@ -1073,7 +1158,9 @@ export default function AttendanceAdminPage() {
               />
             </label>
             <p className="muted">
-              Includes the shift-start check. Default is 5 (1 start + 4 random). Allowed range: 1–8.
+              {hoursEdit.flexible_hours
+                ? 'Flexible default is 3 (first check-in + 1 random + check-out). Allowed range: 2–8.'
+                : 'Includes the shift-start check. Default is 5 (1 start + 4 random). Allowed range: 1–8.'}
             </p>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setHoursEdit(EMPTY_HOURS)}>
@@ -1177,6 +1264,9 @@ export default function AttendanceAdminPage() {
                     <div className="attendance-day-detail-head">
                       <span className="attendance-day-date">{day.date}</span>
                       <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
+                      {day.duration_label ? (
+                        <span className="muted"> · {day.duration_label}</span>
+                      ) : null}
                     </div>
                     <ul className="attendance-check-list">
                       {(day.slots || [])
@@ -1185,7 +1275,11 @@ export default function AttendanceAdminPage() {
                         .map((slot) => (
                         <li key={slot.hour_key || slot.seq}>
                           <span>
-                            {slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`}
+                            {slot.kind === 'checkout'
+                              ? 'Check out'
+                              : slot.seq === 1 || slot.kind === 'start'
+                                ? 'Start'
+                                : `Check ${slot.seq || slot.label}`}
                             {slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''}
                           </span>
                           {day.status !== 'holiday' &&
@@ -1220,6 +1314,9 @@ export default function AttendanceAdminPage() {
                   <li key={day.date} className={`attendance-day ${day.status}`}>
                     <span className="attendance-day-date">{day.date}</span>
                     <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
+                    {day.duration_label ? (
+                      <span className="muted"> · {day.duration_label}</span>
+                    ) : null}
                   </li>
                 ))}
                 {(history.days || []).length === 0 && (

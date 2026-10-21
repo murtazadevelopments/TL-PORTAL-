@@ -23,6 +23,7 @@ const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
+const { blockedLoginMessage } = require('../utils/accountStatus');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const {
   pendingExamCongrats,
@@ -134,15 +135,15 @@ async function getMe(req, res) {
     }
 
     if (rows[0].blocked_at) {
-      return res.status(403).json({
-        message: 'This account has been blocked. Contact an administrator.',
-        code: 'ACCOUNT_BLOCKED',
-      });
+      return res.status(403).json(blockedLoginMessage(rows[0]));
     }
 
     const accountStatus = String(rows[0].status || '')
       .trim()
       .toLowerCase();
+    if (accountStatus === 'resigned') {
+      return res.status(403).json(blockedLoginMessage(rows[0]));
+    }
     const meRole = String(rows[0].role || '')
       .trim()
       .toLowerCase();
