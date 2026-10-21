@@ -82,6 +82,7 @@ const {
   adminUpdateCheckTime,
   adminEmployeeDays,
   adminDeleteRemoteDay,
+  putUserAttendanceEnabled,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
 
@@ -345,6 +346,17 @@ router.get(
   exportAttendance
 );
 
+router.put(
+  '/attendance/:userId/enabled',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:edit',
+    'employees:remote',
+    'hr:add_employee',
+    'employees:edit'
+  ),
+  putUserAttendanceEnabled
+);
 router.get(
   '/attendance',
   requireRole('admin'),

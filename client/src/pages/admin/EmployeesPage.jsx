@@ -1432,9 +1432,9 @@ function EmployeesPage() {
             name="department"
             value={filters.department}
             onChange={handleFilterChange}
-            aria-label="Filter by department"
+            aria-label="Filter by team"
           >
-            <option value="all">Department: All</option>
+            <option value="all">Team: All</option>
             {departmentOptions.map((dep) => (
               <option key={dep} value={dep}>
                 {dep}

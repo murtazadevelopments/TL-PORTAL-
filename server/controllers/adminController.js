@@ -1336,7 +1336,7 @@ async function listLockedAccounts(req, res) {
     const { rows } = await pool.query(
       `
         SELECT
-          id, employee_id, username, name, email, role, status,
+          id, employee_id, username, name, email, role, status, department, branch,
           failed_login_attempts, locked_at, blocked_at, blocked_reason,
           is_active, created_at
         FROM users

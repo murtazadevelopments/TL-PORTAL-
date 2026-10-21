@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import PhotoLightbox from '../../components/PhotoLightbox';
 import { useAuthUser } from '../../context/AuthUserContext';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
 import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
   canViewTeamAttendance,
-  hasPermission,
   isCeo,
 } from '../../utils/permissions';
 import './AttendanceAdminPage.css';
 
 const EMPTY_MANUAL = { user: null, hour_key: '', status: 'verified', note: '' };
-const EMPTY_HOURS = { user: null, work_start_hour: 9, work_end_hour: 18 };
+const EMPTY_HOURS = { user: null, work_start_hour: 9, work_end_hour: 18, remote_check_count: 5 };
 const EMPTY_ONSITE_MANUAL = { user: null, checked_in_at: '', note: '' };
 const EMPTY_TIME_EDIT = {
   userId: null,
@@ -105,11 +104,18 @@ function formatKarachiClock(iso) {
 
 function checkInRequestButton(row) {
   if (row.check_in_request_reason === 'complete') {
-    return { label: 'All 5 checks done', title: 'Opens again on the next shift day.' };
+    const n = Number(row.checks_per_shift) || 5;
+    return {
+      label: `All ${n} checks done`,
+      title: 'Opens again on the next shift day.',
+    };
   }
   if (row.check_in_request_reason === 'cooldown' && row.check_in_request_available_at) {
     const when = formatKarachiClock(row.check_in_request_available_at);
     return { label: `Available ${when}`, title: `Wait at least 1 hour after a check-in request (${when}).` };
+  }
+  if (row.check_in_request_reason === 'stopped') {
+    return { label: 'Check in Request', title: 'Attendance is turned off.' };
   }
   if (row.check_in_request_reason === 'holiday') {
     return { label: 'Check in Request', title: 'Sunday is a holiday.' };
@@ -118,6 +124,28 @@ function checkInRequestButton(row) {
     return { label: 'Check in Request', title: 'Employee is not in an active shift.' };
   }
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
+}
+
+function EmployeeAttendanceSwitch({ row, busy, onToggle }) {
+  const on = row.attendance_enabled !== false;
+  const canToggle = row.can_toggle_attendance !== false;
+  return (
+    <div className={`attendance-power attendance-power-sm ${on ? '' : 'is-off'}`}>
+      <span>Attendance</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={
+          on ? `Turn off attendance for ${row.name}` : `Turn on attendance for ${row.name}`
+        }
+        className="attendance-switch"
+        disabled={!canToggle || busy}
+        onClick={() => onToggle(row)}
+      />
+      <strong>{busy ? '…' : on ? 'On' : 'Off'}</strong>
+    </div>
+  );
 }
 
 function toKarachiDatetimeLocal(iso) {
@@ -219,13 +247,14 @@ export default function AttendanceAdminPage() {
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
-  const canExport = hasPermission(permissions, 'attendance:export', user?.role);
 
   const [date, setDate] = useState(() => clampAttendanceDate(karachiDateKey()));
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [branch, setBranch] = useState('all');
   const [branchOptions, setBranchOptions] = useState([]);
+  const [team, setTeam] = useState('all');
+  const [teamOptions, setTeamOptions] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -245,6 +274,7 @@ export default function AttendanceAdminPage() {
   const [timeEdit, setTimeEdit] = useState(EMPTY_TIME_EDIT);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [onsiteMonth, setOnsiteMonth] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
@@ -254,6 +284,7 @@ export default function AttendanceAdminPage() {
     try {
       const params = { date: dateKey, search, status };
       if (branch && branch !== 'all') params.branch = branch;
+      if (team && team !== 'all') params.team = team;
       if (mode === 'onsite') {
         const { data: payload } = await api.get('/api/admin/onsite-attendance', {
           params,
@@ -261,6 +292,7 @@ export default function AttendanceAdminPage() {
         setOnsite(payload);
         setData(null);
         if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
+        if (Array.isArray(payload?.teams)) setTeamOptions(payload.teams);
       } else {
         const { data: payload } = await api.get('/api/admin/attendance', {
           params,
@@ -268,6 +300,7 @@ export default function AttendanceAdminPage() {
         setData(payload);
         setOnsite(null);
         if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
+        if (Array.isArray(payload?.teams)) setTeamOptions(payload.teams);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load attendance.');
@@ -294,7 +327,7 @@ export default function AttendanceAdminPage() {
     if (mode === 'onsite' && !canOnsite) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, status, branch, mode, authLoading, canRemote, canOnsite, canAny]);
+  }, [date, status, branch, team, mode, authLoading, canRemote, canOnsite, canAny]);
 
   async function submitManual(e) {
     e.preventDefault();
@@ -330,6 +363,7 @@ export default function AttendanceAdminPage() {
         work_end_hour: endHour,
         work_start_hour: startHour,
         work_end_hour: endHour,
+        remote_check_count: Number(hoursEdit.remote_check_count) || 5,
       });
       setHoursEdit(EMPTY_HOURS);
       await load();
@@ -505,8 +539,49 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function toggleEmployeeAttendance(row) {
+    if (!row?.id || row.can_toggle_attendance === false) return;
+    const next = row.attendance_enabled === false;
+    setTogglingId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/enabled`, {
+        enabled: next,
+      });
+      const enabled = Boolean(payload.enabled);
+      const patch = (list) =>
+        (list || []).map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                attendance_enabled: enabled,
+                can_check_in_request: enabled
+                  ? !['complete', 'cooldown', 'holiday', 'no_shift'].includes(item.check_in_request_reason)
+                  : false,
+                check_in_request_reason: enabled
+                  ? item.check_in_request_reason === 'stopped'
+                    ? null
+                    : item.check_in_request_reason
+                  : 'stopped',
+              }
+            : item
+        );
+      setData((prev) => (prev ? { ...prev, employees: patch(prev.employees) } : prev));
+      setOnsite((prev) => (prev ? { ...prev, employees: patch(prev.employees) } : prev));
+      setNotice(
+        payload?.message ||
+          (enabled ? `Attendance is on for ${row.name}.` : `Attendance is off for ${row.name}.`)
+      );
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update attendance.');
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function sendCheckInRequest(row) {
-    if (!row?.id || row.can_check_in_request === false) return;
+    if (row.attendance_enabled === false || !row?.id || row.can_check_in_request === false) return;
     setRequestingId(row.id);
     setError('');
     setNotice('');
@@ -542,20 +617,14 @@ export default function AttendanceAdminPage() {
     <div className="admin-page page-panel attendance-admin">
       <div className="attendance-hero">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-            <h1>Team attendance</h1>
-            {canExport && (
-              <Link to="/admin/attendance/export" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-                Export attendance
-              </Link>
-            )}
-          </div>
+          <h1>Team attendance</h1>
           <p className="muted">
             {mode === 'onsite'
               ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Remote employees attendance — five face checks per shift (start window plus four random pings). Only the CEO and people granted Remote employees can open this.'}
+              : 'Remote employees attendance — face checks per shift (shift start plus random pings). Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
           </p>
         </div>
+        <div className="attendance-hero-tools">
         {canRemote && canOnsite ? (
         <div className="attendance-mode-toggle" role="tablist" aria-label="Attendance type">
           <button
@@ -566,6 +635,7 @@ export default function AttendanceAdminPage() {
             onClick={() => {
               setStatus('all');
               setBranch('all');
+              setTeam('all');
               setMode('remote');
             }}
           >
@@ -579,6 +649,7 @@ export default function AttendanceAdminPage() {
             onClick={() => {
               setStatus('all');
               setBranch('all');
+              setTeam('all');
               setMode('onsite');
             }}
           >
@@ -586,6 +657,7 @@ export default function AttendanceAdminPage() {
           </button>
         </div>
         ) : null}
+        </div>
       </div>
 
       <div className="attendance-summary">
@@ -666,6 +738,15 @@ export default function AttendanceAdminPage() {
           </select>
         </label>
         <label>
+          Team
+          <TeamFilterSelect
+            value={team}
+            onChange={setTeam}
+            extraNames={teamOptions}
+            className=""
+          />
+        </label>
+        <label>
           Search
           <input
             value={search}
@@ -701,8 +782,18 @@ export default function AttendanceAdminPage() {
                         {row.shift ? ` · ${row.shift}` : ''}
                       </p>
                     </div>
-                    <span className={`badge ${row.row_status}`}>{onsiteStatusLabel(row.row_status)}</span>
+                    <div className="attendance-card-meta">
+                      <EmployeeAttendanceSwitch
+                        row={row}
+                        busy={togglingId === row.id}
+                        onToggle={toggleEmployeeAttendance}
+                      />
+                      <span className={`badge ${row.row_status}`}>{onsiteStatusLabel(row.row_status)}</span>
+                    </div>
                   </header>
+                  {row.attendance_enabled === false ? (
+                    <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
+                  ) : null}
                   {row.record ? (
                     <p className="muted">
                       {formatKarachiTime(row.record.checked_in_at)} ·{' '}
@@ -784,10 +875,21 @@ export default function AttendanceAdminPage() {
                     {row.branch ? ` · ${row.branch}` : ''}
                     {' · '}
                     {row.work_hours_label || '9:00 AM–6:00 PM'}
+                    {` · ${row.checks_per_shift || 5} checks`}
                   </p>
                 </div>
-                <span className={`badge ${row.row_status}`}>{row.row_status}</span>
+                <div className="attendance-card-meta">
+                  <EmployeeAttendanceSwitch
+                    row={row}
+                    busy={togglingId === row.id}
+                    onToggle={toggleEmployeeAttendance}
+                  />
+                  <span className={`badge ${row.row_status}`}>{row.row_status}</span>
+                </div>
               </header>
+              {row.attendance_enabled === false ? (
+                <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
+              ) : null}
               <div className="attendance-mini-slots">
                 {[...row.slots]
                   .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))
@@ -811,6 +913,7 @@ export default function AttendanceAdminPage() {
                         user: row,
                         work_start_hour: row.work_start_hour ?? 9,
                         work_end_hour: row.work_end_hour ?? 18,
+                        remote_check_count: row.checks_per_shift ?? 5,
                       })
                     }
                   >
@@ -953,6 +1056,25 @@ export default function AttendanceAdminPage() {
               isEnd
               onChange={(hour) => setHoursEdit((h) => ({ ...h, work_end_hour: hour }))}
             />
+            <label>
+              Checks per shift
+              <input
+                type="number"
+                min={1}
+                max={8}
+                step={1}
+                value={hoursEdit.remote_check_count ?? 5}
+                onChange={(e) =>
+                  setHoursEdit((h) => ({
+                    ...h,
+                    remote_check_count: Number(e.target.value) || 1,
+                  }))
+                }
+              />
+            </label>
+            <p className="muted">
+              Includes the shift-start check. Default is 5 (1 start + 4 random). Allowed range: 1–8.
+            </p>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setHoursEdit(EMPTY_HOURS)}>
                 Cancel

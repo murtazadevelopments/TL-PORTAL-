@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { canAccessAdmin, hasPermission, isCeo } from '../../utils/permissions';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
@@ -21,6 +23,12 @@ export default function DeactivatedEmployeesPage() {
   useFlashSuccess(success);
   const [restoringId, setRestoringId] = useState(null);
   const [purgingId, setPurgingId] = useState(null);
+  const [team, setTeam] = useState('all');
+
+  const visibleUsers = useMemo(
+    () => users.filter((row) => matchesTeamFilter(row, team)),
+    [users, team]
+  );
 
   const canView = hasPermission(permissions, 'employees:deactivate', role);
   const canRestore = canView;
@@ -142,20 +150,28 @@ export default function DeactivatedEmployeesPage() {
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
+      <div className="admin-toolbar filters-toolbar">
+        <TeamFilterSelect
+          value={team}
+          onChange={setTeam}
+          extraNames={users}
+          allLabel="Team: All"
+        />
+      </div>
 
       {error && <p className="error">{error}</p>}
-      {loading && users.length === 0 && (
+      {loading && visibleUsers.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />
           Loading…
         </div>
       )}
 
-      {!loading && users.length === 0 && !error && (
-        <div className="admin-empty">No deactivated employees.</div>
+      {!loading && visibleUsers.length === 0 && !error && (
+        <div className="admin-empty">No deactivated employees{team !== 'all' ? ' in this team' : ''}.</div>
       )}
 
-      {users.length > 0 && (
+      {visibleUsers.length > 0 && (
         <div className="table-shell">
           <table className="admin-table">
             <thead>
@@ -163,12 +179,12 @@ export default function DeactivatedEmployeesPage() {
                 <th>Name</th>
                 <th>Username</th>
                 <th>Employee ID</th>
-                <th>Department</th>
+                <th>Team</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((row) => {
+              {visibleUsers.map((row) => {
                 const label = row.name || row.username || 'this employee';
                 return (
                   <tr key={row.id}>

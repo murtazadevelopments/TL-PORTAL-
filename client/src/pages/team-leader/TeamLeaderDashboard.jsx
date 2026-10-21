@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import '../admin/AdminDashboard.css';
 import './TeamLeaderDashboard.css';
 
@@ -165,6 +167,7 @@ export default function TeamLeaderDashboard() {
   const [labelDrafts, setLabelDrafts] = useState({});
   const [openIds, setOpenIds] = useState(() => new Set());
   const [assignableUsers, setAssignableUsers] = useState([]);
+  const [assignTeam, setAssignTeam] = useState('all');
   const [assignCategory, setAssignCategory] = useState(null);
   const [selectedAssignees, setSelectedAssignees] = useState([]);
 
@@ -389,8 +392,14 @@ export default function TeamLeaderDashboard() {
 
   function openAssign(cat) {
     setAssignCategory(cat);
+    setAssignTeam('all');
     setSelectedAssignees((cat.assignees || []).map((u) => u.id));
   }
+
+  const visibleAssignable = useMemo(
+    () => assignableUsers.filter((row) => matchesTeamFilter(row, assignTeam)),
+    [assignableUsers, assignTeam]
+  );
 
   function toggleAssignee(id) {
     setSelectedAssignees((prev) =>
@@ -916,10 +925,20 @@ export default function TeamLeaderDashboard() {
               T-Pin.
             </p>
             <div className="tl-assign-list">
-              {assignableUsers.length === 0 && (
-                <p className="muted">No active users available to assign.</p>
+              <TeamFilterSelect
+                value={assignTeam}
+                onChange={setAssignTeam}
+                extraNames={assignableUsers}
+                allLabel="Team: All"
+              />
+              {visibleAssignable.length === 0 && (
+                <p className="muted">
+                  {assignableUsers.length === 0
+                    ? 'No active users available to assign.'
+                    : 'No people in this team.'}
+                </p>
               )}
-              {assignableUsers.map((u) => (
+              {visibleAssignable.map((u) => (
                 <label key={u.id} className="tl-assign-row">
                   <input
                     type="checkbox"

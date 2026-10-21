@@ -2,8 +2,17 @@ const { zonedParts } = require('./attendanceWindows');
 const { workHoursFromUser, normalizeWorkHours } = require('./workHours');
 const { isSundayDateKey } = require('./workWeek');
 
-const CHECK_COUNT = 5;
-const RANDOM_COUNT = 4;
+const DEFAULT_CHECK_COUNT = 5;
+const CHECK_COUNT = DEFAULT_CHECK_COUNT;
+const MIN_CHECK_COUNT = 1;
+const MAX_CHECK_COUNT = 8;
+const RANDOM_COUNT = DEFAULT_CHECK_COUNT - 1;
+
+function checkCountFromUser(user) {
+  const n = Number(user?.remote_check_count ?? user?.checks_per_shift);
+  if (!Number.isFinite(n)) return DEFAULT_CHECK_COUNT;
+  return Math.min(MAX_CHECK_COUNT, Math.max(MIN_CHECK_COUNT, Math.floor(n)));
+}
 const START_ON_TIME_MINUTES = 15;
 const LATE_AFTER_MINUTES = 15;
 const ABSENT_AFTER_MINUTES = 40;
@@ -229,8 +238,10 @@ function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
     if (Number(row.seq) === 1) return true;
     return isWithinShift(row.scheduled_at, start, end);
   });
+  const checkCount = checkCountFromUser(user);
+  const randomCount = Math.max(0, checkCount - 1);
   const haveRandom = inWindow.filter((r) => Number(r.seq) > 1).length;
-  const count = Math.max(0, RANDOM_COUNT - haveRandom);
+  const count = Math.max(0, randomCount - haveRandom);
   if (count <= 0 || latest.getTime() < earliest.getTime()) return [first];
   let from = earliest;
   if (now.getTime() > start.getTime()) {
@@ -251,7 +262,7 @@ function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
   ).filter((at) => isWithinShift(at, start, end) && at.getTime() <= latest.getTime());
   const usedSeq = new Set(inWindow.map((r) => Number(r.seq)));
   const seqs = [];
-  for (let seq = 2; seq <= CHECK_COUNT; seq += 1) {
+  for (let seq = 2; seq <= checkCount; seq += 1) {
     if (!usedSeq.has(seq)) seqs.push(seq);
   }
   const randoms = instants.map((at, i) => ({
@@ -290,8 +301,12 @@ function sortRemoteChecks(rows) {
 }
 
 module.exports = {
+  DEFAULT_CHECK_COUNT,
+  MIN_CHECK_COUNT,
+  MAX_CHECK_COUNT,
   CHECK_COUNT,
   RANDOM_COUNT,
+  checkCountFromUser,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
   ABSENT_AFTER_MINUTES,

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import AssignRoleModal from '../../components/AssignRoleModal';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import { isCeo } from '../../utils/permissions';
 import {
   describeEmployeeScope,
@@ -18,6 +20,7 @@ function HrPeoplePicker({ onSaved }) {
   const [people, setPeople] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [query, setQuery] = useState('');
+  const [team, setTeam] = useState('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -43,12 +46,13 @@ function HrPeoplePicker({ onSaved }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return people;
     return people.filter((p) => {
+      if (!matchesTeamFilter(p, team)) return false;
+      if (!q) return true;
       const hay = `${p.name || ''} ${p.employee_id || ''} ${p.designation || ''} ${p.department || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [people, query]);
+  }, [people, query, team]);
 
   function toggle(id) {
     const key = String(id);
@@ -96,14 +100,22 @@ function HrPeoplePicker({ onSaved }) {
           Selected: {named.map((p) => p.name || 'Unnamed').join(', ')}
         </p>
       )}
-      <input
-        type="search"
-        className="admin-search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search by name…"
-        aria-label="Search people to assign as HR"
-      />
+      <div className="admin-toolbar filters-toolbar">
+        <input
+          type="search"
+          className="admin-search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name…"
+          aria-label="Search people to assign as HR"
+        />
+        <TeamFilterSelect
+          value={team}
+          onChange={setTeam}
+          extraNames={people}
+          allLabel="Team: All"
+        />
+      </div>
       {error && <p className="error">{error}</p>}
       {loading ? (
         <p className="muted">Loading names…</p>

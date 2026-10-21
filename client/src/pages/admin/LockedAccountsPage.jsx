@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
@@ -19,7 +21,13 @@ export default function LockedAccountsPage() {
   const [error, setError] = useState('');
   const [actingId, setActingId] = useState(null);
   const [success, setSuccess] = useState('');
+  const [team, setTeam] = useState('all');
   useFlashSuccess(success);
+
+  const visibleAccounts = useMemo(
+    () => lockedAccounts.filter((row) => matchesTeamFilter(row, team)),
+    [lockedAccounts, team]
+  );
 
   const canUnlock = hasPermission(permissions, 'accounts:unlock', role);
   const canBlock = hasPermission(permissions, 'employees:deactivate', role);
@@ -145,20 +153,28 @@ export default function LockedAccountsPage() {
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
+      <div className="admin-toolbar filters-toolbar">
+        <TeamFilterSelect
+          value={team}
+          onChange={setTeam}
+          extraNames={lockedAccounts}
+          allLabel="Team: All"
+        />
+      </div>
 
       {error && <p className="error">{error}</p>}
-      {loading && lockedAccounts.length === 0 && (
+      {loading && visibleAccounts.length === 0 && (
         <div className="admin-loading">
           <div className="spinner" />
           Loading accounts…
         </div>
       )}
 
-      {!loading && lockedAccounts.length === 0 && !error && (
-        <div className="admin-empty">No locked or blocked accounts.</div>
+      {!loading && visibleAccounts.length === 0 && !error && (
+        <div className="admin-empty">No locked or blocked accounts{team !== 'all' ? ' in this team' : ''}.</div>
       )}
 
-      {lockedAccounts.length > 0 && (
+      {visibleAccounts.length > 0 && (
         <div className="table-shell">
           <table className="admin-table">
             <thead>
@@ -172,7 +188,7 @@ export default function LockedAccountsPage() {
               </tr>
             </thead>
             <tbody>
-              {lockedAccounts.map((row) => {
+              {visibleAccounts.map((row) => {
                 const blocked = Boolean(row.blocked_at);
                 const locked = Boolean(row.locked_at);
                 const when = row.blocked_at || row.locked_at;

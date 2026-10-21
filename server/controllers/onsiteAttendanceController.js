@@ -14,6 +14,10 @@ const { getShiftByName, loadShiftCatalog } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
 const { queueCeoBranchManagerNotice } = require('../services/notifications');
 const { sundayKeysInMonth, isSundayDateKey } = require('../utils/workWeek');
+const {
+  userAttendanceEnabled,
+  rejectIfUserAttendanceStopped,
+} = require('../utils/attendanceEnabled');
 
 const ONSITE_SELECT = `
   id, user_id, work_date, checked_in_at, status, method,
@@ -162,7 +166,8 @@ async function resolveOnsiteViewScope(req) {
 async function loadOnsiteEmployee(userId) {
   const { rows } = await pool.query(
     `
-      SELECT id, name, username, employee_id, branch, shift, employment_type, is_active, status
+      SELECT id, name, username, employee_id, branch, shift, employment_type, is_active, status,
+             attendance_enabled
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -314,6 +319,7 @@ async function onsiteCheckIn(req, res) {
         message: 'Office check-in is only for onsite employees.',
       });
     }
+    if (await rejectIfUserAttendanceStopped(res, user)) return;
 
     const shiftForWindow = user.shift ? await getShiftByName(user.shift) : null;
     if (!employeeCanSelfCheckIn(shiftForWindow || user.shift)) {
@@ -439,12 +445,14 @@ async function getMyOnsiteAttendance(req, res) {
 
     const nightShift = isNightShift(shift || user?.shift);
     const windowOpen = employeeCanSelfCheckIn(shift || user?.shift);
+    const attendanceEnabled = userAttendanceEnabled(user);
 
     return res.json({
       date: parts.dateKey,
       month,
       today: todayRaw ? publicRow(todayRaw) : sundayHoliday ? holidayOnsiteDay(parts.dateKey) : null,
-      can_check_in: Boolean(!todayRaw && windowOpen && !sundayHoliday),
+      attendance_enabled: attendanceEnabled,
+      can_check_in: Boolean(attendanceEnabled && !todayRaw && windowOpen && !sundayHoliday),
       holiday: sundayHoliday,
       night_shift: nightShift,
       self_check_in_open: windowOpen,
@@ -483,6 +491,7 @@ async function adminListOnsite(req, res) {
     const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
     const branchFilter = String(req.query.branch || '').trim().toLowerCase();
+    const teamFilter = String(req.query.team || req.query.department || '').trim().toLowerCase();
 
     const viewScope = await resolveOnsiteViewScope(req);
     const editScope = await resolveOnsiteEditScope(req);
@@ -491,7 +500,7 @@ async function adminListOnsite(req, res) {
     const { rows: people } = await pool.query(
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
-               profile_picture_url, shift, is_active, status
+               profile_picture_url, shift, is_active, status, attendance_enabled
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -534,6 +543,13 @@ async function adminListOnsite(req, res) {
           .filter(Boolean)
       ),
     ].sort((a, b) => a.localeCompare(b));
+    const teams = [
+      ...new Set(
+        people
+          .map((p) => String(p.department || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
 
     const employees = [];
     const sundayHoliday = isSundayDateKey(dateKey);
@@ -542,8 +558,11 @@ async function adminListOnsite(req, res) {
       if (branchFilter && branchFilter !== 'all') {
         if (String(person.branch || '').trim().toLowerCase() !== branchFilter) continue;
       }
+      if (teamFilter && teamFilter !== 'all') {
+        if (String(person.department || '').trim().toLowerCase() !== teamFilter) continue;
+      }
       if (search) {
-        const hay = `${person.name} ${person.employee_id} ${person.username} ${person.branch}`.toLowerCase();
+        const hay = `${person.name} ${person.employee_id} ${person.username} ${person.branch} ${person.department}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
       const rec = byUser.get(String(person.id)) || null;
@@ -570,11 +589,19 @@ async function adminListOnsite(req, res) {
         can_manual: Boolean(canEdit && (!rec || isCeoRole(req.user?.role))),
         can_override: Boolean(canEdit && rec),
         can_delete: Boolean(isCeoRole(req.user?.role) && rec),
+        can_toggle_attendance: Boolean(canEdit),
+        attendance_enabled: userAttendanceEnabled(person),
         record: publicRow(rec),
       });
     }
 
-    return res.json({ date: dateKey, summary, employees, branches });
+    return res.json({
+      date: dateKey,
+      summary,
+      employees,
+      branches,
+      teams,
+    });
   } catch (err) {
     console.error('adminListOnsite error:', err);
     return res.status(500).json({ message: 'Server error fetching onsite attendance.' });

@@ -4,6 +4,7 @@ const { isSundayDateKey } = require('./workWeek');
 const { workHoursFromUser } = require('./workHours');
 const {
   CHECK_COUNT,
+  checkCountFromUser,
   hourKeyForSeq,
   activeShiftDate,
   currentShiftDateKey,
@@ -25,7 +26,7 @@ async function ensureChallengeTable() {
       id                  BIGSERIAL PRIMARY KEY,
       user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       shift_date          TEXT NOT NULL,
-      seq                 INTEGER NOT NULL CHECK (seq BETWEEN 1 AND 5),
+      seq                 INTEGER NOT NULL CHECK (seq >= 1 AND seq <= 12),
       kind                TEXT NOT NULL CHECK (kind IN ('start', 'random')),
       hour_key            TEXT NOT NULL,
       scheduled_at       TIMESTAMPTZ NOT NULL,
@@ -49,6 +50,21 @@ async function ensureChallengeTable() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS attendance_challenges_due_idx
       ON attendance_challenges (scheduled_at, status)
+  `);
+  await pool.query(`ALTER TABLE attendance_challenges DROP CONSTRAINT IF EXISTS attendance_challenges_seq_check`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      ALTER TABLE attendance_challenges
+        ADD CONSTRAINT attendance_challenges_seq_check
+        CHECK (seq >= 1 AND seq <= 12);
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+  await pool.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS remote_check_count INTEGER NOT NULL DEFAULT 5
   `);
 }
 
@@ -167,8 +183,19 @@ async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
     `,
     [user.id, shiftDate, start, firstWindows.late_at, firstWindows.absent_at]
   );
+  const checkCount = checkCountFromUser(user);
+  await pool.query(
+    `
+      DELETE FROM attendance_challenges
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND seq > $3
+        AND status IN ('pending', 'notified')
+    `,
+    [user.id, shiftDate, checkCount]
+  );
   const existing = await loadChallenges(user.id, shiftDate);
-  if (existing.length < CHECK_COUNT) {
+  if (existing.length < checkCount) {
     const have = new Set(existing.map((r) => Number(r.seq)));
     const planned = planChallengeTimes(shiftDate, user, now, existing);
     const plan = planned.filter((row) => !have.has(Number(row.seq)));
@@ -306,6 +333,7 @@ async function dueNotifications(now = new Date()) {
         AND u.is_active = true
         AND u.status = 'active'
         AND u.employment_type = 'remote'
+        AND COALESCE(u.attendance_enabled, true) = true
       ORDER BY c.scheduled_at ASC
       LIMIT 200
     `,
@@ -334,6 +362,7 @@ async function expiredOpen(now = new Date()) {
       WHERE c.status IN ('pending', 'notified')
         AND c.absent_at <= $1
         AND u.employment_type = 'remote'
+        AND COALESCE(u.attendance_enabled, true) = true
       ORDER BY c.absent_at ASC
       LIMIT 400
     `,
@@ -344,6 +373,7 @@ async function expiredOpen(now = new Date()) {
 
 module.exports = {
   CHECK_COUNT,
+  checkCountFromUser,
   START_ON_TIME_MINUTES,
   LATE_AFTER_MINUTES,
   ABSENT_AFTER_MINUTES,

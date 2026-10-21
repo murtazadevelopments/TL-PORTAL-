@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import { BRANCH_OPTIONS } from '../constants/branches';
+import TeamFilterSelect from './TeamFilterSelect';
+import { matchesTeamFilter } from '../utils/teamNames';
 import {
   describeEmployeeScope,
   isScopedEmployeePermission,
@@ -54,6 +56,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [metaError, setMetaError] = useState('');
 
   const [search, setSearch] = useState('');
+  const [teamFilter, setTeamFilter] = useState('all');
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('admin');
   const [permissions, setPermissions] = useState([]);
@@ -155,12 +158,13 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
 
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return employees;
     return employees.filter((e) => {
-      const hay = `${e.name || ''} ${e.employee_id || ''} ${e.role || ''}`.toLowerCase();
+      if (!matchesTeamFilter(e, teamFilter)) return false;
+      if (!q) return true;
+      const hay = `${e.name || ''} ${e.employee_id || ''} ${e.role || ''} ${e.department || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [employees, search]);
+  }, [employees, search, teamFilter]);
 
   const selectedEmployee = useMemo(
     () => employees.find((e) => String(e.id) === String(userId)) || null,
@@ -414,6 +418,12 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
           <form className="assign-role-form" onSubmit={handleSubmit} noValidate>
             <fieldset className="assign-step">
               <legend>1. Select employee</legend>
+              <TeamFilterSelect
+                value={teamFilter}
+                onChange={setTeamFilter}
+                extraNames={employees}
+                allLabel="Team: All"
+              />
               <input
                 className="assign-search"
                 type="search"

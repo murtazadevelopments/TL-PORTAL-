@@ -13,6 +13,11 @@ const { runRemoteAttendanceTick } = require('../services/remoteAttendancePings')
 const { normalizeEmploymentType } = require('../utils/employmentType');
 const { addDaysKey } = require('../utils/remoteCheckWindows');
 const { isSundayDateKey } = require('../utils/workWeek');
+const {
+  userAttendanceEnabled,
+  setUserAttendanceEnabled,
+  rejectIfUserAttendanceStopped,
+} = require('../utils/attendanceEnabled');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -30,6 +35,7 @@ const scopeWhereClause = pick(employeeScope, 'scopewhereclause');
 const normalizeScope = pick(employeeScope, 'normalizescope');
 const ensureAttendanceTables = pick(attendanceSchema, 'ensureattendancetables');
 const persistUserWorkHours = pick(attendanceSchema, 'persistuserworkhours');
+const persistRemoteCheckCount = pick(attendanceSchema, 'persistremotecheckcount');
 const parseEmbedding = pick(faceMath, 'parseembedding');
 const euclideanDistance = pick(faceMath, 'euclideandistance');
 const isFaceMatch = pick(faceMath, 'isfacematch');
@@ -82,7 +88,8 @@ async function loadUser(userId) {
     `
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift,
-             work_start_hour, work_end_hour, remote_check_request_at
+             work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
+             remote_check_count
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -123,7 +130,7 @@ async function getEnrollment(req, res) {
       start_window_minutes: remoteChallenges.START_ON_TIME_MINUTES,
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
-      checks_per_shift: remoteChallenges.CHECK_COUNT,
+      checks_per_shift: remoteChallenges.checkCountFromUser(user),
       ...enrollmentPublic(rows[0]),
     });
   } catch (err) {
@@ -207,7 +214,12 @@ async function getMyAttendance(req, res) {
     const hours = workHoursFromUser(user);
 
     const sundayHoliday = isSundayDateKey(shiftDate);
-    if (normalizeEmploymentType(user.employment_type) === 'remote' && !sundayHoliday) {
+    const attendanceEnabled = userAttendanceEnabled(user);
+    if (
+      attendanceEnabled &&
+      normalizeEmploymentType(user.employment_type) === 'remote' &&
+      !sundayHoliday
+    ) {
       const active = remoteChallenges.activeShiftDate(now, user);
       if (!req.query.date && active) {
         await remoteChallenges.ensureChallengesForUser(user, active);
@@ -269,12 +281,13 @@ async function getMyAttendance(req, res) {
     );
 
     const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now);
-    const canCheckIn = Boolean(!sundayHoliday && opened?.pub?.can_check_in);
+    const canCheckIn = Boolean(attendanceEnabled && !sundayHoliday && opened?.pub?.can_check_in);
     const month = await monthHistory(user, shiftDate.slice(0, 7));
     return res.json({
       date: shiftDate,
       timezone: TIMEZONE,
       current_hour_key: opened?.pub?.hour_key || null,
+      attendance_enabled: attendanceEnabled,
       can_check_in: canCheckIn,
       open_check: opened?.pub || null,
       work_start_hour: hours.start,
@@ -284,7 +297,7 @@ async function getMyAttendance(req, res) {
       late_after_minutes: remoteChallenges.LATE_AFTER_MINUTES,
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
-      checks_per_shift: remoteChallenges.CHECK_COUNT,
+      checks_per_shift: remoteChallenges.checkCountFromUser(user),
       holiday: sundayHoliday,
       timeline: sundayHoliday ? [] : timeline,
       month: month.month,
@@ -305,6 +318,7 @@ async function checkIn(req, res) {
     if (normalizeEmploymentType(user.employment_type) !== 'remote') {
       return res.status(403).json({ message: 'Face check-in is only for remote employees.' });
     }
+    if (await rejectIfUserAttendanceStopped(res, user)) return;
     if (rateLimited(req.user.id)) {
       return res.status(429).json({ message: 'Too many check-in attempts. Try again later.' });
     }
@@ -467,8 +481,9 @@ async function resolveAttendanceScope(req, permissionKey) {
 const CHECK_REQUEST_COOLDOWN_MS = 60 * 60 * 1000;
 const CHECK_DONE_STATES = new Set(['verified', 'late', 'missed']);
 
-function checkInRequestGate(now, lastRequestAt, completedCount) {
-  if (Number(completedCount) >= remoteChallenges.CHECK_COUNT) {
+function checkInRequestGate(now, lastRequestAt, completedCount, checkCount) {
+  const needed = Number(checkCount) > 0 ? Number(checkCount) : remoteChallenges.CHECK_COUNT;
+  if (Number(completedCount) >= needed) {
     return { allowed: false, reason: 'complete', available_at: null };
   }
   const last = lastRequestAt ? new Date(lastRequestAt).getTime() : 0;
@@ -490,6 +505,7 @@ async function adminOverview(req, res) {
     const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
     const search = String(req.query.search || '').trim().toLowerCase();
     const branchFilter = String(req.query.branch || '').trim().toLowerCase();
+    const teamFilter = String(req.query.team || req.query.department || '').trim().toLowerCase();
 
     const viewScope = await resolveAttendanceScope(req, 'attendance:view');
     const editScope = isCeoRole(req.user?.role)
@@ -501,7 +517,7 @@ async function adminOverview(req, res) {
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at
+               remote_check_request_at, attendance_enabled, remote_check_count
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -631,7 +647,12 @@ async function adminOverview(req, res) {
         if (activeDate && isSundayDateKey(activeDate)) {
           requestGate = { allowed: false, reason: 'holiday', available_at: null };
         } else if (activeDate) {
-          requestGate = checkInRequestGate(now, person.remote_check_request_at, doneCount);
+          requestGate = checkInRequestGate(
+            now,
+            person.remote_check_request_at,
+            doneCount,
+            remoteChallenges.checkCountFromUser(person)
+          );
         }
 
         const hours = workHoursFromUser(person);
@@ -652,6 +673,7 @@ async function adminOverview(req, res) {
           work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
           day_status: rowStatus,
           can_manual: employeeMatchesScope(person, editScope),
+          can_toggle_attendance: employeeMatchesScope(person, editScope),
           can_delete: Boolean(
             isCeoRole(req.user?.role) && (personLogs.length > 0 || dayByUser.has(String(person.id)))
           ),
@@ -661,8 +683,10 @@ async function adminOverview(req, res) {
           manual_count: manualCount,
           slots,
           latest,
-          can_check_in_request: Boolean(requestGate.allowed),
-          check_in_request_reason: requestGate.reason,
+          attendance_enabled: userAttendanceEnabled(person),
+          checks_per_shift: remoteChallenges.checkCountFromUser(person),
+          can_check_in_request: Boolean(userAttendanceEnabled(person) && requestGate.allowed),
+          check_in_request_reason: userAttendanceEnabled(person) ? requestGate.reason : 'stopped',
           check_in_request_available_at: requestGate.available_at,
         };
       })
@@ -671,6 +695,13 @@ async function adminOverview(req, res) {
           branchFilter &&
           branchFilter !== 'all' &&
           String(row.branch || '').trim().toLowerCase() !== branchFilter
+        ) {
+          return false;
+        }
+        if (
+          teamFilter &&
+          teamFilter !== 'all' &&
+          String(row.department || '').trim().toLowerCase() !== teamFilter
         ) {
           return false;
         }
@@ -698,6 +729,13 @@ async function adminOverview(req, res) {
           .filter(Boolean)
       ),
     ].sort((a, b) => a.localeCompare(b));
+    const teams = [
+      ...new Set(
+        people
+          .map((p) => String(p.department || '').trim())
+          .filter(Boolean)
+      ),
+    ].sort((a, b) => a.localeCompare(b));
 
     return res.json({
       date: dateKey,
@@ -705,6 +743,7 @@ async function adminOverview(req, res) {
       summary: { verified, missed, failed, manual, employees: employees.length },
       employees,
       branches,
+      teams,
     });
   } catch (err) {
     console.error('adminOverview error:', err);
@@ -730,8 +769,8 @@ async function adminManualMark(req, res) {
     if (!['verified', 'missed', 'late', 'leave'].includes(status)) {
       return res.status(400).json({ message: 'status must be verified, late, missed, or leave.' });
     }
-    if (status !== 'leave' && !/^\d{4}-\d{2}-\d{2}-(?:\d{2}|c[1-5])$/.test(hourKey)) {
-      return res.status(400).json({ message: 'hour_key must look like YYYY-MM-DD-c1 (check 1–5).' });
+    if (status !== 'leave' && !/^\d{4}-\d{2}-\d{2}-(?:\d{2}|c\d+)$/.test(hourKey)) {
+      return res.status(400).json({ message: 'hour_key must look like YYYY-MM-DD-c1.' });
     }
     if (status === 'leave' && !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
       return res.status(400).json({ message: 'date_key must look like YYYY-MM-DD.' });
@@ -879,6 +918,7 @@ async function adminRequestCheckIn(req, res) {
     if (normalizeEmploymentType(target.employment_type) !== 'remote') {
       return res.status(400).json({ message: 'Check-in requests are only for remote employees.' });
     }
+    if (await rejectIfUserAttendanceStopped(res, target)) return;
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
@@ -895,10 +935,11 @@ async function adminRequestCheckIn(req, res) {
     await remoteChallenges.ensureChallengesForUser(target, shiftDate, now);
     const rows = await remoteChallenges.loadChallenges(targetId, shiftDate);
     const doneCount = rows.filter((row) => CHECK_DONE_STATES.has(row.status)).length;
-    const gate = checkInRequestGate(now, target.remote_check_request_at, doneCount);
+    const checkCount = remoteChallenges.checkCountFromUser(target);
+    const gate = checkInRequestGate(now, target.remote_check_request_at, doneCount, checkCount);
     if (!gate.allowed && gate.reason === 'complete') {
       return res.status(409).json({
-        message: 'All five checks for this shift are already recorded. The button opens again on the next shift day.',
+        message: `All ${checkCount} checks for this shift are already recorded. The button opens again on the next shift day.`,
       });
     }
     if (!gate.allowed && gate.reason === 'cooldown') {
@@ -911,7 +952,7 @@ async function adminRequestCheckIn(req, res) {
     const openable = rows.filter((row) => ['pending', 'notified'].includes(row.status));
     if (!openable.length) {
       return res.status(409).json({
-        message: 'All five checks for this shift are already recorded. The button opens again on the next shift day.',
+        message: `All ${checkCount} checks for this shift are already recorded. The button opens again on the next shift day.`,
       });
     }
 
@@ -963,6 +1004,66 @@ async function markMissedSlots(now = new Date()) {
   return runRemoteAttendanceTick(now);
 }
 
+async function putUserAttendanceEnabled(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    if (!isCeoRole(req.user?.role)) {
+      const empType = normalizeEmploymentType(target.employment_type);
+      let editScope;
+      if (empType === 'remote') {
+        editScope = await resolveAttendanceScope(req, 'attendance:edit');
+      } else {
+        const access = await loadAdminPermissionAccess(req.user.id);
+        const keys = access.permissions || [];
+        if (keys.includes('hr:add_employee') || keys.includes('*')) {
+          editScope = { type: 'all' };
+        } else if (keys.includes('attendance:edit')) {
+          editScope = normalizeScope(access.scopes?.['attendance:edit']);
+        } else if (keys.includes('employees:edit')) {
+          editScope = normalizeScope(access.scopes?.['employees:edit']);
+        } else {
+          editScope = { type: 'branch', values: [] };
+        }
+      }
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+      }
+    }
+
+    const raw = req.body?.enabled;
+    const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    const updated = await setUserAttendanceEnabled(targetId, enabled);
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: enabled ? 'attendance.enabled' : 'attendance.disabled',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: enabled
+        ? `Turned attendance on for ${target.name || target.username}`
+        : `Turned attendance off for ${target.name || target.username}`,
+    });
+    return res.json({
+      enabled: updated?.attendance_enabled !== false,
+      message: enabled
+        ? `Attendance is on for ${target.name || target.username}.`
+        : `Attendance is off for ${target.name || target.username}. They cannot check in. Manual mark still works.`,
+    });
+  } catch (err) {
+    console.error('putUserAttendanceEnabled error:', err);
+    return res.status(500).json({ message: 'Server error saving attendance setting.' });
+  }
+}
+
 async function adminSetHours(req, res) {
   try {
     await ensureAttendanceTables();
@@ -983,11 +1084,20 @@ async function adminSetHours(req, res) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
     await persistUserWorkHours(targetId, hours.start, hours.end);
+    const checkCount = persistRemoteCheckCount
+      ? await persistRemoteCheckCount(
+          targetId,
+          req.body?.remote_check_count ?? req.body?.checks_per_shift ?? target.remote_check_count
+        )
+      : remoteChallenges.checkCountFromUser({
+          remote_check_count:
+            req.body?.remote_check_count ?? req.body?.checks_per_shift ?? target.remote_check_count,
+        });
     const updated = await loadUser(targetId);
     const shiftDate =
       remoteChallenges.activeShiftDate(new Date(), updated) ||
       remoteChallenges.currentShiftDateKey(new Date(), updated);
-    if (shiftDate && !isSundayDateKey(shiftDate)) {
+    if (shiftDate && !isSundayDateKey(shiftDate) && userAttendanceEnabled(updated)) {
       await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
       await remoteChallenges.ensureChallengesForUser(updated, shiftDate);
     }
@@ -997,19 +1107,24 @@ async function adminSetHours(req, res) {
       action: 'attendance_hours',
       targetTable: 'users',
       targetId: targetId,
-      reason: `Set working hours ${hours.start}:00–${hours.end}:00`,
+      reason: `Set working hours ${hours.start}:00–${hours.end}:00 and ${checkCount} checks per shift`,
     });
     res.json({
       message: 'Working hours updated.',
       work_start_hour: hours.start,
       work_end_hour: hours.end,
       work_hours_label: `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
+      checks_per_shift: checkCount,
+      remote_check_count: checkCount,
     });
     queueCeoBranchManagerNotice(req, {
       action: 'Updated remote working hours',
       targetName: target.name || target.username,
       targetId: target.id,
-      details: [`Hours: ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`],
+      details: [
+        `Hours: ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
+        `Checks per shift: ${checkCount}`,
+      ],
     });
     return;
   } catch (err) {
@@ -1256,4 +1371,5 @@ module.exports = {
   adminEmployeeDays,
   adminDeleteRemoteDay,
   markMissedSlots,
+  putUserAttendanceEnabled,
 };

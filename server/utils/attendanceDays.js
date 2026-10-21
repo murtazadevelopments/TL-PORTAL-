@@ -13,7 +13,7 @@ function pick(obj, name) {
 const hourKeyFor = pick(windows, 'hourkeyfor');
 const zonedParts = pick(windows, 'zonedparts');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
-const { shiftBounds, planChallengeTimes, hourKeyForSeq, CHECK_COUNT, sortRemoteChecks, addDaysKey } = require('./remoteCheckWindows');
+const { shiftBounds, planChallengeTimes, hourKeyForSeq, checkCountFromUser, sortRemoteChecks, addDaysKey } = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
 const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
@@ -73,8 +73,8 @@ function plannedRemoteSlots(dateKey, user, now) {
   }));
 }
 
-function emptyRemoteSlots(dateKey) {
-  return Array.from({ length: CHECK_COUNT }, (_, i) => {
+function emptyRemoteSlots(dateKey, user) {
+  return Array.from({ length: checkCountFromUser(user) }, (_, i) => {
     const seq = i + 1;
     return {
       hour: seq,
@@ -91,7 +91,7 @@ function emptyRemoteSlots(dateKey) {
 }
 
 function isChallengeKey(hourKey) {
-  return /-c[1-5]$/.test(String(hourKey || ''));
+  return /-c\d+$/.test(String(hourKey || ''));
 }
 
 function hourFromKey(hourKey) {
@@ -111,10 +111,11 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
     if (challengeLogs.some((l) => l.status === 'missed')) return 'absent';
     const good = challengeLogs.filter((l) => l.status === 'verified' || l.status === 'late');
     const startLog = challengeLogs.find((l) => String(l.hour_key).endsWith('-c1'));
+    const needed = checkCountFromUser(user);
     if (startLog?.status === 'late' || good.some((l) => l.status === 'late')) {
-      if (good.length >= 5) return 'late';
+      if (good.length >= needed) return 'late';
     }
-    if (good.length >= 5) {
+    if (good.length >= needed) {
       return good.some((l) => l.status === 'late') ? 'late' : 'present';
     }
     const { end } = shiftBounds(dateKey, user);
@@ -224,7 +225,7 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
       ? slotsFromChallenges(challengeRows, byHour, now)
       : dateKey >= zonedParts(now).dateKey
         ? plannedRemoteSlots(dateKey, user, now)
-        : emptyRemoteSlots(dateKey);
+        : emptyRemoteSlots(dateKey, user);
     return { date: dateKey, status: computeDayStatus(logs, user, dateKey, now), slots };
   }
 
@@ -346,7 +347,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
       const leaveSlots = (dayChallenges.length
         ? slotsFromChallenges(dayChallenges, byHour, now)
         : isRemoteUser(user)
-          ? emptyRemoteSlots(dateKey)
+          ? emptyRemoteSlots(dateKey, user)
           : slotsForUser(dateKey, user)
       ).map((s) => ({ ...s, state: 'leave' }));
       return { date: dateKey, status: 'leave', slots: leaveSlots };

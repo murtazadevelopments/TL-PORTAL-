@@ -9,7 +9,8 @@ const { zonedParts } = require('../utils/attendanceWindows');
 async function loadRemote(userId) {
   const { rows } = await pool.query(
     `
-      SELECT id, name, username, email, employment_type, work_start_hour, work_end_hour, is_active, status
+      SELECT id, name, username, email, employment_type, work_start_hour, work_end_hour, is_active, status,
+             remote_check_count
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -22,11 +23,13 @@ async function loadRemote(userId) {
 async function ensureActiveShiftChallenges(now = new Date()) {
   const { rows: remotes } = await pool.query(
     `
-      SELECT id, name, username, email, employee_id, employment_type, work_start_hour, work_end_hour
+      SELECT id, name, username, email, employee_id, employment_type, work_start_hour, work_end_hour,
+             remote_check_count
       FROM users
       WHERE is_active = true
         AND status = 'active'
         AND employment_type = 'remote'
+        AND COALESCE(attendance_enabled, true) = true
     `
   );
   let created = 0;

@@ -84,6 +84,8 @@ export default function AttendancePage() {
   const [engineHint, setEngineHint] = useState('');
   const [openCheck, setOpenCheck] = useState(null);
   const [sundayHoliday, setSundayHoliday] = useState(false);
+  const [attendanceEnabled, setAttendanceEnabled] = useState(true);
+  const [checksPerShift, setChecksPerShift] = useState(5);
   const [nowTick, setNowTick] = useState(Date.now());
 
   const isRemote = user?.employment_type === 'remote';
@@ -108,6 +110,8 @@ export default function AttendancePage() {
     setCanCheckIn(Boolean(att.can_check_in ?? att.can_check_in));
     setOpenCheck(att.open_check || null);
     setSundayHoliday(Boolean(att.holiday));
+    setAttendanceEnabled(att.attendance_enabled !== false);
+    setChecksPerShift(Number(att.checks_per_shift) > 0 ? Number(att.checks_per_shift) : 5);
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -452,11 +456,13 @@ export default function AttendancePage() {
           check.
         </p>
       ) : null}
-      {sundayHoliday ? (
+      {!attendanceEnabled ? (
+        <p className="attendance-open-banner">Attendance is paused for your account. Check-in will open again when an admin turns it on.</p>
+      ) : sundayHoliday ? (
         <p className="attendance-open-banner">Sunday is a holiday. Attendance checks are not required.</p>
       ) : openCheck?.can_check_in ? (
         <p className="attendance-open-banner">
-          Check {openCheck.seq} of 5 is open
+          Check {openCheck.seq} of {checksPerShift} is open
           {remainFromCheck(openCheck, nowTick, 'late_at') > 0
             ? ` — ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'late_at'))} left to be on time.`
             : ` — you will be marked late. Absent in ${formatRemainMs(remainFromCheck(openCheck, nowTick, 'absent_at'))}.`}
@@ -495,7 +501,7 @@ export default function AttendancePage() {
                   disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
                   onClick={handleCheckIn}
                 >
-                  {phase === 'checkin' ? 'Checking in…' : canCheckIn ? 'Check in now' : sundayHoliday ? 'Sunday holiday' : 'Waiting for next check'}
+                  {phase === 'checkin' ? 'Checking in…' : !attendanceEnabled ? 'Attendance off' : canCheckIn ? 'Check in now' : sundayHoliday ? 'Sunday holiday' : 'Waiting for next check'}
                 </button>
                 <button type="button" className="btn btn-ghost" disabled={phase !== 'idle' || !modelsReady} onClick={handleEnroll}>
                   Re-enroll
@@ -512,7 +518,7 @@ export default function AttendancePage() {
       )}
 
       <section>
-        <h2>This shift (5 checks)</h2>
+        <h2>This shift ({checksPerShift} {checksPerShift === 1 ? 'check' : 'checks'})</h2>
         <ol className="attendance-timeline">
           {timeline
             .slice()

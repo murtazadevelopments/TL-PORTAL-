@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../api/client';
+import TeamFilterSelect from '../components/TeamFilterSelect';
 import { isCeo } from '../utils/permissions';
 import './AdminDashboard.css';
 
@@ -99,6 +100,7 @@ function LoginLogs() {
   const [q, setQ] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [range, setRange] = useState('30d');
+  const [team, setTeam] = useState('all');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -135,6 +137,7 @@ function LoginLogs() {
         limit: 25,
         q: q || undefined,
         range,
+        team: team && team !== 'all' ? team : undefined,
       };
       const { data } = await api.get('/api/admin/login-logs', { params });
       setLogs(Array.isArray(data?.logs) ? data.logs : []);
@@ -150,7 +153,7 @@ function LoginLogs() {
     } finally {
       setLoading(false);
     }
-  }, [page, q, range, navigate]);
+  }, [page, q, range, team, navigate]);
 
   useEffect(() => {
     if (!checking && isCeo(role)) {
@@ -195,6 +198,14 @@ function LoginLogs() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           aria-label="Search login logs"
+        />
+        <TeamFilterSelect
+          value={team}
+          onChange={(next) => {
+            setTeam(next);
+            setPage(1);
+          }}
+          allLabel="Team: All"
         />
         <select
           className="filter-select"

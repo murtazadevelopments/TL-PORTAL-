@@ -147,7 +147,9 @@ export default function OnsiteAttendancePage() {
         ) : (
           <p className="muted">No shift assigned yet. Ask HR to assign one.</p>
         )}
-        {data?.holiday && !today?.checked_in_at ? (
+        {data?.attendance_enabled === false ? (
+          <p className="muted">Attendance is paused for your account. Check-in will open again when an admin turns it on.</p>
+        ) : data?.holiday && !today?.checked_in_at ? (
           <p className="muted">Sunday is a holiday. Office check-in is not required.</p>
         ) : today ? (
           <p>
@@ -177,7 +179,9 @@ export default function OnsiteAttendancePage() {
             ? 'Checking in…'
             : today?.checked_in_at
               ? 'Already checked in'
-              : data?.holiday
+              : data?.attendance_enabled === false
+                ? 'Attendance off'
+                : data?.holiday
                 ? 'Sunday holiday'
                 : data?.night_shift && !data?.self_check_in_open
                   ? 'Check-in closed'

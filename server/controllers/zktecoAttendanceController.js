@@ -24,7 +24,9 @@ async function listZktecoAttendance(req, res) {
           l.punch_time,
           l.created_at,
           u.name AS employee_name,
-          u.employee_id
+          u.employee_id,
+          u.department AS team,
+          u.department
         FROM zkteco_attendance_logs l
         LEFT JOIN users u
           ON TRIM(COALESCE(u.employee_id, '')) = l.user_id

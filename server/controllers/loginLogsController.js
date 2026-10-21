@@ -89,6 +89,7 @@ async function listLoginLogs(req, res) {
     const offset = (page - 1) * limit;
     const q = String(req.query.q || '').trim();
     const range = String(req.query.range || '30d').trim().toLowerCase();
+    const team = String(req.query.team || req.query.department || '').trim().toLowerCase();
 
     const conditions = [];
     const params = [];
@@ -133,6 +134,17 @@ async function listLoginLogs(req, res) {
         params.push(end.toISOString());
         conditions.push(`logged_in_at <= $${params.length}`);
       }
+    }
+
+    if (team && team !== 'all') {
+      params.push(team);
+      conditions.push(
+        `EXISTS (
+           SELECT 1 FROM users u
+           WHERE u.id = login_logs.user_id
+             AND LOWER(TRIM(COALESCE(u.department, ''))) = $${params.length}
+         )`
+      );
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

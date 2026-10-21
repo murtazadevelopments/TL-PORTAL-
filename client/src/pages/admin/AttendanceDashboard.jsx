@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
+import { matchesTeamFilter } from '../../utils/teamNames';
 import './AdminDashboard.css';
 
 function karachiParts(iso) {
@@ -30,6 +32,7 @@ export default function AttendanceDashboard() {
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [team, setTeam] = useState('all');
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -76,6 +79,11 @@ export default function AttendanceDashboard() {
     return () => clearInterval(timer);
   }, [checking, loadLogs]);
 
+  const visibleLogs = useMemo(
+    () => logs.filter((row) => matchesTeamFilter(row, team)),
+    [logs, team]
+  );
+
   if (checking) {
     return (
       <div className="admin-page page-panel">
@@ -92,9 +100,17 @@ export default function AttendanceDashboard() {
         This table refreshes automatically.
       </p>
       {error && <p className="error">{error}</p>}
-      <p className="muted">{loading ? 'Refreshing…' : `${logs.length} latest punches`}</p>
+      <div className="admin-toolbar filters-toolbar">
+        <TeamFilterSelect
+          value={team}
+          onChange={setTeam}
+          extraNames={logs}
+          allLabel="Team: All"
+        />
+      </div>
+      <p className="muted">{loading ? 'Refreshing…' : `${visibleLogs.length} latest punches`}</p>
       <div className="table-shell">
-        {logs.length === 0 && !loading ? (
+        {visibleLogs.length === 0 && !loading ? (
           <div className="admin-empty">No biometric punches yet.</div>
         ) : (
           <table className="admin-table">
@@ -107,7 +123,7 @@ export default function AttendanceDashboard() {
               </tr>
             </thead>
             <tbody>
-              {logs.map((row) => {
+              {visibleLogs.map((row) => {
                 const parts = karachiParts(row.punch_time);
                 return (
                   <tr key={row.id}>

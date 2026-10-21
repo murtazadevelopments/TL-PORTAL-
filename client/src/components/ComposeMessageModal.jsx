@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import TeamFilterSelect from './TeamFilterSelect';
+import { matchesTeamFilter } from '../utils/teamNames';
 import './ComposeMessageModal.css';
 
 const DELIVERY_OPTIONS = [
@@ -40,6 +42,7 @@ export default function ComposeMessageModal({
   const [audienceType, setAudienceType] = useState('user');
   const [search, setSearch] = useState('');
   const [recipientId, setRecipientId] = useState('');
+  const [personTeam, setPersonTeam] = useState('all');
   const [team, setTeam] = useState('');
   const [branch, setBranch] = useState('');
   const [subject, setSubject] = useState('');
@@ -90,6 +93,7 @@ export default function ComposeMessageModal({
     setDeliveryMethod('portal');
     setSearch('');
     setFormError('');
+    setPersonTeam('all');
     setTeam('');
     setBranch('');
     if (initialRecipient?.id) {
@@ -103,14 +107,15 @@ export default function ComposeMessageModal({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return recipients;
     return recipients.filter((r) => {
+      if (!matchesTeamFilter(r, personTeam)) return false;
+      if (!q) return true;
       const hay = `${r.name || ''} ${r.username || ''} ${r.employee_id || ''} ${
         r.email || ''
       } ${r.department || ''} ${r.branch || ''}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [recipients, search]);
+  }, [recipients, search, personTeam]);
 
   const selected = useMemo(
     () =>
@@ -286,6 +291,12 @@ export default function ComposeMessageModal({
 
                   {audienceType === 'user' && (
                     <>
+                      <TeamFilterSelect
+                        value={personTeam}
+                        onChange={setPersonTeam}
+                        extraNames={recipients}
+                        allLabel="Team: All"
+                      />
                       <input
                         className="compose-search"
                         type="search"

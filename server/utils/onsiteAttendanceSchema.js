@@ -113,6 +113,8 @@ async function runEnsureOnsiteAttendanceSchema() {
 
   await denyAnon('shifts');
   await denyAnon('onsite_attendance');
+  const { ensureAttendanceEnabledColumn } = require('./attendanceEnabled');
+  await ensureAttendanceEnabledColumn();
 
   ensured = true;
 }

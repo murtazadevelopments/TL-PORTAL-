@@ -70,6 +70,22 @@ async function persistUserWorkHours(userId, start, end) {
   );
 }
 
+async function persistRemoteCheckCount(userId, checkCount) {
+  const { checkCountFromUser } = require('./remoteCheckWindows');
+  const count = checkCountFromUser({ remote_check_count: checkCount });
+  await pool.query(
+    `
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS remote_check_count INTEGER NOT NULL DEFAULT 5
+    `
+  );
+  await pool.query(
+    `UPDATE users SET remote_check_count = $2, updated_at = NOW() WHERE id = $1`,
+    [userId, count]
+  );
+  return count;
+}
+
 async function ensureAttendanceTables() {
   if (ensured) return;
   if (!ensurePromise) {
@@ -190,6 +206,8 @@ async function runEnsureAttendanceTables() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS remote_check_request_at TIMESTAMPTZ
   `);
+  const { ensureAttendanceEnabledColumn } = require('./attendanceEnabled');
+  await ensureAttendanceEnabledColumn();
 }
 
-module.exports = { ensureAttendanceTables, persistUserWorkHours };
+module.exports = { ensureAttendanceTables, persistUserWorkHours, persistRemoteCheckCount };
