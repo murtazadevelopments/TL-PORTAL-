@@ -3,14 +3,14 @@ const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchem
 const { statusForCheckIn, parseCheckInAt, pgDateKey, addDaysToDateKey, isNightShift, employeeCanSelfCheckIn } = require('../utils/onsiteShiftStatus');
 const { requestMatchesConfiguredIp, parseOfficeIps } = require('../utils/requestMeta');
 const { writeAuditLog } = require('../utils/auditLog');
-const { zonedParts } = require('../utils/attendanceWindows');
+const { zonedParts, monthDateBounds } = require('../utils/attendanceWindows');
 const {
   normalizeScope,
   employeeMatchesScope,
   scopeWhereClause,
 } = require('../utils/employeeScope');
 const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
-const { getShiftByName } = require('./shiftsController');
+const { getShiftByName, loadShiftCatalog } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
 const { queueCeoBranchManagerNotice } = require('../services/notifications');
 const { sundayKeysInMonth, isSundayDateKey } = require('../utils/workWeek');
@@ -96,24 +96,41 @@ function liveStatus(row, shift) {
   }
 }
 
-async function persistLiveStatus(row, shift) {
-  try {
+async function persistLiveStatuses(rows, shiftForRow) {
+  const list = Array.isArray(rows) ? rows : [];
+  const nextRows = [];
+  const ids = [];
+  const statuses = [];
+  for (const row of list) {
+    const shift = typeof shiftForRow === 'function' ? shiftForRow(row) : shiftForRow;
     const next = liveStatus(row, shift);
-    if (next && row && next.status !== row.status && row.id) {
-      await pool.query(
-        `
-          UPDATE onsite_attendance
-          SET status = $2, updated_at = NOW()
-          WHERE id = $1 AND COALESCE(status_overridden, false) = false
-        `,
-        [row.id, next.status]
-      );
+    nextRows.push(next);
+    if (next && row?.id && next.status !== row.status) {
+      ids.push(row.id);
+      statuses.push(next.status);
     }
-    return next;
-  } catch (err) {
-    console.error('persistLiveStatus error:', err);
-    return liveStatus(row, shift);
   }
+  if (!ids.length) return nextRows;
+  try {
+    await pool.query(
+      `
+        UPDATE onsite_attendance AS t
+        SET status = v.status, updated_at = NOW()
+        FROM unnest($1::int[], $2::text[]) AS v(id, status)
+        WHERE t.id = v.id
+          AND COALESCE(t.status_overridden, false) = false
+      `,
+      [ids, statuses]
+    );
+  } catch (err) {
+    console.error('persistLiveStatuses error:', err);
+  }
+  return nextRows;
+}
+
+async function persistLiveStatus(row, shift) {
+  const [next] = await persistLiveStatuses([row], shift);
+  return next || liveStatus(row, shift);
 }
 
 async function resolveOnsiteEditScope(req) {
@@ -382,15 +399,17 @@ async function getMyOnsiteAttendance(req, res) {
       return res.status(400).json({ message: 'month must look like YYYY-MM.' });
     }
 
+    const bounds = monthDateBounds(month);
     const { rows } = await pool.query(
       `
         SELECT ${ONSITE_SELECT}
         FROM onsite_attendance
         WHERE user_id = $1
-          AND to_char(work_date, 'YYYY-MM') = $2
+          AND work_date >= $2::date
+          AND work_date < $3::date
         ORDER BY work_date DESC
       `,
-      [req.user.id, month]
+      [req.user.id, bounds.start, bounds.next]
     );
 
     const user = await loadOnsiteEmployee(req.user.id);
@@ -398,23 +417,18 @@ async function getMyOnsiteAttendance(req, res) {
     const branchRow = await loadBranchIp(user?.branch);
     const networkConfigured = parseOfficeIps(branchRow?.ip_address).length > 0;
 
+    const liveRows = await persistLiveStatuses(rows, shift);
     const todayRaw =
-      rows.find((r) => pgDateKey(r.work_date) === parts.dateKey) ||
-      rows.find((r) => {
+      liveRows.find((r) => pgDateKey(r.work_date) === parts.dateKey) ||
+      liveRows.find((r) => {
         const at = r.checked_in_at ? zonedParts(new Date(r.checked_in_at)).dateKey : '';
         return at === parts.dateKey;
       }) ||
       null;
     const sundayHoliday = isSundayDateKey(parts.dateKey);
-    const today = todayRaw
-      ? await persistLiveStatus(todayRaw, shift)
-      : sundayHoliday
-        ? holidayOnsiteDay(parts.dateKey)
-        : null;
     const days = [];
-    for (const row of rows) {
-      const live = row.id === todayRaw?.id ? today : await persistLiveStatus(row, shift);
-      const pub = publicRow(live);
+    for (const row of liveRows) {
+      const pub = publicRow(row);
       if (pub) days.push(pub);
     }
     const mergedDays = withSundayHolidays(days, month, parts.dateKey);
@@ -429,7 +443,7 @@ async function getMyOnsiteAttendance(req, res) {
     return res.json({
       date: parts.dateKey,
       month,
-      today: todayRaw ? publicRow(today) : sundayHoliday ? holidayOnsiteDay(parts.dateKey) : null,
+      today: todayRaw ? publicRow(todayRaw) : sundayHoliday ? holidayOnsiteDay(parts.dateKey) : null,
       can_check_in: Boolean(!todayRaw && windowOpen && !sundayHoliday),
       holiday: sundayHoliday,
       night_shift: nightShift,
@@ -502,7 +516,16 @@ async function adminListOnsite(req, res) {
       );
       records = rows;
     }
-    const byUser = new Map(records.map((r) => [String(r.user_id), r]));
+    const shiftCatalog = await loadShiftCatalog().catch(() => new Map());
+    const peopleById = new Map(people.map((p) => [String(p.id), p]));
+    const liveRecords = await persistLiveStatuses(records, (row) => {
+      const person = peopleById.get(String(row.user_id));
+      const key = String(person?.shift || '')
+        .trim()
+        .toLowerCase();
+      return key ? shiftCatalog.get(key) : null;
+    });
+    const byUser = new Map(liveRecords.map((r) => [String(r.user_id), r]));
 
     const branches = [
       ...new Set(
@@ -515,7 +538,6 @@ async function adminListOnsite(req, res) {
     const employees = [];
     const sundayHoliday = isSundayDateKey(dateKey);
     const summary = { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, holiday: 0, manual: 0 };
-    const shiftCache = new Map();
     for (const person of people) {
       if (branchFilter && branchFilter !== 'all') {
         if (String(person.branch || '').trim().toLowerCase() !== branchFilter) continue;
@@ -524,13 +546,7 @@ async function adminListOnsite(req, res) {
         const hay = `${person.name} ${person.employee_id} ${person.username} ${person.branch}`.toLowerCase();
         if (!hay.includes(search)) continue;
       }
-      let rec = byUser.get(String(person.id)) || null;
-      if (rec && person.shift) {
-        if (!shiftCache.has(person.shift)) {
-          shiftCache.set(person.shift, await getShiftByName(person.shift));
-        }
-        rec = await persistLiveStatus(rec, shiftCache.get(person.shift));
-      }
+      const rec = byUser.get(String(person.id)) || null;
       const rowStatus = rec?.status || (sundayHoliday ? 'holiday' : 'pending');
       if (statusFilter !== 'all' && rowStatus !== statusFilter) continue;
       const canEdit = employeeMatchesScope(person, editScope);
@@ -589,23 +605,25 @@ async function adminGetOnsiteMonth(req, res) {
       return res.status(400).json({ message: 'month must look like YYYY-MM.' });
     }
 
+    const bounds = monthDateBounds(month);
     const { rows } = await pool.query(
       `
         SELECT ${ONSITE_SELECT}
         FROM onsite_attendance
         WHERE user_id = $1
-          AND to_char(work_date, 'YYYY-MM') = $2
+          AND work_date >= $2::date
+          AND work_date < $3::date
         ORDER BY work_date DESC
       `,
-      [userId, month]
+      [userId, bounds.start, bounds.next]
     );
 
     const shift = user.shift ? await getShiftByName(user.shift) : null;
+    const liveRows = await persistLiveStatuses(rows, shift);
     const totals = { on_time: 0, late: 0, absent: 0, holiday: 0 };
     const days = [];
-    for (const row of rows) {
-      const live = await persistLiveStatus(row, shift);
-      const pub = publicRow(live);
+    for (const row of liveRows) {
+      const pub = publicRow(row);
       if (pub) days.push(pub);
     }
     const mergedDays = withSundayHolidays(days, month, parts.dateKey);

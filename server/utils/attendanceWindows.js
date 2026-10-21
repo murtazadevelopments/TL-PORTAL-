@@ -97,6 +97,20 @@ function canCheckInHourKey(hourKey, date = new Date()) {
   return hourKey === currentHourKey(date);
 }
 
+/** Inclusive start / exclusive end dates for a YYYY-MM month filter. */
+function monthDateBounds(month) {
+  const key = String(month || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(key)) return null;
+  const year = Number(key.slice(0, 4));
+  const monthNum = Number(key.slice(5, 7));
+  const start = `${key}-01`;
+  const next =
+    monthNum === 12
+      ? `${year + 1}-01-01`
+      : `${year}-${String(monthNum + 1).padStart(2, '0')}-01`;
+  return { start, next };
+}
+
 module.exports = {
   TIMEZONE,
   GRACE_MINUTES,
@@ -117,4 +131,5 @@ module.exports = {
   slotsDueForMissed: slotsDueForMissed,
   canCheckInHourKey,
   canCheckInHourKey: canCheckInHourKey,
+  monthDateBounds,
 };

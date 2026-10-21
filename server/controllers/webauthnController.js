@@ -340,7 +340,7 @@ async function loginOptions(req, res) {
     }
 
     const { rows: users } = await pool.query(
-      `SELECT id, username, is_active, blocked_at, status, role FROM users WHERE username = $1 LIMIT 1`,
+      `SELECT id, username, is_active, blocked_at, status, role FROM users WHERE lower(trim(username)) = $1 LIMIT 1`,
       [username]
     );
     const user = users[0];
@@ -408,9 +408,10 @@ async function loginVerify(req, res) {
       return res.status(400).json({ message: 'Username and authenticator response are required.' });
     }
 
-    const { rows: users } = await pool.query(`SELECT * FROM users WHERE username = $1 LIMIT 1`, [
-      username,
-    ]);
+    const { rows: users } = await pool.query(
+      `SELECT * FROM users WHERE lower(trim(username)) = $1 LIMIT 1`,
+      [username]
+    );
     const user = users[0];
     if (!user) {
       return res.status(401).json({ message: 'Biometric login failed.' });

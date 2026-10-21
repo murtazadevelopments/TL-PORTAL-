@@ -5,7 +5,7 @@ const {
   scopeWhereClause,
   employeeMatchesScope,
 } = require('../utils/employeeScope');
-const { zonedParts } = require('../utils/attendanceWindows');
+const { zonedParts, monthDateBounds } = require('../utils/attendanceWindows');
 const { isSundayDateKey } = require('../utils/workWeek');
 const { statusForCheckIn } = require('../utils/onsiteShiftStatus');
 const {
@@ -246,18 +246,20 @@ async function loadAttendanceData(scope, filters) {
   );
 
   // 1. Batch load onsite attendance
+  const monthBounds = monthDateBounds(filters.month);
   let onsiteRecords = [];
-  if (onsiteIds.length) {
+  if (onsiteIds.length && monthBounds) {
     const { rows } = await pool.query(
       `
         SELECT user_id,
                to_char(work_date, 'YYYY-MM-DD') AS work_date,
                checked_in_at, status, method, shift_name, status_overridden
         FROM onsite_attendance
-        WHERE to_char(work_date, 'YYYY-MM') = $1
-          AND user_id = ANY($2::int[])
+        WHERE work_date >= $1::date
+          AND work_date < $2::date
+          AND user_id = ANY($3::int[])
       `,
-      [filters.month, onsiteIds]
+      [monthBounds.start, monthBounds.next, onsiteIds]
     );
     onsiteRecords = rows;
   }
@@ -462,8 +464,10 @@ async function getAttendanceExportOptions(req, res) {
 
     // Also fetch any recorded months from DB
     const [onsiteMonthsRes, remoteMonthsRes] = await Promise.all([
-      pool.query(`SELECT DISTINCT to_char(work_date, 'YYYY-MM') AS month FROM onsite_attendance`),
-      pool.query(`SELECT DISTINCT substr(date_key, 1, 7) AS month FROM attendance_days`),
+      pool.query(
+        `SELECT DISTINCT to_char(date_trunc('month', work_date), 'YYYY-MM') AS month FROM onsite_attendance`
+      ),
+      pool.query(`SELECT DISTINCT left(date_key, 7) AS month FROM attendance_days`),
     ]).catch(() => [{ rows: [] }, { rows: [] }]);
 
     const seenMonths = new Set(monthsList.map((m) => m.value));

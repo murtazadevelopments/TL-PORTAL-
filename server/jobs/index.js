@@ -3,6 +3,7 @@ const { runBirthdayEmails } = require('./birthdayEmails');
 const { runLoginLogsPrune } = require('./loginLogsPrune');
 const { runAttendanceMissed } = require('./attendanceMissed');
 const { startZktecoSync } = require('../scripts/sync');
+const { ensureQueryIndexes } = require('../utils/ensureQueryIndexes');
 
 /**
  * Register scheduled jobs. Call once after the HTTP server starts.
@@ -12,6 +13,10 @@ const { startZktecoSync } = require('../scripts/sync');
  * until the next scheduled tick after boot.
  */
 function startScheduledJobs() {
+  ensureQueryIndexes().catch((err) => {
+    console.error('[query-indexes] failed:', err.message || err);
+  });
+
   const tz = process.env.APP_TIMEZONE || 'Asia/Karachi';
   const birthdayExpression = process.env.BIRTHDAY_CRON || '0 0 * * *'; // 00:00 daily
   const pruneExpression = process.env.LOGIN_LOGS_PRUNE_CRON || '0 3 * * *'; // 03:00 daily

@@ -4,6 +4,33 @@ const { formatTime, timeToMinutes } = require('../utils/onsiteShiftStatus');
 
 const SHIFT_SELECT = `id, name, start_time, late_after, absent_after, created_by, created_at, updated_at`;
 
+let shiftCatalog = null;
+let shiftCatalogAt = 0;
+const SHIFT_CACHE_MS = 30_000;
+
+function invalidateShiftCache() {
+  shiftCatalog = null;
+  shiftCatalogAt = 0;
+}
+
+async function loadShiftCatalog() {
+  if (shiftCatalog && Date.now() - shiftCatalogAt < SHIFT_CACHE_MS) {
+    return shiftCatalog;
+  }
+  await ensureOnsiteAttendanceSchema();
+  const { rows } = await pool.query(`SELECT ${SHIFT_SELECT} FROM shifts`);
+  const map = new Map();
+  for (const row of rows) {
+    const key = String(row.name || '')
+      .trim()
+      .toLowerCase();
+    if (key) map.set(key, serializeShift(row));
+  }
+  shiftCatalog = map;
+  shiftCatalogAt = Date.now();
+  return map;
+}
+
 function serializeShift(row) {
   return {
     id: row.id,
@@ -72,6 +99,7 @@ async function createShift(req, res) {
       `,
       [parsed.name, parsed.start_time, parsed.late_after, parsed.absent_after, req.user?.id ?? null]
     );
+    invalidateShiftCache();
     return res.status(201).json(serializeShift(rows[0]));
   } catch (err) {
     if (err.code === '23505') {
@@ -106,6 +134,7 @@ async function updateShift(req, res) {
       [id, parsed.name, parsed.start_time, parsed.late_after, parsed.absent_after]
     );
     if (!rows[0]) return res.status(404).json({ message: 'Shift not found.' });
+    invalidateShiftCache();
     return res.json(serializeShift(rows[0]));
   } catch (err) {
     if (err.code === '23505') {
@@ -127,6 +156,7 @@ async function deleteShift(req, res) {
       [id]
     );
     if (!rows[0]) return res.status(404).json({ message: 'Shift not found.' });
+    invalidateShiftCache();
     return res.json({
       message: `Shift “${rows[0].name}” deleted. Employees keep their current shift name until you change it.`,
       shift: rows[0],
@@ -141,14 +171,9 @@ async function findShiftName(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return null;
   try {
-    await ensureOnsiteAttendanceSchema();
-    const { rows } = await pool.query(
-      `
-        SELECT name FROM shifts WHERE lower(name) = lower($1) LIMIT 1
-      `,
-      [trimmed]
-    );
-    if (rows[0]?.name) return rows[0].name;
+    const map = await loadShiftCatalog();
+    const hit = map.get(trimmed.toLowerCase());
+    if (hit?.name) return hit.name;
   } catch (err) {
     if (err.code !== '42P01') throw err;
   }
@@ -156,13 +181,15 @@ async function findShiftName(value) {
 }
 
 async function getShiftByName(name) {
-  const catalog = await findShiftName(name);
-  if (!catalog) return null;
-  const { rows } = await pool.query(
-    `SELECT ${SHIFT_SELECT} FROM shifts WHERE lower(name) = lower($1) LIMIT 1`,
-    [catalog]
-  );
-  return rows[0] ? serializeShift(rows[0]) : null;
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return null;
+  try {
+    const map = await loadShiftCatalog();
+    return map.get(trimmed.toLowerCase()) || null;
+  } catch (err) {
+    if (err.code === '42P01') return null;
+    throw err;
+  }
 }
 
 module.exports = {
@@ -172,4 +199,6 @@ module.exports = {
   deleteShift,
   findShiftName,
   getShiftByName,
+  loadShiftCatalog,
+  invalidateShiftCache,
 };
