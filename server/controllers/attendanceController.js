@@ -25,6 +25,8 @@ const {
   saveCheckInSnapshot,
   streamCaptureImage,
 } = require('../utils/faceCheckCapture');
+const { notifyRemoteAttendanceOpened } = require('../utils/attendanceReviewEmail');
+const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -37,6 +39,7 @@ function pick(obj, name) {
 const writeAuditLog = pick(audit, 'writeauditlog');
 const loadAdminPermissionAccess = pick(permissionsMw, 'loadadminpermissionaccess');
 const isCeoRole = pick(permissionsMw, 'isceorole');
+const isManagerRole = pick(permissionsMw, 'ismanagerrole');
 const employeeMatchesScope = pick(employeeScope, 'employeematchesscope');
 const scopeWhereClause = pick(employeeScope, 'scopewhereclause');
 const normalizeScope = pick(employeeScope, 'normalizescope');
@@ -1528,7 +1531,7 @@ async function adminEmployeeDays(req, res) {
     const parts = zonedParts();
     const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
     const history = await monthHistory(target, month);
-    return res.json({
+    res.json({
       employee: {
         id: target.id,
         name: target.name,
@@ -1538,6 +1541,15 @@ async function adminEmployeeDays(req, res) {
       },
       ...history,
     });
+    if (
+      (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
+      normalizeEmploymentType(target.employment_type) === 'remote'
+    ) {
+      void notifyAfterResponse('attendance-review-email', target.id, () =>
+        notifyRemoteAttendanceOpened(target)
+      );
+    }
+    return;
   } catch (err) {
     console.error('adminEmployeeDays error:', err);
     return res.status(500).json({ message: 'Server error loading attendance history.' });

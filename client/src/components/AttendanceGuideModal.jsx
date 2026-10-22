@@ -25,46 +25,42 @@ export function markAttendanceGuideSeen(mode) {
 
 function remoteSteps(checksPerShift, flexibleHours) {
   const n = Number(checksPerShift) > 0 ? Number(checksPerShift) : flexibleHours ? 3 : 5;
-  if (flexibleHours) {
-    return [
-      {
-        title: 'Enroll your face once',
-        body: 'Allow the camera. Sit in good light, look into the circle, then tap Enroll face.',
-      },
-      {
+  const timing = flexibleHours
+    ? {
         title: `${n} checks, no fixed start time`,
         body: 'First check-in when you start. Then one random check during assigned hours. Check out when you finish.',
-      },
-      {
+      }
+    : {
+        title: `${n} checks each shift`,
+        body: 'The first check is at shift start. The others appear at random during your hours.',
+      };
+  const action = flexibleHours
+    ? {
         title: 'Tap Check in now, then Check out',
         body: 'When a check opens, tap the button. After check-out, your total time for the day is saved.',
-      },
-      {
-        title: 'Don’t miss the random check',
-        body: 'If a random ping is open, complete it before check-out. Sunday is a holiday.',
-      },
-    ];
-  }
+      }
+    : {
+        title: 'Tap Check in now',
+        body: 'When a check opens, tap the button. Blink or turn a little if asked, then hold still.',
+      };
   return [
     {
       title: 'Enroll your face once',
       body: 'Allow the camera. Sit in good light, look into the circle, then tap Enroll face.',
     },
+    timing,
+    action,
     {
-      title: `${n} checks each shift`,
-      body: 'The first check is at shift start. The others appear at random during your hours.',
+      title: 'Feasible time vs missed window',
+      body: 'You can only check in while a check is open (feasible time). After that window closes, check-in is not possible and the missed check is absent.',
     },
     {
-      title: 'Tap Check in now',
-      body: 'When a check opens, tap the button. Blink or turn a little if asked, then hold still.',
+      title: 'Not on time is absent',
+      body: 'If you do not check in on time, that check is marked absent.',
     },
     {
-      title: 'On time, late, or absent',
-      body: '0–15 minutes is on time. After 15 minutes is late. After 40 minutes is absent.',
-    },
-    {
-      title: 'Don’t miss a check',
-      body: 'You can only check in while a check is open. Sunday is a holiday. Turn on phone alerts in Settings.',
+      title: 'Miss a random check and you are absent',
+      body: 'If you miss any random availability check, it is counted as absent. Complete every open check. Sunday is a holiday.',
     },
   ];
 }
