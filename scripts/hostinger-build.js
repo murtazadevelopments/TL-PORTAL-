@@ -14,10 +14,11 @@ function run(label, cmd) {
 }
 
 try {
-  run('1/3 Install client deps', 'npm install --prefix client');
-  run('2/3 Build Vite client → client/dist', 'npm run build --prefix client');
-  run('3/3 Install server deps', 'npm install --prefix server');
-  console.log('\n=== Build finished OK (SPA at client/dist) ===');
+  run('1/4 Install client deps', 'npm install --prefix client');
+  run('2/4 Build Vite client → client/dist', 'npm run build --prefix client');
+  run('3/4 Copy SPA into server/public', 'node scripts/sync-client-dist.js');
+  run('4/4 Install server deps', 'npm install --prefix server');
+  console.log('\n=== Build finished OK (SPA at client/dist and server/public) ===');
 } catch (err) {
   console.error('\n=== Build FAILED ===');
   console.error(err.message);
