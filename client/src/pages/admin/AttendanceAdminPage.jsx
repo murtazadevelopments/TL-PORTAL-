@@ -4,6 +4,7 @@ import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import PhotoLightbox from '../../components/PhotoLightbox';
+import { FaceCheckShot } from './FaceCheckCapturesPage';
 import { useAuthUser } from '../../context/AuthUserContext';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import {
@@ -317,6 +318,7 @@ export default function AttendanceAdminPage() {
   const [togglingId, setTogglingId] = useState(null);
   const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
   const [togglingPictureId, setTogglingPictureId] = useState(null);
+  const [dayFaceChecks, setDayFaceChecks] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
@@ -1292,7 +1294,13 @@ export default function AttendanceAdminPage() {
       )}
 
       {history && (
-        <div className="modal-backdrop modal-backdrop-stack" onClick={() => setHistory(null)}>
+        <div
+          className="modal-backdrop modal-backdrop-stack"
+          onClick={() => {
+            setDayFaceChecks(null);
+            setHistory(null);
+          }}
+        >
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
             <h2>
               {history.employee?.name || 'Attendance'}
@@ -1327,6 +1335,25 @@ export default function AttendanceAdminPage() {
                   <li key={day.date} className={`attendance-day-detail ${day.status}`}>
                     <div className="attendance-day-detail-head">
                       <span className="attendance-day-date">{day.date}</span>
+                      {ceo ? (
+                        history.employee?.face_check_capture ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost attendance-time-edit"
+                            onClick={() =>
+                              setDayFaceChecks({
+                                date: day.date,
+                                name: history.employee?.name || '',
+                                captures: day.face_checks || [],
+                              })
+                            }
+                          >
+                            Face check
+                          </button>
+                        ) : (
+                          <span className="muted attendance-no-face">No face detection</span>
+                        )
+                      ) : null}
                       <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
                       {day.duration_label ? (
                         <span className="muted"> · {day.duration_label}</span>
@@ -1389,7 +1416,50 @@ export default function AttendanceAdminPage() {
               </ol>
             )}
             <div className="modal-actions">
-              <button type="button" className="btn btn-primary" onClick={() => setHistory(null)}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setDayFaceChecks(null);
+                  setHistory(null);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ceo && dayFaceChecks && (
+        <div
+          className="modal-backdrop modal-backdrop-stack"
+          onClick={() => setDayFaceChecks(null)}
+        >
+          <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
+            <h2>Face check — {dayFaceChecks.date}</h2>
+            <p className="muted">{dayFaceChecks.name || 'Remote employee'}</p>
+            {(dayFaceChecks.captures || []).length === 0 ? (
+              <p className="muted">No face check photos for this day.</p>
+            ) : (
+              <div className="face-check-grid">
+                {dayFaceChecks.captures.map((shot) => (
+                  <article key={shot.id} className="face-check-card">
+                    <FaceCheckShot
+                      captureId={shot.id}
+                      cacheKey={shot.captured_at || shot.id}
+                      name={dayFaceChecks.name}
+                      onOpen={setPhotoPreview}
+                    />
+                    <div className="face-check-meta">
+                      <span className={`badge ${shot.status || ''}`}>{shot.status || 'saved'}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" onClick={() => setDayFaceChecks(null)}>
                 Close
               </button>
             </div>

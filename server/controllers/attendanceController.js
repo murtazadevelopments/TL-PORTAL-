@@ -24,6 +24,7 @@ const {
   setUserFaceCheckCapture,
   saveCheckInSnapshot,
   streamCaptureImage,
+  listCapturesForUserMonth,
 } = require('../utils/faceCheckCapture');
 const { notifyRemoteAttendanceOpened } = require('../utils/attendanceReviewEmail');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
@@ -1525,6 +1526,14 @@ async function adminUpdateCheckTime(req, res) {
   }
 }
 
+async function attachDayFaceChecks(userId, monthKey, days) {
+  const byDate = await listCapturesForUserMonth(userId, monthKey);
+  return (days || []).map((day) => ({
+    ...day,
+    face_checks: byDate.get(day.date) || [],
+  }));
+}
+
 async function adminEmployeeDays(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1538,6 +1547,10 @@ async function adminEmployeeDays(req, res) {
     const parts = zonedParts();
     const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
     const history = await monthHistory(target, month);
+    const ceoView = isCeoRole(req.user?.role);
+    const days = ceoView
+      ? await attachDayFaceChecks(target.id, month, history.days || [])
+      : history.days || [];
     res.json({
       employee: {
         id: target.id,
@@ -1545,8 +1558,10 @@ async function adminEmployeeDays(req, res) {
         employee_id: target.employee_id,
         work_start_hour: workHoursFromUser(target).start,
         work_end_hour: workHoursFromUser(target).end,
+        ...(ceoView ? { face_check_capture: userFaceCheckCapture(target) } : {}),
       },
       ...history,
+      days,
     });
     if (
       (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&

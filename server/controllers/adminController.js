@@ -22,7 +22,10 @@ const {
 const {
   ensureBlockedColumn,
   RESIGNED_REASON,
+  TERMINATED_REASON,
   isResignedAccount,
+  isTerminatedAccount,
+  isClosedAccount,
 } = require('../utils/accountStatus');
 const { ensureUsersBranchNotEnumLocked } = require('../utils/usersBranchConstraint');
 const {
@@ -53,6 +56,7 @@ const {
 const { deliverOneMessage } = require('./messagesController');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
+const { findIdentityConflict } = require('../utils/identityUniqueness');
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 const LAST_JOB_STATUSES = new Set([
@@ -70,6 +74,7 @@ const LIST_COLUMNS = `
   department, designation, status, branch, shift, salary, date_of_joining,
   education, last_job_status, employment_type, staff_kind, profile_picture_url, created_at, is_active,
   failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
+  terminated_at, exit_remarks,
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
@@ -90,6 +95,7 @@ const DETAIL_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
+  terminated_at, exit_remarks,
   profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
@@ -747,6 +753,16 @@ async function createEmployee(req, res) {
     }
 
     const hours = normalizeWorkHours(body.work_start_hour, body.work_end_hour);
+    const identityConflict = await findIdentityConflict({
+      username,
+      email,
+      contactNumber,
+      cnicNumber: body.cnic_number,
+      employeeId,
+    });
+    if (identityConflict) {
+      return res.status(409).json({ message: identityConflict.message });
+    }
     if (employmentType === 'remote' && !directoryAccess(req).canEditRemote) {
       return res.status(403).json({
         message: 'You need Remote employees permission to add remote staff.',
@@ -851,7 +867,9 @@ async function createEmployee(req, res) {
         return res.status(409).json({ message: 'An account with this CNIC number already exists.' });
       }
       if (detail.includes('employee_id')) {
-        return res.status(409).json({ message: 'This employee ID is already in use.' });
+        return res.status(409).json({
+          message: 'This employee ID is already in use and cannot be reused.',
+        });
       }
       return res.status(409).json({ message: 'A user with these details already exists.' });
     }
@@ -950,17 +968,26 @@ async function updateEmployee(req, res) {
     next.work_start_hour = hours.start;
     next.work_end_hour = hours.end;
 
-    if (!['active', 'inactive', 'resigned'].includes(next.status)) {
-      return res.status(400).json({ message: 'Status must be "active", "inactive", or "resigned".' });
-    }
-    if (isResignedAccount(before) && next.status !== 'resigned') {
+    if (!['active', 'inactive', 'resigned', 'terminated'].includes(next.status)) {
       return res.status(400).json({
-        message: 'This employee resigned. Status cannot be changed, and they cannot sign in.',
+        message: 'Status must be "active", "inactive", "resigned", or "terminated".',
+      });
+    }
+    if (isClosedAccount(before) && next.status !== String(before.status || '').trim().toLowerCase()) {
+      return res.status(400).json({
+        message: isTerminatedAccount(before)
+          ? 'This employee was terminated. Status cannot be changed, and they cannot sign in.'
+          : 'This employee resigned. Status cannot be changed, and they cannot sign in.',
       });
     }
     if (next.status === 'resigned' && !isResignedAccount(before)) {
       return res.status(400).json({
         message: 'To set status to resigned, use Resign and enter the last day in office.',
+      });
+    }
+    if (next.status === 'terminated' && !isTerminatedAccount(before)) {
+      return res.status(400).json({
+        message: 'To set status to terminated, use Terminate and enter the last day in office.',
       });
     }
 
@@ -976,6 +1003,13 @@ async function updateEmployee(req, res) {
 
     if (!next.employee_id) {
       return res.status(400).json({ message: 'Employee ID is required.' });
+    }
+    const employeeIdConflict = await findIdentityConflict({
+      employeeId: next.employee_id,
+      excludeUserId: id,
+    });
+    if (employeeIdConflict) {
+      return res.status(409).json({ message: employeeIdConflict.message });
     }
 
     if (!next.employment_type) {
@@ -1074,7 +1108,9 @@ async function updateEmployee(req, res) {
     return;
   } catch (err) {
     if (err.code === '23505') {
-      return res.status(409).json({ message: 'Employee ID is already in use.' });
+      return res.status(409).json({
+        message: 'This employee ID is already in use and cannot be reused.',
+      });
     }
     if (err.code === '23514') {
       const constraint = String(err.constraint || err.message || '');
@@ -1352,7 +1388,7 @@ async function listLockedAccounts(req, res) {
         SELECT
           id, employee_id, username, name, email, role, status, department, branch,
           failed_login_attempts, locked_at, blocked_at, blocked_reason,
-          last_day_in_office, resigned_at,
+          last_day_in_office, resigned_at, terminated_at, exit_remarks,
           is_active, created_at
         FROM users
         WHERE locked_at IS NOT NULL OR blocked_at IS NOT NULL
@@ -1525,7 +1561,8 @@ async function unblockAccount(req, res) {
 
     const { rows: existingRows } = await pool.query(
       `
-        SELECT id, username, role, branch, department, is_active, blocked_at, blocked_reason, resigned_at
+        SELECT id, username, role, branch, department, is_active, blocked_at, blocked_reason,
+               resigned_at, terminated_at, status
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -1537,9 +1574,11 @@ async function unblockAccount(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
 
-    if (isResignedAccount(target)) {
+    if (isClosedAccount(target)) {
       return res.status(400).json({
-        message: 'This employee resigned. The account stays blocked and cannot be unblocked.',
+        message: isTerminatedAccount(target)
+          ? 'This employee was terminated. The account stays blocked and cannot be unblocked.'
+          : 'This employee resigned. The account stays blocked and cannot be unblocked.',
       });
     }
 
@@ -1608,28 +1647,46 @@ function parseLastDayInOffice(value) {
   return raw;
 }
 
+function parseExitRemarks(value) {
+  const remarks = String(value ?? '').trim();
+  if (!remarks) return { remarks: null };
+  if (remarks.length > 500) {
+    return { error: 'Remarks must be 500 characters or fewer.' };
+  }
+  return { remarks };
+}
+
 /**
- * PUT /api/admin/employees/:id/resign
- * Records last day in office, then blocks the ID with reason resigned.
+ * PUT /api/admin/employees/:id/resign | /terminate
+ * Records last day in office (and optional remarks), then blocks the ID.
  */
-async function markEmployeeResigned(req, res) {
+async function markEmployeeExit(req, res, kind) {
+  const isTerminate = kind === 'terminated';
+  const reason = isTerminate ? TERMINATED_REASON : RESIGNED_REASON;
+  const label = isTerminate ? 'terminated' : 'resigned';
   try {
     await ensureBlockedColumn();
     const { id } = req.params;
     const lastDay = parseLastDayInOffice(req.body?.last_day_in_office);
+    const remarksResult = parseExitRemarks(req.body?.remarks ?? req.body?.exit_remarks);
 
     if (!lastDay) {
       return res.status(400).json({ message: 'Last day in office is required (YYYY-MM-DD).' });
     }
+    if (remarksResult.error) {
+      return res.status(400).json({ message: remarksResult.error });
+    }
 
     if (String(id) === String(req.user.id)) {
-      return res.status(400).json({ message: 'You cannot mark your own account as resigned.' });
+      return res.status(400).json({
+        message: `You cannot mark your own account as ${label}.`,
+      });
     }
 
     const { rows: existingRows } = await pool.query(
       `
         SELECT id, username, name, role, branch, department, is_active,
-               blocked_at, blocked_reason, resigned_at, last_day_in_office
+               blocked_at, blocked_reason, resigned_at, terminated_at, last_day_in_office, status
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -1641,10 +1698,14 @@ async function markEmployeeResigned(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
     if (normalizeRoleName(target.role) === 'ceo') {
-      return res.status(403).json({ message: 'CEO accounts cannot be marked resigned.' });
+      return res.status(403).json({ message: `CEO accounts cannot be marked ${label}.` });
     }
-    if (isResignedAccount(target)) {
-      return res.status(400).json({ message: 'This employee has already resigned.' });
+    if (isClosedAccount(target)) {
+      return res.status(400).json({
+        message: isTerminatedAccount(target)
+          ? 'This employee has already been terminated.'
+          : 'This employee has already resigned.',
+      });
     }
 
     const scopes = await resolvePermissionScopes(req);
@@ -1661,47 +1722,64 @@ async function markEmployeeResigned(req, res) {
       `
         UPDATE users
         SET last_day_in_office = $2::date,
-            resigned_at = NOW(),
+            resigned_at = CASE WHEN $4 = 'resigned' THEN NOW() ELSE resigned_at END,
+            terminated_at = CASE WHEN $4 = 'terminated' THEN NOW() ELSE terminated_at END,
+            exit_remarks = $5,
             blocked_at = NOW(),
             blocked_reason = $3,
-            status = 'resigned',
+            status = $4,
             updated_at = NOW()
         WHERE id = $1
           AND LOWER(TRIM(COALESCE(role, ''))) <> 'ceo'
         RETURNING id, employee_id, username, name, email, role, status,
                   failed_login_attempts, locked_at, blocked_at, blocked_reason,
-                  last_day_in_office, resigned_at, is_active
+                  last_day_in_office, resigned_at, terminated_at, exit_remarks, is_active
       `,
-      [id, lastDay, RESIGNED_REASON]
+      [id, lastDay, reason, reason, remarksResult.remarks]
     );
+    if (!rows[0]) {
+      return res.status(409).json({ message: `Could not mark this employee ${label}.` });
+    }
 
     try {
       await writeAuditLog({
         actorId: req.user.id,
         actorUsername: req.user.username || null,
-        action: 'employee_resigned',
+        action: isTerminate ? 'employee_terminated' : 'employee_resigned',
         targetTable: 'users',
         targetId: rows[0].id,
-        reason: `Resigned ${rows[0].username}; last day in office ${lastDay}`,
+        reason: `${isTerminate ? 'Terminated' : 'Resigned'} ${rows[0].username}; last day in office ${lastDay}`,
       });
     } catch (auditErr) {
-      console.warn('employee_resigned audit failed:', auditErr.message || auditErr);
+      console.warn(`${isTerminate ? 'employee_terminated' : 'employee_resigned'} audit failed:`, auditErr.message || auditErr);
     }
 
     res.json({
-      message: 'Employee marked resigned. The ID is blocked and cannot sign in.',
+      message: isTerminate
+        ? 'Employee marked terminated. The ID is blocked and cannot sign in.'
+        : 'Employee marked resigned. The ID is blocked and cannot sign in.',
       user: rows[0],
     });
     queueCeoBranchManagerNotice(req, {
-      action: 'Marked employee resigned',
+      action: isTerminate ? 'Marked employee terminated' : 'Marked employee resigned',
       targetName: rows[0].name || rows[0].username,
       targetId: rows[0].id,
     });
     return;
   } catch (err) {
-    console.error('markEmployeeResigned error:', err);
-    return res.status(500).json({ message: 'Server error marking employee resigned.' });
+    console.error(`markEmployee${isTerminate ? 'Terminated' : 'Resigned'} error:`, err);
+    return res.status(500).json({
+      message: `Server error marking employee ${label}.`,
+    });
   }
+}
+
+async function markEmployeeResigned(req, res) {
+  return markEmployeeExit(req, res, 'resigned');
+}
+
+async function markEmployeeTerminated(req, res) {
+  return markEmployeeExit(req, res, 'terminated');
 }
 
 async function loadMessageSender(req) {
@@ -2164,6 +2242,7 @@ module.exports = {
   blockAccount,
   unblockAccount,
   markEmployeeResigned,
+  markEmployeeTerminated,
   sendProfileAlert,
   sendBulkProfileAlert,
   sendPhotoAlert,

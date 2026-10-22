@@ -520,6 +520,37 @@
   border: 1px solid rgba(255, 176, 90, 0.4);
 }
 
+.status-pill.terminated {
+  background: rgba(255, 90, 120, 0.16);
+  color: #ff9eb0;
+  border: 1px solid rgba(255, 90, 120, 0.4);
+}
+
+.exit-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.exit-remarks-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.exit-remarks-field textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(6, 12, 24, 0.65);
+  color: inherit;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+}
+
 .status-stack {
   display: flex;
   flex-wrap: wrap;

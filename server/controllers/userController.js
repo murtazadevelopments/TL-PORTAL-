@@ -24,6 +24,7 @@ const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 const { blockedLoginMessage } = require('../utils/accountStatus');
+const { findIdentityConflict } = require('../utils/identityUniqueness');
 const { managerPermissionKeys } = require('../constants/permissionsCatalog');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const {
@@ -143,7 +144,7 @@ async function getMe(req, res) {
     const accountStatus = String(rows[0].status || '')
       .trim()
       .toLowerCase();
-    if (accountStatus === 'resigned') {
+    if (accountStatus === 'resigned' || accountStatus === 'terminated') {
       return res.status(403).json(blockedLoginMessage(rows[0]));
     }
     const meRole = String(rows[0].role || '')
@@ -354,6 +355,16 @@ async function updateMe(req, res) {
 
     if (next.cnic_number) {
       next.cnic_number = String(next.cnic_number).trim();
+    }
+
+    const identityConflict = await findIdentityConflict({
+      email: next.email,
+      contactNumber: next.contact_number,
+      cnicNumber: next.cnic_number,
+      excludeUserId: req.user.id,
+    });
+    if (identityConflict) {
+      return res.status(409).json({ message: identityConflict.message });
     }
 
     const { rows } = await pool.query(

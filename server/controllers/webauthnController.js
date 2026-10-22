@@ -429,7 +429,7 @@ async function loginVerify(req, res) {
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
-    if (accountStatus === 'resigned') {
+    if (accountStatus === 'resigned' || accountStatus === 'terminated') {
       return res.status(403).json(blockedLoginMessage(user));
     }
     const role = String(user.role || '')

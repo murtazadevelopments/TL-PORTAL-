@@ -469,9 +469,17 @@
 .attendance-day-detail-head {
   display: flex;
   justify-content: space-between;
-  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
   margin-bottom: 0.45rem;
   text-transform: capitalize;
+}
+
+.attendance-no-face {
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-transform: none;
 }
 
 .attendance-check-list {

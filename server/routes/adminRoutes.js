@@ -17,6 +17,7 @@ const {
   blockAccount,
   unblockAccount,
   markEmployeeResigned,
+  markEmployeeTerminated,
   sendProfileAlert,
   sendBulkProfileAlert,
   sendPhotoAlert,
@@ -137,6 +138,12 @@ router.put(
   requireRole('admin'),
   requireCeoOrAnyPermission('employees:deactivate', 'employees:edit', 'hr:add_employee'),
   markEmployeeResigned
+);
+router.put(
+  '/employees/:id/terminate',
+  requireRole('admin'),
+  requireCeoOrAnyPermission('employees:deactivate', 'employees:edit', 'hr:add_employee'),
+  markEmployeeTerminated
 );
 
 // Teams / departments catalog

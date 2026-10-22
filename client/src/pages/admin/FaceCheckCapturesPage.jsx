@@ -32,7 +32,7 @@ function formatWhen(value) {
   }
 }
 
-function FaceCheckShot({ captureId, cacheKey, name, onOpen }) {
+export function FaceCheckShot({ captureId, cacheKey, name, onOpen }) {
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
 

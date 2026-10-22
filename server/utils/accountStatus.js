@@ -5,9 +5,11 @@ const ACCOUNT_CODES = {
   BLOCKED: 'ACCOUNT_BLOCKED',
   LOCKED: 'ACCOUNT_LOCKED',
   RESIGNED: 'ACCOUNT_RESIGNED',
+  TERMINATED: 'ACCOUNT_TERMINATED',
 };
 
 const RESIGNED_REASON = 'resigned';
+const TERMINATED_REASON = 'terminated';
 
 function isResignedAccount(row) {
   if (!row) return false;
@@ -16,7 +18,24 @@ function isResignedAccount(row) {
   return String(row.blocked_reason || '').trim().toLowerCase() === RESIGNED_REASON;
 }
 
+function isTerminatedAccount(row) {
+  if (!row) return false;
+  if (row.terminated_at) return true;
+  if (String(row.status || '').trim().toLowerCase() === TERMINATED_REASON) return true;
+  return String(row.blocked_reason || '').trim().toLowerCase() === TERMINATED_REASON;
+}
+
+function isClosedAccount(row) {
+  return isResignedAccount(row) || isTerminatedAccount(row);
+}
+
 function blockedLoginMessage(row) {
+  if (isTerminatedAccount(row)) {
+    return {
+      message: 'This account is closed because the employee was terminated.',
+      code: ACCOUNT_CODES.TERMINATED,
+    };
+  }
   if (isResignedAccount(row)) {
     return {
       message: 'This account is closed because the employee resigned.',
@@ -38,6 +57,16 @@ async function ensureBlockedColumn() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_day_in_office DATE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS exit_remarks TEXT;
+  `);
+  await pool.query(`
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check
+  `);
+  await pool.query(`
+    ALTER TABLE users
+      ADD CONSTRAINT users_status_check
+      CHECK (LOWER(TRIM(COALESCE(status::text, ''))) IN ('active', 'inactive', 'pending', 'resigned', 'terminated', ''))
   `);
   blockedColumnReady = true;
 }
@@ -58,7 +87,7 @@ function denialForAccount(row) {
       },
     };
   }
-  if (row.blocked_at || isResignedAccount(row)) {
+  if (row.blocked_at || isClosedAccount(row)) {
     return {
       status: 403,
       body: blockedLoginMessage(row),
@@ -82,7 +111,7 @@ async function loadAccountStatus(userId) {
   await ensureBlockedColumn();
   const { rows } = await pool.query(
     `
-      SELECT id, is_active, locked_at, blocked_at, blocked_reason, resigned_at, status
+      SELECT id, is_active, locked_at, blocked_at, blocked_reason, resigned_at, terminated_at, status
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -107,7 +136,10 @@ async function rejectIfAccountDisabled(userId, res) {
 module.exports = {
   ACCOUNT_CODES,
   RESIGNED_REASON,
+  TERMINATED_REASON,
   isResignedAccount,
+  isTerminatedAccount,
+  isClosedAccount,
   blockedLoginMessage,
   ensureBlockedColumn,
   denialForAccount,

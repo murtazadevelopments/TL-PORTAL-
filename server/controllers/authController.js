@@ -20,6 +20,7 @@ const {
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { blockedLoginMessage } = require('../utils/accountStatus');
+const { findIdentityConflict, preferOpenAccounts } = require('../utils/identityUniqueness');
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -74,32 +75,14 @@ function sendSignupNotifications(user) {
   });
 }
 
-function digitsOnly(value) {
-  return String(value || '').replace(/\D/g, '');
-}
-
 async function signupIdentityTaken({ username, email, contactNumber, cnicNumber }) {
-  const contactDigits = digitsOnly(contactNumber);
-  const cnicDigits = digitsOnly(cnicNumber);
-  const { rows } = await pool.query(
-    `
-      SELECT 1
-      FROM users
-      WHERE LOWER(TRIM(username)) = $1
-         OR LOWER(TRIM(COALESCE(email, ''))) = $2
-         OR (
-           $3 <> ''
-           AND regexp_replace(COALESCE(contact_number, ''), '[^0-9]', '', 'g') = $3
-         )
-         OR (
-           $4 <> ''
-           AND regexp_replace(COALESCE(cnic_number, ''), '[^0-9]', '', 'g') = $4
-         )
-      LIMIT 1
-    `,
-    [username, email, contactDigits, cnicDigits]
-  );
-  return rows.length > 0;
+  const conflict = await findIdentityConflict({
+    username,
+    email,
+    contactNumber,
+    cnicNumber,
+  });
+  return Boolean(conflict);
 }
 
 /**
@@ -363,7 +346,7 @@ async function login(req, res) {
     const accountStatus = String(user.status || '')
       .trim()
       .toLowerCase();
-    if (accountStatus === 'resigned') {
+    if (accountStatus === 'resigned' || accountStatus === 'terminated') {
       return res.status(403).json(blockedLoginMessage(user));
     }
     const role = String(user.role || '')
@@ -466,7 +449,7 @@ async function forgotUsername(req, res) {
 
     const { rows } = await pool.query(
       `
-        SELECT id, name, username, email, is_active
+        SELECT id, name, username, email, is_active, status, resigned_at, terminated_at, blocked_reason
         FROM users
         WHERE lower(email) = $1
           AND NULLIF(TRIM(username), '') IS NOT NULL
@@ -475,11 +458,14 @@ async function forgotUsername(req, res) {
       [email]
     );
 
-    if (rows.length) {
+    const reminderRows = preferOpenAccounts(rows);
+    if (reminderRows.length) {
       console.log(
-        `[forgot-username] email=${email} matches=${rows.length} usernames=${rows.map((r) => r.username).join(',')}`
+        `[forgot-username] email=${email} matches=${reminderRows.length} usernames=${reminderRows.map((r) => r.username).join(',')}`
       );
-      await notifyAfterResponse('forgot-username', rows[0].id, () => notifyUsernameReminder(rows));
+      await notifyAfterResponse('forgot-username', reminderRows[0].id, () =>
+        notifyUsernameReminder(reminderRows)
+      );
       return res.json(generic);
     }
 
@@ -509,7 +495,8 @@ async function forgotPassword(req, res) {
 
     const { rows } = await pool.query(
       `
-        SELECT id, name, username, email, is_active, blocked_at, role
+        SELECT id, name, username, email, is_active, blocked_at, role,
+               status, resigned_at, terminated_at, blocked_reason
         FROM users
         WHERE lower(trim(email)) = $1
            OR lower(trim(username)) = $1
@@ -521,7 +508,7 @@ async function forgotPassword(req, res) {
     const usernameMatch = rows.filter(
       (row) => String(row.username || '').trim().toLowerCase() === email
     );
-    const candidates = (usernameMatch.length ? usernameMatch : rows).filter(
+    const candidates = preferOpenAccounts(usernameMatch.length ? usernameMatch : rows).filter(
       (row) => !row.blocked_at
     );
 

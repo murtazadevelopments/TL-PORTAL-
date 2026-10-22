@@ -119,7 +119,7 @@ function lowerFormFromRow(row) {
 
 function parseEmployeeStatusTab(value) {
   const s = String(value || '');
-  if (s === 'pending' || s === 'active' || s === 'locked' || s === 'resigned') return s;
+  if (s === 'pending' || s === 'active' || s === 'locked' || s === 'resigned' || s === 'terminated') return s;
   if (s === 'complete' || s === 'incomplete') return s;
   if (s === 'lower-staff' || s === 'subordinate-staff') return 'subordinate-staff';
   return 'all';
@@ -271,6 +271,7 @@ function statusClass(status) {
   if (status === 'active') return 'active';
   if (status === 'inactive') return 'inactive';
   if (status === 'resigned') return 'resigned';
+  if (status === 'terminated') return 'terminated';
   return 'unset';
 }
 
@@ -289,8 +290,19 @@ function isResignedAccount(row) {
   return String(row.blocked_reason || '').trim().toLowerCase() === 'resigned';
 }
 
+function isTerminatedAccount(row) {
+  if (!row) return false;
+  if (row.terminated_at) return true;
+  if (String(row.status || '').trim().toLowerCase() === 'terminated') return true;
+  return String(row.blocked_reason || '').trim().toLowerCase() === 'terminated';
+}
+
+function isClosedAccount(row) {
+  return isResignedAccount(row) || isTerminatedAccount(row);
+}
+
 function isSignInDisabled(row) {
-  return isAccountLocked(row) || isAccountBlocked(row);
+  return isAccountLocked(row) || isAccountBlocked(row) || isClosedAccount(row);
 }
 
 function officeDateValue(value) {
@@ -418,12 +430,13 @@ function OfficeDateSelect({ id, label, value, onChange, disabled = false }) {
   );
 }
 
-const EMPTY_RESIGN = { row: null, lastDay: '', saving: false, error: '' };
+const EMPTY_EXIT = { row: null, kind: 'resign', lastDay: '', remarks: '', saving: false, error: '' };
 
 function employmentStatusLabel(status) {
   if (status === 'active') return 'active';
   if (status === 'inactive') return 'pending';
   if (status === 'resigned') return 'resigned';
+  if (status === 'terminated') return 'terminated';
   return status || 'unset';
 }
 
@@ -627,7 +640,7 @@ function EmployeesPage() {
   const [listNotice, setListNotice] = useState('');
   const [transfer, setTransfer] = useState(EMPTY_TRANSFER);
   const [transferTick, setTransferTick] = useState(0);
-  const [resign, setResign] = useState(EMPTY_RESIGN);
+  const [exitModal, setExitModal] = useState(EMPTY_EXIT);
   const [photoAlertingId, setPhotoAlertingId] = useState(null);
   const [photoConfirm, setPhotoConfirm] = useState(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1097,8 +1110,12 @@ function EmployeesPage() {
   async function handleUnblockAccount(userId) {
     if (!canDeactivateEmployees || !userId) return;
     const target = employees.find((e) => String(e.id) === String(userId)) || detail;
-    if (isResignedAccount(target)) {
-      setSaveError('This employee resigned. The account stays blocked.');
+    if (isClosedAccount(target)) {
+      setSaveError(
+        isTerminatedAccount(target)
+          ? 'This employee was terminated. The account stays blocked.'
+          : 'This employee resigned. The account stays blocked.'
+      );
       return;
     }
     setBlockingId(userId);
@@ -1114,59 +1131,82 @@ function EmployeesPage() {
     }
   }
 
-  function openResign(row, event) {
+  function openExit(row, kind, event) {
     event?.stopPropagation?.();
     if (!row?.id) return;
     if (!(canDeactivateEmployees || canEditEmployees)) {
-      setSaveError('You do not have permission to mark an employee resigned.');
+      setSaveError(
+        kind === 'terminate'
+          ? 'You do not have permission to terminate an employee.'
+          : 'You do not have permission to mark an employee resigned.'
+      );
       return;
     }
-    if (isResignedAccount(row)) return;
+    if (isClosedAccount(row)) return;
     if (String(row.role || '').toLowerCase() === 'ceo') return;
     if (String(row.id) === String(currentUserId)) return;
-    setResign({
-      ...EMPTY_RESIGN,
+    setExitModal({
+      ...EMPTY_EXIT,
       row,
+      kind: kind === 'terminate' ? 'terminate' : 'resign',
       lastDay: todayISODate(),
     });
   }
 
-  function closeResign() {
-    if (resign.saving) return;
-    setResign(EMPTY_RESIGN);
+  function closeExit() {
+    if (exitModal.saving) return;
+    setExitModal(EMPTY_EXIT);
   }
 
-  async function submitResign() {
-    if (!resign.row?.id || !(canDeactivateEmployees || canEditEmployees)) return;
-    const lastDay = officeDateValue(resign.lastDay);
+  async function submitExit() {
+    if (!exitModal.row?.id || !(canDeactivateEmployees || canEditEmployees)) return;
+    const lastDay = officeDateValue(exitModal.lastDay);
     if (!lastDay) {
-      setResign((prev) => ({ ...prev, error: 'Last day in office is required.' }));
+      setExitModal((prev) => ({ ...prev, error: 'Last day in office is required.' }));
       return;
     }
-    setResign((prev) => ({ ...prev, saving: true, error: '' }));
+    const remarks = String(exitModal.remarks || '').trim();
+    if (remarks.length > 500) {
+      setExitModal((prev) => ({ ...prev, error: 'Remarks must be 500 characters or fewer.' }));
+      return;
+    }
+    const isTerminate = exitModal.kind === 'terminate';
+    const status = isTerminate ? 'terminated' : 'resigned';
+    setExitModal((prev) => ({ ...prev, saving: true, error: '' }));
     setSaveError('');
     try {
-      const { data } = await api.put(`/api/admin/employees/${resign.row.id}/resign`, {
-        last_day_in_office: lastDay,
-      });
+      const { data } = await api.put(
+        `/api/admin/employees/${exitModal.row.id}/${isTerminate ? 'terminate' : 'resign'}`,
+        {
+          last_day_in_office: lastDay,
+          remarks,
+        }
+      );
       const user = data?.user || {};
-      await applyAccountPatch(resign.row.id, {
-        status: user.status || 'resigned',
+      await applyAccountPatch(exitModal.row.id, {
+        status: user.status || status,
         blocked_at: user.blocked_at || new Date().toISOString(),
-        blocked_reason: user.blocked_reason || 'resigned',
+        blocked_reason: user.blocked_reason || status,
         last_day_in_office: user.last_day_in_office || lastDay,
-        resigned_at: user.resigned_at || new Date().toISOString(),
+        resigned_at: user.resigned_at || (isTerminate ? null : new Date().toISOString()),
+        terminated_at: user.terminated_at || (isTerminate ? new Date().toISOString() : null),
+        exit_remarks: user.exit_remarks ?? (remarks || null),
       });
-      setEditForm((prev) => ({ ...prev, status: 'resigned' }));
-      setResign(EMPTY_RESIGN);
+      setEditForm((prev) => ({ ...prev, status }));
+      setExitModal(EMPTY_EXIT);
       setSaveSuccess(
-        data?.message || 'Employee marked resigned. The ID is blocked and cannot sign in.'
+        data?.message ||
+          (isTerminate
+            ? 'Employee marked terminated. The ID is blocked and cannot sign in.'
+            : 'Employee marked resigned. The ID is blocked and cannot sign in.')
       );
     } catch (err) {
-      setResign((prev) => ({
+      setExitModal((prev) => ({
         ...prev,
         saving: false,
-        error: err.response?.data?.message || 'Failed to mark employee resigned.',
+        error:
+          err.response?.data?.message ||
+          (isTerminate ? 'Failed to terminate employee.' : 'Failed to mark employee resigned.'),
       }));
     }
   }
@@ -1184,16 +1224,21 @@ function EmployeesPage() {
     const total = portalEmployees.length;
     const active = portalEmployees.filter((e) => e.status === 'active').length;
     const inactive = portalEmployees.filter(
-      (e) => e.status !== 'active' && e.status !== 'resigned' && !isResignedAccount(e)
+      (e) =>
+        e.status !== 'active' &&
+        e.status !== 'resigned' &&
+        e.status !== 'terminated' &&
+        !isClosedAccount(e)
     ).length;
     const pendingId = portalEmployees.filter((e) => isBlank(e.employee_id)).length;
     const locked = portalEmployees.filter(
-      (e) => isSignInDisabled(e) && !isResignedAccount(e)
+      (e) => isSignInDisabled(e) && !isClosedAccount(e)
     ).length;
     const resigned = portalEmployees.filter((e) => isResignedAccount(e)).length;
+    const terminated = portalEmployees.filter((e) => isTerminatedAccount(e)).length;
     const incomplete = portalEmployees.filter((e) => isIncompleteProfile(e)).length;
     const complete = portalEmployees.filter((e) => isCompleteProfile(e)).length;
-    return { total, active, inactive, pendingId, locked, resigned, complete, incomplete };
+    return { total, active, inactive, pendingId, locked, resigned, terminated, complete, incomplete };
   }, [portalEmployees]);
 
   const departmentOptions = useMemo(() => {
@@ -1233,15 +1278,29 @@ function EmployeesPage() {
   const tabCounts = useMemo(() => {
     const active = portalEmployees.filter((e) => e.status === 'active').length;
     const pending = portalEmployees.filter(
-      (e) => e.status !== 'active' && e.status !== 'resigned' && !isResignedAccount(e)
+      (e) =>
+        e.status !== 'active' &&
+        e.status !== 'resigned' &&
+        e.status !== 'terminated' &&
+        !isClosedAccount(e)
     ).length;
     const locked = portalEmployees.filter(
-      (e) => isSignInDisabled(e) && !isResignedAccount(e)
+      (e) => isSignInDisabled(e) && !isClosedAccount(e)
     ).length;
     const resigned = portalEmployees.filter((e) => isResignedAccount(e)).length;
+    const terminated = portalEmployees.filter((e) => isTerminatedAccount(e)).length;
     const incomplete = portalEmployees.filter((e) => isIncompleteProfile(e)).length;
     const complete = portalEmployees.filter((e) => isCompleteProfile(e)).length;
-    return { active, pending, locked, resigned, complete, incomplete, lower: lowerStaff.length };
+    return {
+      active,
+      pending,
+      locked,
+      resigned,
+      terminated,
+      complete,
+      incomplete,
+      lower: lowerStaff.length,
+    };
   }, [portalEmployees, lowerStaff]);
 
   const bulkAlertEligibleCount = useMemo(
@@ -1271,13 +1330,17 @@ function EmployeesPage() {
       if (statusTab === 'active' && e.status !== 'active') return false;
       if (
         statusTab === 'pending' &&
-        (e.status === 'active' || e.status === 'resigned' || isResignedAccount(e))
+        (e.status === 'active' ||
+          e.status === 'resigned' ||
+          e.status === 'terminated' ||
+          isClosedAccount(e))
       ) {
         return false;
       }
       if (statusTab === 'inactive' && e.status !== 'inactive') return false;
-      if (statusTab === 'locked' && (!isSignInDisabled(e) || isResignedAccount(e))) return false;
+      if (statusTab === 'locked' && (!isSignInDisabled(e) || isClosedAccount(e))) return false;
       if (statusTab === 'resigned' && !isResignedAccount(e)) return false;
+      if (statusTab === 'terminated' && !isTerminatedAccount(e)) return false;
       if (statusTab === 'complete' && !isCompleteProfile(e)) return false;
       if (
         statusTab === 'incomplete' &&
@@ -1289,6 +1352,7 @@ function EmployeesPage() {
         statusTab !== 'complete' &&
         statusTab !== 'incomplete' &&
         statusTab !== 'resigned' &&
+        statusTab !== 'terminated' &&
         filters.status !== 'all' &&
         e.status !== filters.status
       ) {
@@ -1412,11 +1476,27 @@ function EmployeesPage() {
         setEditForm((prev) => ({ ...prev, status: 'resigned' }));
         return;
       }
-      openResign(detail);
+      openExit(detail, 'resign');
       return;
     }
-    if (name === 'status' && editForm.status === 'resigned' && value !== 'resigned') {
-      setSaveError('This employee resigned. Status cannot be changed.');
+    if (name === 'status' && value === 'terminated') {
+      if (isTerminatedAccount(detail) || editForm.status === 'terminated') {
+        setEditForm((prev) => ({ ...prev, status: 'terminated' }));
+        return;
+      }
+      openExit(detail, 'terminate');
+      return;
+    }
+    if (
+      name === 'status' &&
+      (editForm.status === 'resigned' || editForm.status === 'terminated') &&
+      value !== editForm.status
+    ) {
+      setSaveError(
+        editForm.status === 'terminated'
+          ? 'This employee was terminated. Status cannot be changed.'
+          : 'This employee resigned. Status cannot be changed.'
+      );
       return;
     }
     setEditForm((prev) => ({ ...prev, [name]: value }));
@@ -1971,6 +2051,16 @@ function EmployeesPage() {
           >
             Resigned <span className="tab-badge">{tabCounts.resigned}</span>
           </button>
+          <button
+            type="button"
+            className={`status-tab ${statusTab === 'terminated' ? 'active' : ''}`}
+            onClick={() => {
+              setStatusTab('terminated');
+              setSearchParams({ status: 'terminated' });
+            }}
+          >
+            Terminated <span className="tab-badge">{tabCounts.terminated}</span>
+          </button>
           {canAddEmployees && (
             <button
               type="button"
@@ -2006,6 +2096,7 @@ function EmployeesPage() {
             <option value="active">Active</option>
             <option value="inactive">Inactive / Pending</option>
             <option value="resigned">Resigned</option>
+            <option value="terminated">Terminated</option>
           </select>
 
           <select
@@ -2352,6 +2443,8 @@ function EmployeesPage() {
                     ? 'No incomplete profiles.'
                     : statusTab === 'resigned'
                       ? 'No resigned employees.'
+                    : statusTab === 'terminated'
+                      ? 'No terminated employees.'
                 : employees.length === 0
                   ? 'No employees found yet.'
                   : 'No employees match your search or filters.'}
@@ -2452,7 +2545,7 @@ function EmployeesPage() {
                   <th>Status</th>
                   {statusTab === 'incomplete' && <th>Alerts</th>}
                   {canEditEmployees && <th>Transfer</th>}
-                  {canDeactivateEmployees && <th>Resign</th>}
+                  {canDeactivateEmployees && <th>Exit</th>}
                   {canSendMessages && <th>Message</th>}
                 </tr>
               </thead>
@@ -2570,7 +2663,18 @@ function EmployeesPage() {
                           <span className={`status-pill ${statusClass(row.status)}`}>
                             {employmentStatusLabel(row.status)}
                           </span>
-                          {isResignedAccount(row) ? (
+                          {isTerminatedAccount(row) ? (
+                            <span
+                              className="status-pill terminated"
+                              title={
+                                formatOfficeDate(row.last_day_in_office)
+                                  ? `Last day in office ${formatOfficeDate(row.last_day_in_office)}`
+                                  : 'Terminated — ID blocked'
+                              }
+                            >
+                              terminated
+                            </span>
+                          ) : isResignedAccount(row) ? (
                             <span
                               className="status-pill resigned"
                               title={
@@ -2634,7 +2738,7 @@ function EmployeesPage() {
                         )}
                         {canDeactivateEmployees &&
                           isAccountBlocked(row) &&
-                          !isResignedAccount(row) &&
+                          !isClosedAccount(row) &&
                           String(row.id) !== String(currentUserId) && (
                           <button
                             type="button"
@@ -2653,7 +2757,7 @@ function EmployeesPage() {
                             {blockingId === row.id ? '…' : 'Unblock'}
                           </button>
                         )}
-                        {isResignedAccount(row) && formatOfficeDate(row.last_day_in_office) && (
+                        {isClosedAccount(row) && formatOfficeDate(row.last_day_in_office) && (
                           <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.78rem' }}>
                             Last day {formatOfficeDate(row.last_day_in_office)}
                           </p>
@@ -2673,7 +2777,7 @@ function EmployeesPage() {
                       )}
                       {canEditEmployees && (
                         <td>
-                          {canEditEmploymentType(row.employment_type) && !isResignedAccount(row) ? (
+                          {canEditEmploymentType(row.employment_type) && !isClosedAccount(row) ? (
                             <button
                               type="button"
                               className="btn btn-ghost"
@@ -2689,20 +2793,32 @@ function EmployeesPage() {
                       )}
                       {canDeactivateEmployees && (
                         <td>
-                          {isResignedAccount(row) ? (
+                          {isTerminatedAccount(row) ? (
+                            <span className="muted-cell">Terminated</span>
+                          ) : isResignedAccount(row) ? (
                             <span className="muted-cell">Resigned</span>
                           ) : String(row.role || '').toLowerCase() === 'ceo' ||
                             String(row.id) === String(currentUserId) ? (
                             <span className="muted-cell">—</span>
                           ) : (
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              title={`Mark ${fullName(row)} resigned`}
-                              onClick={(e) => openResign(row, e)}
-                            >
-                              Resign
-                            </button>
+                            <div className="exit-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                title={`Mark ${fullName(row)} resigned`}
+                                onClick={(e) => openExit(row, 'resign', e)}
+                              >
+                                Resign
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                title={`Terminate ${fullName(row)}`}
+                                onClick={(e) => openExit(row, 'terminate', e)}
+                              >
+                                Terminate
+                              </button>
+                            </div>
                           )}
                         </td>
                       )}
@@ -3012,7 +3128,9 @@ function EmployeesPage() {
                       <span className={`status-pill ${statusClass(detail.status)}`}>
                         {employmentStatusLabel(detail.status)}
                       </span>
-                      {isResignedAccount(detail) ? (
+                      {isTerminatedAccount(detail) ? (
+                        <span className="status-pill terminated">terminated</span>
+                      ) : isResignedAccount(detail) ? (
                         <span className="status-pill resigned">resigned</span>
                       ) : isAccountBlocked(detail) ? (
                         <span className="status-pill locked">blocked</span>
@@ -3032,6 +3150,15 @@ function EmployeesPage() {
                         <span className="status-pill active">login ok</span>
                       )}
                     </div>
+                    {isTerminatedAccount(detail) && (
+                      <p className="muted" style={{ marginTop: '0.55rem', fontSize: '0.85rem' }}>
+                        Terminated
+                        {formatOfficeDate(detail.last_day_in_office)
+                          ? ` · last day in office ${formatOfficeDate(detail.last_day_in_office)}`
+                          : ''}
+                        . This ID is blocked and cannot sign in.
+                      </p>
+                    )}
                     {isResignedAccount(detail) && (
                       <p className="muted" style={{ marginTop: '0.55rem', fontSize: '0.85rem' }}>
                         Resigned
@@ -3041,7 +3168,12 @@ function EmployeesPage() {
                         . This ID is blocked and cannot sign in.
                       </p>
                     )}
-                    {isAccountBlocked(detail) && !isResignedAccount(detail) && (
+                    {detail.exit_remarks && isClosedAccount(detail) && (
+                      <p className="muted" style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}>
+                        Remarks: {detail.exit_remarks}
+                      </p>
+                    )}
+                    {isAccountBlocked(detail) && !isClosedAccount(detail) && (
                       <div
                         style={{
                           marginTop: '0.55rem',
@@ -3174,6 +3306,12 @@ function EmployeesPage() {
                     </DetailFact>
                     <DetailFact label="Resigned at">
                       {detail.resigned_at ? formatDateTime(detail.resigned_at) : ''}
+                    </DetailFact>
+                    <DetailFact label="Terminated at">
+                      {detail.terminated_at ? formatDateTime(detail.terminated_at) : ''}
+                    </DetailFact>
+                    <DetailFact label="Exit remarks">
+                      {detail.exit_remarks || ''}
                     </DetailFact>
                     <DetailFact label="Account created">
                       {detail.date_joined
@@ -3397,6 +3535,7 @@ function EmployeesPage() {
                       <option value="active">Active</option>
                       <option value="inactive">Inactive / Pending Approval</option>
                       <option value="resigned">Resigned</option>
+                      <option value="terminated">Terminated</option>
                     </select>
                     {fieldErrors.status && (
                       <span className="field-error">{fieldErrors.status}</span>
@@ -3697,7 +3836,7 @@ function EmployeesPage() {
                     )}
                     {canDeactivateEmployees &&
                       isAccountBlocked(detail) &&
-                      !isResignedAccount(detail) &&
+                      !isClosedAccount(detail) &&
                       String(detail.id) !== String(currentUserId) && (
                       <button
                         type="button"
@@ -3710,10 +3849,9 @@ function EmployeesPage() {
                     )}
                     {canDeactivateEmployees &&
                       !isAccountBlocked(detail) &&
-                      !isResignedAccount(detail) &&
+                      !isClosedAccount(detail) &&
                       String(detail.role || '').toLowerCase() !== 'ceo' &&
                       String(detail.id) !== String(currentUserId) && (
-                      <>
                       <button
                         type="button"
                         className="btn btn-ghost"
@@ -3722,13 +3860,27 @@ function EmployeesPage() {
                       >
                         {blockingId === detail.id ? 'Blocking…' : 'Block'}
                       </button>
+                    )}
+                    {canDeactivateEmployees &&
+                      !isClosedAccount(detail) &&
+                      String(detail.role || '').toLowerCase() !== 'ceo' &&
+                      String(detail.id) !== String(currentUserId) && (
+                      <>
                       <button
                         type="button"
                         className="btn btn-ghost"
                         disabled={saving || deactivating}
-                        onClick={() => openResign(detail)}
+                        onClick={() => openExit(detail, 'resign')}
                       >
                         Resign
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        disabled={saving || deactivating}
+                        onClick={() => openExit(detail, 'terminate')}
+                      >
+                        Terminate
                       </button>
                       </>
                     )}
@@ -3897,45 +4049,74 @@ function EmployeesPage() {
         </div>
       )}
 
-      {resign.row && (
-        <div className="modal-backdrop modal-backdrop-stack" onClick={closeResign}>
+      {exitModal.row && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={closeExit}>
           <form
             className="modal-panel modal-panel-center transfer-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="resign-title"
+            aria-labelledby="exit-title"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();
-              submitResign();
+              submitExit();
             }}
           >
             <div className="modal-header">
               <div>
-                <h2 id="resign-title">Mark {fullName(resign.row)} resigned</h2>
+                <h2 id="exit-title">
+                  {exitModal.kind === 'terminate'
+                    ? `Terminate ${fullName(exitModal.row)}`
+                    : `Mark ${fullName(exitModal.row)} resigned`}
+                </h2>
                 <p className="muted" style={{ margin: 0 }}>
-                  Enter their last day in office. After that this ID is blocked with reason
-                  resigned and they cannot sign in.
+                  {exitModal.kind === 'terminate'
+                    ? 'Enter their last day in office. After that this ID is blocked with reason terminated and they cannot sign in. Remarks are optional.'
+                    : 'Enter their last day in office. After that this ID is blocked with reason resigned and they cannot sign in. Remarks are optional.'}
                 </p>
               </div>
-              <button type="button" className="icon-btn" onClick={closeResign} aria-label="Close">
+              <button type="button" className="icon-btn" onClick={closeExit} aria-label="Close">
                 ×
               </button>
             </div>
             <OfficeDateSelect
-              id="resign-last-day"
+              id="exit-last-day"
               label="Last day in office"
-              value={resign.lastDay}
-              disabled={resign.saving}
-              onChange={(lastDay) => setResign((prev) => ({ ...prev, lastDay, error: '' }))}
+              value={exitModal.lastDay}
+              disabled={exitModal.saving}
+              onChange={(lastDay) => setExitModal((prev) => ({ ...prev, lastDay, error: '' }))}
             />
-            {resign.error && <p className="error">{resign.error}</p>}
+            <label className="exit-remarks-field">
+              Remarks (optional)
+              <textarea
+                rows={4}
+                maxLength={500}
+                value={exitModal.remarks}
+                disabled={exitModal.saving}
+                placeholder="Add a note if needed"
+                onChange={(e) =>
+                  setExitModal((prev) => ({ ...prev, remarks: e.target.value, error: '' }))
+                }
+              />
+              <span className="muted" style={{ fontSize: '0.78rem' }}>
+                {String(exitModal.remarks || '').length}/500
+              </span>
+            </label>
+            {exitModal.error && <p className="error">{exitModal.error}</p>}
             <div className="modal-actions">
-              <button type="button" className="btn btn-ghost" onClick={closeResign} disabled={resign.saving}>
+              <button type="button" className="btn btn-ghost" onClick={closeExit} disabled={exitModal.saving}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={resign.saving || !resign.lastDay}>
-                {resign.saving ? 'Saving…' : 'Confirm resign and block ID'}
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={exitModal.saving || !exitModal.lastDay}
+              >
+                {exitModal.saving
+                  ? 'Saving…'
+                  : exitModal.kind === 'terminate'
+                    ? 'Confirm terminate and block ID'
+                    : 'Confirm resign and block ID'}
               </button>
             </div>
           </form>

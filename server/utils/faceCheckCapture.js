@@ -141,6 +141,44 @@ async function streamCaptureImage(row, res) {
   return true;
 }
 
+async function listCapturesForUserMonth(userId, monthKey) {
+  await ensureFaceCheckCapture();
+  const month = String(monthKey || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(month) || !userId) return new Map();
+  const { rows } = await pool.query(
+    `
+      SELECT id, hour_key, status, captured_at
+      FROM face_check_captures
+      WHERE user_id = $1
+        AND (
+          hour_key LIKE $2
+          OR to_char(captured_at AT TIME ZONE 'Asia/Karachi', 'YYYY-MM') = $3
+        )
+      ORDER BY captured_at ASC
+    `,
+    [userId, `${month}-%`, month]
+  );
+  const byDate = new Map();
+  for (const row of rows) {
+    const fromHour = String(row.hour_key || '').slice(0, 10);
+    const dateKey = /^\d{4}-\d{2}-\d{2}$/.test(fromHour)
+      ? fromHour
+      : new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Karachi',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date(row.captured_at));
+    if (!byDate.has(dateKey)) byDate.set(dateKey, []);
+    byDate.get(dateKey).push({
+      id: row.id,
+      status: row.status,
+      captured_at: row.captured_at,
+    });
+  }
+  return byDate;
+}
+
 async function deleteAllFaceCheckCaptures() {
   await ensureFaceCheckCapture();
   const { rows } = await pool.query(`SELECT image_path FROM face_check_captures`);
@@ -158,5 +196,6 @@ module.exports = {
   saveCheckInSnapshot,
   captureFilePath,
   streamCaptureImage,
+  listCapturesForUserMonth,
   deleteAllFaceCheckCaptures,
 };
