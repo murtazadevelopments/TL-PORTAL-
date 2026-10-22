@@ -9,6 +9,12 @@
   backdrop-filter: blur(10px);
 }
 
+.portal-alert-modal {
+  align-items: start;
+  justify-items: center;
+  z-index: 145;
+}
+
 .profile-lock-card {
   width: min(520px, 100%);
   padding: 1.35rem 1.4rem 1.25rem;

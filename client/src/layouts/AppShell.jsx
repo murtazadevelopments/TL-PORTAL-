@@ -4,11 +4,18 @@ import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
 import { isCeo, isTeamLeader } from '../utils/permissions';
-import { missingEmployeePortalFields, isProfileIncompleteLocked, profileLockHomePath } from '../utils/profileCompleteness';
+import {
+  missingEmployeePortalFields,
+  isProfileIncompleteLocked,
+  profileLockHomePath,
+  hasPendingPortalAlert,
+  portalAlertSeenKey,
+} from '../utils/profileCompleteness';
 import api from '../api/client';
 import { enablePushNotificationsSafe } from '../utils/pushNotifications';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
+import PortalAlertModal from '../components/PortalAlertModal';
 import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
@@ -23,6 +30,7 @@ function ShellInner() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
+  const [ackPortalAlert, setAckPortalAlert] = useState(false);
   const [ackProfileLock, setAckProfileLock] = useState(false);
   const [ackBirthday, setAckBirthday] = useState(false);
   const [ackExam, setAckExam] = useState(false);
@@ -56,9 +64,19 @@ function ShellInner() {
     setDrawerOpen(false);
   }, [location.pathname, location.search]);
 
+  const portalAlertKey = portalAlertSeenKey(user);
+
   useEffect(() => {
     setDismissProfileAlert(false);
-  }, [user?.profile_alert_at]);
+  }, [user?.profile_alert_at, user?.photo_alert_sent_at]);
+
+  useEffect(() => {
+    if (!portalAlertKey) {
+      setAckPortalAlert(false);
+      return;
+    }
+    setAckPortalAlert(sessionStorage.getItem(portalAlertKey) === '1');
+  }, [portalAlertKey]);
 
   useEffect(() => {
     if (!profileLocked) setAckProfileLock(false);
@@ -91,6 +109,14 @@ function ShellInner() {
 
   const showBirthday = Boolean(user?.is_birthday) && !ackBirthday;
   const showExam = Boolean(examCongrats?.id) && !ackExam && !showBirthday;
+  const showPortalAlert =
+    hasPendingPortalAlert(user) && !ackPortalAlert && !showBirthday && !showExam;
+
+  function acknowledgePortalAlert() {
+    if (portalAlertKey) sessionStorage.setItem(portalAlertKey, '1');
+    setAckPortalAlert(true);
+    setDismissProfileAlert(true);
+  }
 
   useEffect(() => {
     if (!profileLocked) return;
@@ -288,6 +314,7 @@ function ShellInner() {
         )}
         {user?.profile_alert_at &&
           !profileLocked &&
+          !showPortalAlert &&
           !dismissProfileAlert &&
           (Array.isArray(user.profile_alert_fields)
             ? user.profile_alert_fields
@@ -297,7 +324,7 @@ function ShellInner() {
             <div>
               <strong>Complete your profile</strong>
               <p>
-                HR asked you to fill:{' '}
+                Please fill:{' '}
                 {(Array.isArray(user.profile_alert_fields) && user.profile_alert_fields.length
                   ? user.profile_alert_fields
                   : user.missing_portal_fields
@@ -368,7 +395,10 @@ function ShellInner() {
           }}
         />
       )}
-      {profileLocked && !ackProfileLock && !showBirthday && !showExam && (
+      {showPortalAlert && (
+        <PortalAlertModal user={user} onContinue={acknowledgePortalAlert} />
+      )}
+      {profileLocked && !ackProfileLock && !showBirthday && !showExam && !showPortalAlert && (
         <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
       )}
       {!profileLocked && <AdminIncompleteGate user={user} />}

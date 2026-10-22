@@ -1759,7 +1759,8 @@ async function dispatchProfileAlert(req, target, sender) {
     recipient: target,
     subject,
     messageBody,
-    deliveryMethod: 'portal',
+    deliveryMethod: 'both',
+    isAlert: true,
     emailIfPushUndelivered: true,
     pushPayload: {
       title: lockNow ? 'Complete your profile to continue' : 'Complete your portal profile',
@@ -2084,7 +2085,8 @@ async function sendPhotoAlert(req, res) {
       recipient: target,
       subject,
       messageBody,
-      deliveryMethod: 'portal',
+      deliveryMethod: 'both',
+      isAlert: true,
       emailIfPushUndelivered: true,
       pushPayload: {
         title: PHOTO_ALERT_SUBJECT,

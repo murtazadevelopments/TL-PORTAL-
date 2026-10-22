@@ -137,6 +137,28 @@ export function profileAlertCooldown(row, now = Date.now()) {
   return cooldownFromSentAt(lastProfileAlertAt(row), now);
 }
 
+export function pendingPortalAlertStamp(row) {
+  const stamps = [row?.profile_alert_at, row?.photo_alert_sent_at]
+    .map((value) => {
+      const ms = value ? new Date(value).getTime() : 0;
+      return Number.isFinite(ms) ? ms : 0;
+    })
+    .filter((ms) => ms > 0);
+  if (!stamps.length) return '';
+  return String(Math.max(...stamps));
+}
+
+export function portalAlertSeenKey(row) {
+  if (!row?.id) return '';
+  const stamp = pendingPortalAlertStamp(row);
+  if (!stamp) return '';
+  return `tl-portal-alert-seen:${row.id}:${stamp}`;
+}
+
+export function hasPendingPortalAlert(row) {
+  return Boolean(row?.profile_alert_at || row?.photo_alert_sent_at);
+}
+
 export function photoAlertCooldown(row, now = Date.now()) {
   return cooldownFromSentAt(row?.photo_alert_sent_at, now);
 }

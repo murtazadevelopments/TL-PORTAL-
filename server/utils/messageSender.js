@@ -1,43 +1,26 @@
-const ANONYMOUS_ADMIN_LABEL = 'HR';
-
-function isCeoRole(role) {
-  return String(role || '').toLowerCase() === 'ceo';
-}
+const PORTAL_SENDER_LABEL = 'Textured Lab Portal';
 
 /**
  * Public identity on employee-facing messages and emails.
- * CEO stays visible; admins (and anyone else) are shown as HR.
+ * Never expose the admin or CEO name on alerts or inbox copies.
  */
-function publicSenderLabel(sender) {
-  if (isCeoRole(sender?.role)) {
-    const label = String(sender?.name || sender?.username || 'CEO').trim();
-    return label || 'CEO';
-  }
-  return ANONYMOUS_ADMIN_LABEL;
+function publicSenderLabel() {
+  return PORTAL_SENDER_LABEL;
 }
 
 function redactMessageSender(row) {
   if (!row) return row;
-  const role = String(row.sender_role || '').toLowerCase();
-  if (role === 'ceo') {
-    return {
-      ...row,
-      sender_name: row.sender_name || row.sender_username || 'CEO',
-      sender_username: null,
-    };
-  }
   return {
     ...row,
     sender_id: null,
-    sender_name: ANONYMOUS_ADMIN_LABEL,
+    sender_name: PORTAL_SENDER_LABEL,
     sender_username: null,
-    sender_role: 'admin',
+    sender_role: null,
   };
 }
 
 module.exports = {
-  ANONYMOUS_ADMIN_LABEL,
-  isCeoRole,
+  PORTAL_SENDER_LABEL,
   publicSenderLabel,
   redactMessageSender,
 };

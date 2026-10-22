@@ -37,7 +37,7 @@ export default function DashboardHome() {
       {user && missingFields.length > 0 && (
         <div className="alert-banner" role="status">
           <div>
-            <strong>{hrAsked ? 'HR asked you to complete your profile.' : 'Your profile is incomplete.'}</strong>
+            <strong>{hrAsked ? 'Please complete your portal profile.' : 'Your profile is incomplete.'}</strong>
             <p className="muted" style={{ margin: '0.35rem 0 0' }}>
               Please fill in: {missingFields.join(', ')}
             </p>

@@ -130,6 +130,7 @@ async function deliverOneMessage({
   deliveryMethod,
   emailIfPushUndelivered = false,
   pushPayload = null,
+  isAlert = false,
 }) {
   const { rows } = await pool.query(
     `
@@ -166,9 +167,11 @@ async function deliverOneMessage({
     if (!recipient.email) {
       emailError = 'No email on file';
     } else {
-      const senderLabel = publicSenderLabel(sender);
-      const mailSubject =
-        subject || `Message from ${senderLabel} — Textured Lab Portal`;
+      const senderLabel = publicSenderLabel();
+      const intro = isAlert
+        ? `You have a new alert from ${senderLabel}:`
+        : `You have a new message from ${senderLabel}:`;
+      const mailSubject = subject || `Alert from ${senderLabel}`;
       const safeBody = escapeHtml(messageBody).replace(/\n/g, '<br />');
       const greeting = escapeHtml(recipient.name || recipient.username || 'there');
       const result = await sendEmailSafe({
@@ -176,15 +179,14 @@ async function deliverOneMessage({
         subject: mailSubject,
         text:
           `Hi ${recipient.name || recipient.username || 'there'},\n\n` +
-          `You have a new message from ${senderLabel} on the Textured Lab Portal:\n\n` +
+          `${intro}\n\n` +
           (subject ? `${subject}\n\n` : '') +
           `${messageBody}\n\n` +
           'You can also read this in the portal under My Account → Messages.\n',
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
             <p>Hi ${greeting},</p>
-            <p>You have a new message from <strong>${escapeHtml(senderLabel)}</strong>
-            on the Textured Lab Portal:</p>
+            <p>${escapeHtml(intro)}</p>
             ${subject ? `<p><strong>${escapeHtml(subject)}</strong></p>` : ''}
             <div style="padding:12px 14px;border-left:3px solid #3dff7a;background:#f6f8fb">
               ${safeBody}

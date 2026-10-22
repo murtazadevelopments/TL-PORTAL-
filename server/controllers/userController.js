@@ -40,7 +40,8 @@ const USER_PUBLIC_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_fields, profile_alert_count, profile_incomplete_locked_at
+  profile_alert_at, profile_alert_fields, profile_alert_count, profile_incomplete_locked_at,
+  photo_alert_sent_at
 `;
 
 const EMPLOYEE_UPDATE_WHITELIST = [

@@ -90,7 +90,7 @@ export default function MessagesInbox({ onUnreadChange }) {
         <div>
           <h1>Messages</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Messages from admins and leadership
+            Alerts and messages from Textured Lab Portal
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading} onClick={load}>
@@ -126,7 +126,7 @@ export default function MessagesInbox({ onUnreadChange }) {
                   <span className="msg-main">
                     <span className="msg-top">
                       <span className="msg-sender">
-                        {msg.sender_name || msg.sender_username || 'HR'}
+                        {msg.sender_name || 'Textured Lab Portal'}
                       </span>
                       <span className="msg-time">{relativeTime(msg.created_at)}</span>
                     </span>
@@ -158,7 +158,7 @@ export default function MessagesInbox({ onUnreadChange }) {
               <div>
                 <h2>{selected.subject || '(No subject)'}</h2>
                 <p className="muted" style={{ margin: 0 }}>
-                  From {selected.sender_name || selected.sender_username || 'HR'} ·{' '}
+                  From {selected.sender_name || 'Textured Lab Portal'} ·{' '}
                   {new Date(selected.created_at).toLocaleString()}
                   {marking ? ' · marking read…' : ''}
                 </p>
