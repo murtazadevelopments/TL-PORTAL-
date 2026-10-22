@@ -583,6 +583,14 @@
   object-fit: cover;
 }
 
+.face-check-shot span {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted, #9aa8bd);
+  font-size: 0.85rem;
+}
+
 .face-check-meta {
   display: flex;
   flex-direction: column;

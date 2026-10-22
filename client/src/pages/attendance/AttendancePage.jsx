@@ -401,16 +401,14 @@ export default function AttendancePage() {
 
       setHint('Checking');
       setDetail('Matching your enrolled face');
+      const snapshot = faceCheckCapture ? videoFrameJpeg(videoRef.current) : null;
       const shot = await grabDescriptor();
       const payload = {
         embedding: Array.from(shot.descriptor),
         liveness_passed: true,
         liveness_action: action.id,
       };
-      if (faceCheckCapture) {
-        const snapshot = videoFrameJpeg(videoRef.current);
-        if (snapshot) payload.snapshot = snapshot;
-      }
+      if (snapshot) payload.snapshot = snapshot;
       const { data } = await api.post('/api/attendance/check-in', payload);
       setRing('success');
       setProgress(100);

@@ -11,6 +11,7 @@ const CAPTURE_SIZE = 224;
 let modelsReady = false;
 let modelsLoading = null;
 let scratchCanvas = null;
+let jpegCanvas = null;
 
 export const LIVENESS_ACTIONS = [
   { id: 'blink', label: 'Blink once' },
@@ -89,11 +90,21 @@ export async function trackFace(input) {
   );
 }
 
-export function videoFrameJpeg(video, maxSide = 360, quality = 0.72) {
-  const frame = drawVideoFrame(video, maxSide);
-  if (!frame) return null;
+export function videoFrameJpeg(video, maxSide = 480, quality = 0.78) {
+  const vw = video?.videoWidth || 0;
+  const vh = video?.videoHeight || 0;
+  if (vw < 16 || vh < 16) return null;
+  const scale = Math.min(1, maxSide / Math.max(vw, vh));
+  const w = Math.max(32, Math.round(vw * scale));
+  const h = Math.max(32, Math.round(vh * scale));
+  if (!jpegCanvas) jpegCanvas = document.createElement('canvas');
+  if (jpegCanvas.width !== w) jpegCanvas.width = w;
+  if (jpegCanvas.height !== h) jpegCanvas.height = h;
+  const ctx = jpegCanvas.getContext('2d');
+  if (!ctx) return null;
   try {
-    return frame.toDataURL('image/jpeg', quality);
+    ctx.drawImage(video, 0, 0, w, h);
+    return jpegCanvas.toDataURL('image/jpeg', quality);
   } catch {
     return null;
   }

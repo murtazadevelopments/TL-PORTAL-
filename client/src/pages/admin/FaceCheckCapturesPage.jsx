@@ -32,6 +32,54 @@ function formatWhen(value) {
   }
 }
 
+function FaceCheckShot({ captureId, cacheKey, name, onOpen }) {
+  const [src, setSrc] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let objectUrl = null;
+    let cancelled = false;
+    setFailed(false);
+    setSrc(null);
+    (async () => {
+      try {
+        const res = await api.get(`/api/documents/face-checks/${captureId}`, {
+          responseType: 'blob',
+          params: cacheKey ? { _cb: String(cacheKey).replace(/\W/g, '').slice(-16) } : undefined,
+        });
+        if (cancelled) return;
+        const blob = res.data;
+        if (!(blob instanceof Blob) || blob.size < 80 || String(blob.type || '').includes('json')) {
+          setFailed(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [captureId, cacheKey]);
+
+  return (
+    <button
+      type="button"
+      className="face-check-shot"
+      onClick={() => src && onOpen?.({ src, alt: name || 'Check-in photo' })}
+    >
+      {src ? (
+        <img src={src} alt="" />
+      ) : (
+        <span>{failed ? 'Photo missing' : 'Loading…'}</span>
+      )}
+    </button>
+  );
+}
+
 export default function FaceCheckCapturesPage() {
   const { user, loading: authLoading } = useAuthUser();
   const ceo = isCeo(user?.role);
@@ -129,17 +177,15 @@ export default function FaceCheckCapturesPage() {
 
       <div className="face-check-grid">
         {captures.map((row) => {
-          const src = withAuthDocumentUrl(row.image_url, row.captured_at || row.id);
           const profile = withAuthDocumentUrl(row.profile_picture_url, row.user_id);
           return (
             <article key={row.id} className="face-check-card">
-              <button
-                type="button"
-                className="face-check-shot"
-                onClick={() => src && setPreview({ src, alt: row.name || 'Check-in photo' })}
-              >
-                {src ? <img src={src} alt="" /> : <span>No photo</span>}
-              </button>
+              <FaceCheckShot
+                captureId={row.id}
+                cacheKey={row.captured_at || row.id}
+                name={row.name}
+                onOpen={setPreview}
+              />
               <div className="face-check-meta">
                 <div className="face-check-who">
                   {profile ? <img src={profile} alt="" /> : <span>{(row.name || '?')[0]}</span>}

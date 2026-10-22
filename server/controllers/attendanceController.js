@@ -436,7 +436,14 @@ async function checkIn(req, res) {
 
     if (userFaceCheckCapture(user)) {
       try {
-        await saveCheckInSnapshot(req.user.id, rows[0], req.body?.snapshot);
+        const saved = await saveCheckInSnapshot(req.user.id, rows[0], req.body?.snapshot);
+        if (!saved) {
+          console.warn('face check capture skipped: no usable snapshot on check-in', {
+            userId: req.user.id,
+            logId: rows[0].id,
+            hasSnapshot: Boolean(req.body?.snapshot),
+          });
+        }
       } catch (err) {
         console.error('face check capture:', err.message || err);
       }
@@ -1262,13 +1269,13 @@ async function streamFaceCheckCapture(req, res) {
       return res.status(400).json({ message: 'Invalid photo.' });
     }
     const { rows } = await pool.query(
-      `SELECT image_path FROM face_check_captures WHERE id = $1 LIMIT 1`,
+      `SELECT image_path, image_bytes FROM face_check_captures WHERE id = $1 LIMIT 1`,
       [captureId]
     );
-    if (!rows[0]?.image_path) {
+    if (!rows[0]) {
       return res.status(404).json({ message: 'Photo not found.' });
     }
-    const sent = await streamCaptureImage(rows[0].image_path, res);
+    const sent = await streamCaptureImage(rows[0], res);
     if (!sent) return res.status(404).json({ message: 'Photo file is missing.' });
     return undefined;
   } catch (err) {
