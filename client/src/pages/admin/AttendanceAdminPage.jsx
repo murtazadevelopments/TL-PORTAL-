@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
@@ -174,6 +175,19 @@ function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
   );
 }
 
+function EmployeePictureSwitch({ row, busy, onToggle }) {
+  return (
+    <EmployeePowerSwitch
+      label="Picture"
+      name={row.name}
+      on={row.face_check_capture === true}
+      busy={busy}
+      disabled={false}
+      onToggle={() => onToggle(row)}
+    />
+  );
+}
+
 function toKarachiDatetimeLocal(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -302,6 +316,7 @@ export default function AttendanceAdminPage() {
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
+  const [togglingPictureId, setTogglingPictureId] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride) {
@@ -647,6 +662,40 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function toggleEmployeePicture(row) {
+    if (!ceo || !row?.id) return;
+    const next = row.face_check_capture !== true;
+    setTogglingPictureId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/face-capture`, {
+        enabled: next,
+      });
+      const enabled = Boolean(payload.enabled);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              employees: (prev.employees || []).map((item) =>
+                item.id === row.id ? { ...item, face_check_capture: enabled } : item
+              ),
+            }
+          : prev
+      );
+      setNotice(
+        payload?.message ||
+          (enabled
+            ? `Picture capture is on for ${row.name}.`
+            : `Picture capture is off for ${row.name}.`)
+      );
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update picture capture.');
+    } finally {
+      setTogglingPictureId(null);
+    }
+  }
+
   async function sendCheckInRequest(row) {
     if (row.attendance_enabled === false || !row?.id || row.can_check_in_request === false) return;
     setRequestingId(row.id);
@@ -723,6 +772,11 @@ export default function AttendanceAdminPage() {
             Onsite employees attendance
           </button>
         </div>
+        ) : null}
+        {ceo && canRemote ? (
+          <Link className="btn btn-ghost attendance-face-link" to="/admin/attendance/face-checks">
+            Face check photos
+          </Link>
         ) : null}
         </div>
       </div>
@@ -957,6 +1011,13 @@ export default function AttendanceAdminPage() {
                       busy={togglingFlexibleId === row.id}
                       onToggle={toggleEmployeeFlexible}
                     />
+                    {ceo ? (
+                      <EmployeePictureSwitch
+                        row={row}
+                        busy={togglingPictureId === row.id}
+                        onToggle={toggleEmployeePicture}
+                      />
+                    ) : null}
                   </div>
                   <span className={`badge ${row.row_status}`}>{row.row_status}</span>
                 </div>
@@ -969,6 +1030,9 @@ export default function AttendanceAdminPage() {
                   Flexible hours: first check-in, then a random check during assigned time, then check-out.
                   {row.duration_label ? ` Today: ${row.duration_label}.` : ''}
                 </p>
+              ) : null}
+              {ceo && row.face_check_capture ? (
+                <p className="muted">Picture capture is on — check-in photos are saved for review.</p>
               ) : null}
               <div className="attendance-mini-slots">
                 {[...row.slots]

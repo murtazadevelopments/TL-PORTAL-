@@ -352,7 +352,7 @@ async function getEmployeeById(req, res) {
 
     // Redact CNIC/CV unless CEO or admin has documents:view
     const role = String(req.user?.role || '').toLowerCase();
-    let canViewDocs = role === 'ceo';
+    let canViewDocs = role === 'ceo' || role === 'manager';
     if (!canViewDocs && role === 'admin') {
       const perms =
         Array.isArray(req.user.permissions) && req.user.permissions.length

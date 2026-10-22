@@ -19,6 +19,12 @@ const {
   rejectIfUserAttendanceStopped,
 } = require('../utils/attendanceEnabled');
 const { userFlexibleHours, setUserFlexibleHours } = require('../utils/flexibleHours');
+const {
+  userFaceCheckCapture,
+  setUserFaceCheckCapture,
+  saveCheckInSnapshot,
+  streamCaptureImage,
+} = require('../utils/faceCheckCapture');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -91,7 +97,7 @@ async function loadUser(userId) {
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count, flexible_hours
+             remote_check_count, flexible_hours, face_check_capture
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -300,6 +306,7 @@ async function getMyAttendance(req, res) {
       current_hour_key: opened?.pub?.hour_key || null,
       attendance_enabled: attendanceEnabled,
       flexible_hours: flexible,
+      face_check_capture: userFaceCheckCapture(user),
       can_check_in: canCheckIn,
       open_check: opened?.pub || null,
       work_start_hour: hours.start,
@@ -423,6 +430,14 @@ async function checkIn(req, res) {
       `,
       [req.user.id, hourKey, distance, status, suspicious ? 'flagged_similar_score' : null]
     );
+
+    if (userFaceCheckCapture(user)) {
+      try {
+        await saveCheckInSnapshot(req.user.id, rows[0], req.body?.snapshot);
+      } catch (err) {
+        console.error('face check capture:', err.message || err);
+      }
+    }
 
     if (matched) {
       await remoteChallenges.markChallengeResult(challenge, status, rows[0].id);
@@ -566,7 +581,8 @@ async function adminOverview(req, res) {
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours
+               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours,
+               face_check_capture
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -739,6 +755,7 @@ async function adminOverview(req, res) {
           latest,
           attendance_enabled: userAttendanceEnabled(person),
           flexible_hours: flexible,
+          face_check_capture: isCeoRole(req.user?.role) ? userFaceCheckCapture(person) : undefined,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
           duration_minutes: dayMeta?.duration_minutes ?? null,
           duration_label: formatDurationMinutes
@@ -1125,6 +1142,138 @@ async function putUserAttendanceEnabled(req, res) {
   }
 }
 
+async function putUserFaceCheckCapture(req, res) {
+  try {
+    await ensureAttendanceTables();
+    if (!isCeoRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can turn picture capture on or off.' });
+    }
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Picture capture is only for remote employees.' });
+    }
+    const raw = req.body?.enabled;
+    const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    await setUserFaceCheckCapture(targetId, enabled);
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: enabled ? 'attendance.face_capture_on' : 'attendance.face_capture_off',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: enabled
+        ? `Turned face check photos on for ${target.name || target.username}`
+        : `Turned face check photos off for ${target.name || target.username}`,
+    });
+    return res.json({
+      enabled,
+      message: enabled
+        ? `Picture capture is on for ${target.name || target.username}. Check-in photos will be saved for review.`
+        : `Picture capture is off for ${target.name || target.username}.`,
+    });
+  } catch (err) {
+    console.error('putUserFaceCheckCapture error:', err);
+    return res.status(500).json({ message: 'Server error saving picture capture setting.' });
+  }
+}
+
+async function listFaceCheckCaptures(req, res) {
+  try {
+    await ensureAttendanceTables();
+    if (!isCeoRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can review face check photos.' });
+    }
+    const userId = Number(req.query.user_id);
+    const dateKey = String(req.query.date || '').slice(0, 10);
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const params = [];
+    const where = [];
+    if (Number.isFinite(userId) && userId > 0) {
+      params.push(userId);
+      where.push(`c.user_id = $${params.length}`);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+      params.push(dateKey);
+      where.push(`to_char(c.captured_at AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD') = $${params.length}`);
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where.push(
+        `(LOWER(COALESCE(u.name, '')) LIKE $${params.length} OR LOWER(COALESCE(u.employee_id, '')) LIKE $${params.length} OR LOWER(COALESCE(u.username, '')) LIKE $${params.length})`
+      );
+    }
+    const { rows } = await pool.query(
+      `
+        SELECT c.id, c.user_id, c.hour_key, c.status, c.match_score, c.captured_at,
+               u.name, u.employee_id, u.username, u.branch, u.department, u.profile_picture_url
+        FROM face_check_captures c
+        JOIN users u ON u.id = c.user_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY c.captured_at DESC
+        LIMIT 120
+      `,
+      params
+    );
+    return res.json({
+      captures: rows.map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        name: row.name,
+        employee_id: row.employee_id,
+        username: row.username,
+        branch: row.branch,
+        department: row.department,
+        hour_key: row.hour_key,
+        status: row.status,
+        match_score: row.match_score == null ? null : Number(row.match_score),
+        captured_at: row.captured_at,
+        image_url: `/api/documents/face-checks/${row.id}`,
+        profile_picture_url:
+          row.profile_picture_url && !/^https?:\/\//i.test(String(row.profile_picture_url))
+            ? `/api/documents/${row.user_id}/profile`
+            : row.profile_picture_url,
+      })),
+    });
+  } catch (err) {
+    console.error('listFaceCheckCaptures error:', err);
+    return res.status(500).json({ message: 'Server error loading face check photos.' });
+  }
+}
+
+async function streamFaceCheckCapture(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const { rows: me } = await pool.query(`SELECT role FROM users WHERE id = $1 LIMIT 1`, [req.user.id]);
+    if (!isCeoRole(me[0]?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can view face check photos.' });
+    }
+    const captureId = Number(req.params.captureId);
+    if (!Number.isFinite(captureId) || captureId <= 0) {
+      return res.status(400).json({ message: 'Invalid photo.' });
+    }
+    const { rows } = await pool.query(
+      `SELECT image_path FROM face_check_captures WHERE id = $1 LIMIT 1`,
+      [captureId]
+    );
+    if (!rows[0]?.image_path) {
+      return res.status(404).json({ message: 'Photo not found.' });
+    }
+    const sent = await streamCaptureImage(rows[0].image_path, res);
+    if (!sent) return res.status(404).json({ message: 'Photo file is missing.' });
+    return undefined;
+  } catch (err) {
+    console.error('streamFaceCheckCapture error:', err);
+    return res.status(500).json({ message: 'Server error reading face check photo.' });
+  }
+}
+
 async function putUserFlexibleHours(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1490,5 +1639,8 @@ module.exports = {
   adminDeleteRemoteDay,
   markMissedSlots,
   putUserAttendanceEnabled,
+  putUserFaceCheckCapture,
+  listFaceCheckCaptures,
+  streamFaceCheckCapture,
   putUserFlexibleHours,
 };

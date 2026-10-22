@@ -14,6 +14,10 @@ export function isAdmin(role) {
   return normalizeRole(role) === 'admin';
 }
 
+export function isManager(role) {
+  return normalizeRole(role) === 'manager';
+}
+
 export function isTeamLeader(role) {
   return normalizeRole(role) === 'team_leader';
 }
@@ -21,7 +25,7 @@ export function isTeamLeader(role) {
 /** Admin panel / admin nav — CEO always included. */
 export function canAccessAdmin(role) {
   const r = normalizeRole(role);
-  return r === 'ceo' || r === 'admin';
+  return r === 'ceo' || r === 'admin' || r === 'manager';
 }
 
 /**
@@ -32,8 +36,10 @@ export function canAccessAdmin(role) {
 export function hasPermission(permissions, key, role) {
   if (isCeo(role)) return true;
   if (!key) return false;
+  if (isManager(role) && key !== 'sales:targets') return true;
   if (!Array.isArray(permissions)) return false;
-  if (permissions.includes('*')) return true;
+  if (permissions.includes('*') && key !== 'sales:targets') return true;
+  if (key === 'sales:targets') return false;
   return permissions.includes(key);
 }
 
@@ -85,7 +91,7 @@ export function canViewTeamAttendance(role, permissions) {
   );
 }
 
-/** CEO-assigned sales supervisor (or CEO). Dashboard is PIN-gated for non-CEO. */
-export function canManageSalesTargets(role, permissions) {
-  return hasPermission(permissions, 'sales:targets', role);
+/** Sales supervisor board is CEO-only. */
+export function canManageSalesTargets(role) {
+  return isCeo(role);
 }

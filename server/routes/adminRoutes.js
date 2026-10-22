@@ -89,6 +89,8 @@ const {
   adminEmployeeDays,
   adminDeleteRemoteDay,
   putUserAttendanceEnabled,
+  putUserFaceCheckCapture,
+  listFaceCheckCaptures,
   putUserFlexibleHours,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
@@ -377,6 +379,8 @@ router.get(
   exportAttendance
 );
 
+router.get('/attendance/face-checks', requireRole('ceo'), listFaceCheckCaptures);
+router.put('/attendance/:userId/face-capture', requireRole('ceo'), putUserFaceCheckCapture);
 router.put(
   '/attendance/:userId/enabled',
   requireRole('admin'),

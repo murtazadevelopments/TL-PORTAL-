@@ -10,6 +10,7 @@ import '../admin/AdminDashboard.css';
 import '../team-leader/TeamLeaderDashboard.css';
 import './SalesTargetsDashboard.css';
 import { formatAmount, formatPeriod, daysInPeriod } from './salesUi';
+import { isCeo } from '../../utils/permissions';
 
 function formatDayDate(isoDay) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDay || ''))) return isoDay || '—';
@@ -86,6 +87,10 @@ export default function SalesDailyTargetsPage({ agentView = false }) {
         const me = await api.get('/api/users/me');
         if (!active) return;
         if (agentView && !me.data?.sales_agent_dashboard) {
+          navigate('/dashboard', { replace: true });
+          return;
+        }
+        if (!agentView && !isCeo(me.data?.role)) {
           navigate('/dashboard', { replace: true });
           return;
         }

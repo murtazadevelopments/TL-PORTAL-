@@ -14,6 +14,7 @@ import {
   averageDescriptors,
   pickLivenessAction,
   waitForVideo,
+  videoFrameJpeg,
   sleep,
   SAMPLE_COUNT,
   ALIGN_MS,
@@ -92,6 +93,7 @@ export default function AttendancePage() {
   const [attendanceEnabled, setAttendanceEnabled] = useState(true);
   const [checksPerShift, setChecksPerShift] = useState(5);
   const [flexibleHours, setFlexibleHours] = useState(false);
+  const [faceCheckCapture, setFaceCheckCapture] = useState(false);
   const [durationLabel, setDurationLabel] = useState('');
   const [nowTick, setNowTick] = useState(Date.now());
   const [guideOpen, setGuideOpen] = useState(false);
@@ -120,6 +122,7 @@ export default function AttendancePage() {
     setSundayHoliday(Boolean(att.holiday));
     setAttendanceEnabled(att.attendance_enabled !== false);
     setFlexibleHours(Boolean(att.flexible_hours));
+    setFaceCheckCapture(Boolean(att.face_check_capture));
     setDurationLabel(att.duration_label || '');
     setChecksPerShift(Number(att.checks_per_shift) > 0 ? Number(att.checks_per_shift) : 5);
   }, []);
@@ -399,11 +402,16 @@ export default function AttendancePage() {
       setHint('Checking');
       setDetail('Matching your enrolled face');
       const shot = await grabDescriptor();
-      const { data } = await api.post('/api/attendance/check-in', {
+      const payload = {
         embedding: Array.from(shot.descriptor),
         liveness_passed: true,
         liveness_action: action.id,
-      });
+      };
+      if (faceCheckCapture) {
+        const snapshot = videoFrameJpeg(videoRef.current);
+        if (snapshot) payload.snapshot = snapshot;
+      }
+      const { data } = await api.post('/api/attendance/check-in', payload);
       setRing('success');
       setProgress(100);
       setHint(data.kind === 'checkout' ? 'Checked out' : 'Checked in');

@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { blockedLoginMessage } = require('../utils/accountStatus');
+const { managerPermissionKeys, SALES_TARGETS_KEY } = require('../constants/permissionsCatalog');
 
 function normalizeRole(role) {
   return String(role || '')
@@ -9,6 +10,25 @@ function normalizeRole(role) {
 
 function isCeoRole(role) {
   return normalizeRole(role) === 'ceo';
+}
+
+function isManagerRole(role) {
+  return normalizeRole(role) === 'manager';
+}
+
+function isStaffAdminRole(role) {
+  const r = normalizeRole(role);
+  return r === 'admin' || r === 'manager';
+}
+
+function attachManagerAccess(req) {
+  req.user.permissions = managerPermissionKeys();
+  req.user.permissionScopes = {};
+}
+
+function roleIsAllowed(role, allowed) {
+  if (allowed.includes(role)) return true;
+  return isManagerRole(role) && allowed.includes('admin');
 }
 
 /**
@@ -57,10 +77,12 @@ function requireRole(...allowedRoles) {
       // CEO has all access by default
       if (isCeoRole(role)) {
         req.user.permissions = ['*'];
+        req.user.permissionScopes = {};
         return next();
       }
 
-      if (allowed.includes(role)) {
+      if (roleIsAllowed(role, allowed)) {
+        if (isManagerRole(role)) attachManagerAccess(req);
         return next();
       }
 
@@ -139,6 +161,26 @@ function requirePermission(...requiredKeys) {
         return next();
       }
 
+      if (isManagerRole(role)) {
+        attachManagerAccess(req);
+        if (needed.includes(SALES_TARGETS_KEY)) {
+          return res.status(403).json({
+            error: 'Forbidden: insufficient permissions',
+            message: 'Sales targets are available to the CEO only.',
+            missing: [SALES_TARGETS_KEY],
+          });
+        }
+        const missing = needed.filter((key) => !req.user.permissions.includes(key));
+        if (missing.length > 0) {
+          return res.status(403).json({
+            error: 'Forbidden: insufficient permissions',
+            message: `Missing permission: ${missing.join(', ')}`,
+            missing,
+          });
+        }
+        return next();
+      }
+
       if (role !== 'admin') {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
@@ -198,7 +240,20 @@ function requireCeoOrAnyPermission(...keys) {
 
       if (isCeoRole(role)) {
         req.user.permissions = ['*'];
+        req.user.permissionScopes = {};
         return next();
+      }
+
+      if (isManagerRole(role)) {
+        attachManagerAccess(req);
+        if (accepted.some((key) => key !== SALES_TARGETS_KEY && req.user.permissions.includes(key))) {
+          return next();
+        }
+        return res.status(403).json({
+          error: 'Forbidden: insufficient permissions',
+          message: `Missing permission: ${accepted.join(' or ')}`,
+          missing: accepted,
+        });
       }
 
       if (role !== 'admin') {
@@ -232,4 +287,6 @@ module.exports = {
   loadAdminPermissionAccess,
   normalizeRole,
   isCeoRole,
+  isManagerRole,
+  isStaffAdminRole,
 };

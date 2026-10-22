@@ -1,6 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
-const { requireRole, requirePermission } = require('../middleware/permissions');
+const { requireRole } = require('../middleware/permissions');
 const { requireSalesPin } = require('../middleware/salesPin');
 const {
   listSalesTargets,
@@ -22,8 +22,7 @@ router.use(authMiddleware);
 router.get('/me', getMySalesTarget);
 router.get('/me/days', getMyDailyTargets);
 
-router.use(requireRole('admin'));
-router.use(requirePermission('sales:targets'));
+router.use(requireRole('ceo'));
 
 router.post('/pin', setSalesPin);
 router.post('/pin/otp', requestSalesPinOtp);

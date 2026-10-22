@@ -35,6 +35,7 @@ const MessagesInbox = lazy(() => import('./pages/account/MessagesInbox'));
 const ComposeMessagePage = lazy(() => import('./pages/admin/ComposeMessagePage'));
 const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
+const FaceCheckCapturesPage = lazy(() => import('./pages/admin/FaceCheckCapturesPage'));
 const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
 const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
 const SalesDailyTargetsPage = lazy(() => import('./pages/sales/SalesDailyTargetsPage'));
@@ -75,6 +76,7 @@ function App() {
               <Route path="/admin/employees" element={<EmployeesPage />} />
               <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
               <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
+              <Route path="/admin/attendance/face-checks" element={<FaceCheckCapturesPage />} />
               <Route path="/admin/attendance/export" element={<AttendanceExportPage />} />
               <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance" replace />} />
               <Route path="/admin/messages" element={<ComposeMessagePage />} />

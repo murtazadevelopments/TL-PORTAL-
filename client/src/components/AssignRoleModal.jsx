@@ -12,6 +12,7 @@ import './AssignRoleModal.css';
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
+  { value: 'manager', label: 'Manager' },
   { value: 'team_leader', label: 'Team Leader' },
   { value: 'employee', label: 'Employee' },
   { value: 'ceo', label: 'CEO' },
@@ -34,12 +35,8 @@ function defaultScopesFromUser(user) {
     'attendance:export',
     'attendance:view',
     'attendance:edit',
-    'sales:targets',
   ]) {
     scopes[key] = normalizeEmployeeScope(incoming[key]);
-    if (key === 'sales:targets' && scopes[key].type !== 'team') {
-      scopes[key] = { type: 'team', values: Array.isArray(scopes[key].values) ? scopes[key].values : [] };
-    }
   }
   return scopes;
 }
@@ -68,7 +65,6 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     'attendance:export': { type: 'all' },
     'attendance:view': { type: 'all' },
     'attendance:edit': { type: 'all' },
-    'sales:targets': { type: 'team', values: [] },
   });
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -92,7 +88,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
         if (!active) return;
         setEmployees(Array.isArray(listRes.data?.employees) ? listRes.data.employees : []);
         setCatalog(
-          Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []
+          (Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []).filter(
+            (perm) => perm.key !== 'sales:targets'
+          )
         );
         const fromApi = Array.isArray(branchesRes.data)
           ? branchesRes.data.map((b) => b.name).filter(Boolean)
@@ -179,9 +177,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
     if (isScopedEmployeePermission(key)) {
       setScopes((prev) => ({
         ...prev,
-        [key]:
-          prev[key] ||
-          (key === 'sales:targets' ? { type: 'team', values: [] } : { type: 'all' }),
+        [key]: prev[key] || { type: 'all' },
       }));
     }
   }
@@ -229,15 +225,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
 
     if (role === 'admin') {
       for (const key of permissions) {
-        if (!isScopedEmployeePermission(key)) continue;
+        if (!isScopedEmployeePermission(key) || key === 'sales:targets') continue;
         const scope = normalizeEmployeeScope(scopes[key]);
-        if (key === 'sales:targets') {
-          if (scope.type !== 'team' || !scope.values?.length) {
-            setFormError('Sales targets (supervisor): pick at least one specific team. This is not for every employee.');
-            return;
-          }
-          continue;
-        }
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           setFormError(
             `For ${
@@ -253,8 +242,6 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
                       ? 'Remote employees'
                       : key === 'attendance:view'
                         ? 'View attendance'
-                        : key === 'sales:targets'
-                          ? 'Sales targets (supervisor)'
                           : 'Edit attendance'
             }, choose All, or pick at least one branch/team.`
           );
@@ -305,14 +292,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
 
   function renderScopeControls(permKey) {
     if (!permissions.includes(permKey)) return null;
-    const scope =
-      permKey === 'sales:targets' && (scopes[permKey]?.type !== 'team')
-        ? { type: 'team', values: scopes[permKey]?.values || [] }
-        : normalizeEmployeeScope(scopes[permKey] || { type: 'all' });
-    const typeOptions =
-      permKey === 'sales:targets'
-        ? [{ value: 'team', label: 'Specific team' }]
-        : [
+    const scope = normalizeEmployeeScope(scopes[permKey] || { type: 'all' });
+    const typeOptions = [
             { value: 'all', label: 'All employees' },
             { value: 'branch', label: 'Specific branch' },
             { value: 'team', label: 'Specific team' },
@@ -395,9 +376,9 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       >
         <div className="modal-header">
           <div>
-            <h2>Assign Admin Role</h2>
+            <h2>Assign Role</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Choose an employee, role, and access scopes
+              Choose an employee and role. Manager has full access except Sales Targets (CEO only).
             </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
@@ -473,6 +454,16 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
               </div>
             </fieldset>
 
+            {role === 'manager' && (
+              <fieldset className="assign-step">
+                <legend>3. Manager access</legend>
+                <p className="muted" style={{ margin: 0 }}>
+                  Managers can use every admin feature except Sales Targets. That board stays CEO-only
+                  and will not appear in their menu.
+                </p>
+              </fieldset>
+            )}
+
             {role === 'admin' && (
               <fieldset className="assign-step">
                 <legend>3. Admin permissions</legend>
@@ -501,7 +492,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
             )}
 
             <fieldset className="assign-step">
-              <legend>{role === 'admin' ? '4' : '3'}. Reason (optional)</legend>
+              <legend>{role === 'admin' || role === 'manager' ? '4' : '3'}. Reason (optional)</legend>
               <textarea
                 rows={3}
                 value={reason}

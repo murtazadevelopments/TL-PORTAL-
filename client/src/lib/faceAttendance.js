@@ -89,6 +89,16 @@ export async function trackFace(input) {
   );
 }
 
+export function videoFrameJpeg(video, maxSide = 360, quality = 0.72) {
+  const frame = drawVideoFrame(video, maxSide);
+  if (!frame) return null;
+  try {
+    return frame.toDataURL('image/jpeg', quality);
+  } catch {
+    return null;
+  }
+}
+
 export async function captureFace(input) {
   if (!modelsReady || !videoReady(input)) return null;
   const frame = drawVideoFrame(input, CAPTURE_SIZE);

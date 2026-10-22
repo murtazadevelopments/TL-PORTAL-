@@ -24,6 +24,7 @@ const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 const { blockedLoginMessage } = require('../utils/accountStatus');
+const { managerPermissionKeys } = require('../constants/permissionsCatalog');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const {
   pendingExamCongrats,
@@ -175,6 +176,11 @@ async function getMe(req, res) {
       } catch {
         /* migration 009 not applied yet */
       }
+    } else if (role === 'manager') {
+      user.permissions = managerPermissionKeys();
+      user.scopes = {};
+      user.t_pin_configured = false;
+      user.tl_dashboard_access = false;
     } else if (role === 'admin') {
       const access = await loadAdminPermissionAccess(user.id);
       user.permissions = access.permissions;
@@ -237,7 +243,7 @@ async function getMe(req, res) {
       user.sales_agent_dashboard = false;
     }
     user.sales_pin_configured = false;
-    if (role === 'ceo' || keys.includes('sales:targets') || keys.includes('*')) {
+    if (role === 'ceo') {
       try {
         const { rows: salesPinRows } = await pool.query(
           'SELECT sales_pin_hash IS NOT NULL AS configured FROM users WHERE id = $1',

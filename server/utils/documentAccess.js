@@ -8,7 +8,7 @@
  * - profile (and anything else): existing defaults (self or admin/ceo)
  */
 
-const { loadAdminPermissions } = require('../middleware/permissions');
+const { loadAdminPermissions, isManagerRole } = require('../middleware/permissions');
 
 function isCnicDocType(docType) {
   const t = String(docType || '').toLowerCase();
@@ -17,7 +17,7 @@ function isCnicDocType(docType) {
 
 async function hasHrAddEmployeePermission(requester) {
   const role = String(requester?.role || '').toLowerCase();
-  if (role === 'ceo') return true;
+  if (role === 'ceo' || isManagerRole(role)) return true;
   if (role !== 'admin') return false;
   let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
   if (!perms.length && requester?.id) {
@@ -33,7 +33,7 @@ function isStaffExtraDocType(docType) {
 
 async function hasDocumentsViewPermission(requester) {
   const role = String(requester?.role || '').toLowerCase();
-  if (role === 'ceo') return true;
+  if (role === 'ceo' || isManagerRole(role)) return true;
   if (role !== 'admin') return false;
   let perms = Array.isArray(requester.permissions) ? requester.permissions : [];
   if (!perms.length && requester?.id) {
@@ -75,7 +75,7 @@ async function canDownloadDocument(documentType, user, context = {}) {
 
   if (docType === 'profile') {
     if (isSelf) return true;
-    if (role === 'ceo' || role === 'admin') return true;
+    if (role === 'ceo' || role === 'admin' || role === 'manager') return true;
     return false;
   }
 

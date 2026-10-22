@@ -221,9 +221,8 @@ export default function RolesPage() {
           <div>
             <h1>Assign Roles</h1>
             <p className="muted" style={{ margin: 0 }}>
-              People with admin or CEO access and their permission scopes. To name a sales
-              supervisor, assign Admin and tick “Sales targets (supervisor)”, then limit Access
-              scope to that person’s teams.
+              People with CEO, Manager, or Admin access. Manager has complete access except Sales
+              Targets, which only the CEO can see.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
@@ -238,7 +237,7 @@ export default function RolesPage() {
                 setAssignOpen(true);
               }}
             >
-              Assign Admin Role
+              Assign Role
             </button>
           </div>
         </div>
@@ -266,7 +265,7 @@ export default function RolesPage() {
         )}
 
         {!loading && roleHolders.length === 0 && !error && (
-          <div className="admin-empty">No admin or CEO accounts found.</div>
+          <div className="admin-empty">No CEO, Manager, or Admin accounts found.</div>
         )}
 
         {roleHolders.length > 0 && (
@@ -288,7 +287,11 @@ export default function RolesPage() {
                     <td className="cell-name">{fullName(row)}</td>
                     <td>{row.employee_id || '—'}</td>
                     <td>
-                      <span className={`status-pill ${row.role === 'ceo' ? 'active' : 'unset'}`}>
+                      <span
+                        className={`status-pill ${
+                          row.role === 'ceo' ? 'active' : row.role === 'manager' ? 'active' : 'unset'
+                        }`}
+                      >
                         {row.role}
                       </span>
                     </td>
@@ -296,6 +299,8 @@ export default function RolesPage() {
                     <td>
                       {String(row.role || '').toLowerCase() === 'ceo' ? (
                         <span className="muted">Full access (all permissions)</span>
+                      ) : String(row.role || '').toLowerCase() === 'manager' ? (
+                        <span className="muted">Full access except Sales Targets</span>
                       ) : Array.isArray(row.permissions) && row.permissions.length > 0 ? (
                         <div className="perm-chip-row">
                           {row.permissions.map((key) => {

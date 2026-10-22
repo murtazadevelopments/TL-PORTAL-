@@ -110,6 +110,15 @@ const PERMISSIONS_CATALOG = [
 ];
 
 const PERMISSION_KEYS = new Set(PERMISSIONS_CATALOG.map((p) => p.key));
+const SALES_TARGETS_KEY = 'sales:targets';
+
+function managerPermissionKeys() {
+  return PERMISSIONS_CATALOG.map((p) => p.key).filter((key) => key !== SALES_TARGETS_KEY);
+}
+
+function assignablePermissionsCatalog() {
+  return PERMISSIONS_CATALOG.filter((p) => p.key !== SALES_TARGETS_KEY);
+}
 
 function normalizePermissionKeys(input) {
   if (!Array.isArray(input)) return [];
@@ -127,5 +136,8 @@ function normalizePermissionKeys(input) {
 module.exports = {
   PERMISSIONS_CATALOG,
   PERMISSION_KEYS,
+  SALES_TARGETS_KEY,
+  managerPermissionKeys,
+  assignablePermissionsCatalog,
   normalizePermissionKeys,
 };

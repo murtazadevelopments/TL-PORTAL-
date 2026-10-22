@@ -210,6 +210,8 @@ async function runEnsureAttendanceTables() {
   await ensureAttendanceEnabledColumn();
   const { ensureFlexibleHoursColumn } = require('./flexibleHours');
   await ensureFlexibleHoursColumn();
+  const { ensureFaceCheckCapture } = require('./faceCheckCapture');
+  await ensureFaceCheckCapture();
   await pool.query(`
     ALTER TABLE attendance_days
       ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ

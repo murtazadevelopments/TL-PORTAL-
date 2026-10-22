@@ -1,7 +1,8 @@
 const pool = require('../config/db');
 const {
-  PERMISSIONS_CATALOG,
+  assignablePermissionsCatalog,
   normalizePermissionKeys,
+  SALES_TARGETS_KEY,
 } = require('../constants/permissionsCatalog');
 const {
   normalizeScope,
@@ -10,7 +11,7 @@ const {
   BRANCH_OPTIONS,
 } = require('../utils/employeeScope');
 
-const ALLOWED_ROLES = new Set(['ceo', 'admin', 'employee', 'team_leader']);
+const ALLOWED_ROLES = new Set(['ceo', 'admin', 'manager', 'employee', 'team_leader']);
 
 /**
  * Resolve target user by numeric id or employee_id string.
@@ -109,7 +110,7 @@ async function assignRole(req, res) {
 
     if (!ALLOWED_ROLES.has(role)) {
       return res.status(400).json({
-        message: "role must be one of: 'ceo', 'admin', 'employee', 'team_leader'.",
+        message: "role must be one of: 'ceo', 'admin', 'manager', 'employee', 'team_leader'.",
       });
     }
 
@@ -147,7 +148,9 @@ async function assignRole(req, res) {
     let permissionKeys = [];
     let permissionRows = [];
     if (role === 'admin') {
-      permissionKeys = normalizePermissionKeys(body.permissions);
+      permissionKeys = normalizePermissionKeys(body.permissions).filter(
+        (key) => key !== SALES_TARGETS_KEY
+      );
       if (permissionKeys.length === 0) {
         return res.status(400).json({
           message: 'Select at least one permission scope when assigning the admin role.',
@@ -157,15 +160,6 @@ async function assignRole(req, res) {
       for (const key of permissionKeys) {
         if (!isScopedPermissionKey(key)) continue;
         const scope = normalizeScope(scopesByKey[key]);
-        if (key === 'sales:targets') {
-          if (scope.type !== 'team' || !scope.values?.length) {
-            return res.status(400).json({
-              message:
-                'Sales targets (supervisor) requires Specific team — pick at least one team. This is not for every employee.',
-            });
-          }
-          continue;
-        }
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           return res.status(400).json({
             message: `Select at least one ${scope.type || 'value'} for ${key}, or choose All employees.`,
@@ -243,7 +237,7 @@ async function assignRole(req, res) {
  */
 function getPermissionsCatalog(req, res) {
   return res.json({
-    permissions: PERMISSIONS_CATALOG,
+    permissions: assignablePermissionsCatalog(),
     branch_options: BRANCH_OPTIONS,
   });
 }
@@ -301,9 +295,9 @@ async function listRoleHolders(req, res) {
           ) AS permission_rows
         FROM users u
         WHERE u.is_active = true
-          AND u.role IN ('admin', 'ceo')
+          AND u.role IN ('admin', 'ceo', 'manager')
         ORDER BY
-          CASE u.role WHEN 'ceo' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END,
+          CASE u.role WHEN 'ceo' THEN 0 WHEN 'manager' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END,
           u.name ASC NULLS LAST,
           u.id ASC
       `
