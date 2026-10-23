@@ -18,7 +18,7 @@ function configureVapid() {
   const publicKey = String(process.env.VAPID_PUBLIC_KEY || '').trim();
   const privateKey = String(process.env.VAPID_PRIVATE_KEY || '').trim();
   const subject = String(
-    process.env.VAPID_SUBJECT || process.env.RESEND_FROM || 'mailto:noreply@texturedlab.org'
+    process.env.VAPID_SUBJECT || process.env.SMTP_FROM || 'mailto:noreply@texturedlab.org'
   ).trim();
 
   if (!publicKey || !privateKey) {

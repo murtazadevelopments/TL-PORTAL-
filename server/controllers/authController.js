@@ -278,7 +278,7 @@ async function signup(req, res) {
     const user = await attachReadableUrls(userRow);
 
     // Send mail before the HTTP response so Hostinger cannot freeze the
-    // isolate after res.json and drop the Resend call.
+    // isolate after res.json and drop the SMTP send.
     await sendSignupNotifications(user);
 
     return res.status(201).json({

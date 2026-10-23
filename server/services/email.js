@@ -1,27 +1,5 @@
-const { Resend } = require('resend');
 const { logEmail } = require('./notificationSettings');
-
-/**
- * Resend email helper.
- * From-address: use RESEND_FROM if set (verified domain).
- * Otherwise Resend's onboarding sender (testing only).
- */
-function getClient() {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    const err = new Error('RESEND_API_KEY is not set');
-    err.code = 'RESEND_NOT_CONFIGURED';
-    throw err;
-  }
-  return new Resend(key);
-}
-
-function getFrom() {
-  return (
-    process.env.RESEND_FROM ||
-    'Textured Lab Portal <onboarding@resend.dev>'
-  );
-}
+const { sendEmail: sendViaSmtp, getFrom } = require('../lib/mailer');
 
 function uniqueRecipients(to) {
   const list = Array.isArray(to) ? to : [to];
@@ -54,35 +32,21 @@ function htmlToText(html) {
     .trim();
 }
 
-function getReplyTo() {
-  return String(process.env.RESEND_REPLY_TO || '').trim() || undefined;
-}
-
-async function sendOne({ to, subject, html, text, emailType }) {
-  const resend = getClient();
-  const payload = {
-    from: getFrom(),
-    to: [to],
-    subject,
-    html,
-    text: text || htmlToText(html),
-  };
-  const replyTo = getReplyTo();
-  if (replyTo) payload.replyTo = replyTo;
-  if (emailType) {
-    payload.tags = [{ name: 'type', value: String(emailType).slice(0, 40) }];
-  }
-  const { data, error } = await resend.emails.send(payload);
-
-  if (error) {
+async function sendOne({ to, subject, html, text }) {
+  try {
+    return await sendViaSmtp({
+      to,
+      subject,
+      html,
+      text: text || htmlToText(html),
+    });
+  } catch (error) {
     const err = new Error(error.message || 'Failed to send email');
     err.cause = error;
-    err.statusCode = error.statusCode;
+    err.code = error.code;
     err.recipient = to;
     throw err;
   }
-
-  return data;
 }
 
 /**
@@ -105,7 +69,6 @@ async function sendEmail(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
-        emailType: opts.emailType,
       })
     );
   }
@@ -127,7 +90,6 @@ async function sendEmailSafe(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
-        emailType: opts.emailType,
       });
       lastOk = data;
       console.log(
