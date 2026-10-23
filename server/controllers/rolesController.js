@@ -114,6 +114,15 @@ async function assignRole(req, res) {
       });
     }
 
+    const actorRole = String(req.user?.role || '')
+      .trim()
+      .toLowerCase();
+    if (actorRole === 'manager' && role === 'ceo') {
+      return res.status(403).json({
+        message: 'Only the CEO can assign the CEO role.',
+      });
+    }
+
     if (userId == null && (employeeId == null || String(employeeId).trim() === '')) {
       return res.status(400).json({
         message: 'user_id or employee_id is required.',

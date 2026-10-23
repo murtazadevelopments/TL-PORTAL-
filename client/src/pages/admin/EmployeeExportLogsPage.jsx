@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
-import { isCeo } from '../../utils/permissions';
+import { canAssignRoles } from '../../utils/permissions';
 import './AdminDashboard.css';
 
 function formatWhen(value) {
@@ -36,7 +36,7 @@ export default function EmployeeExportLogsPage() {
       try {
         const { data } = await api.get('/api/users/me');
         if (!active) return;
-        if (!isCeo(data.role)) {
+        if (!canAssignRoles(data.role)) {
           navigate('/dashboard', { replace: true });
           return;
         }
@@ -66,7 +66,7 @@ export default function EmployeeExportLogsPage() {
       setPagination(data?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 });
     } catch (err) {
       if (err.response?.status === 403) {
-        setError('Only the CEO can view export logs.');
+        setError('Only the CEO or a Manager can view export logs.');
         navigate('/dashboard', { replace: true });
         return;
       }
@@ -78,7 +78,7 @@ export default function EmployeeExportLogsPage() {
   }, [page, q, navigate]);
 
   useEffect(() => {
-    if (!checking && isCeo(role)) loadLogs();
+    if (!checking && canAssignRoles(role)) loadLogs();
   }, [checking, role, loadLogs]);
 
   function applySearch(e) {

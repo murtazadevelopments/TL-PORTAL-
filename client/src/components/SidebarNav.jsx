@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { useSalesLeaveGuard } from '../context/SalesLeaveGuard';
-import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance, canManageSalesTargets } from '../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeo, isTeamLeader, canViewTeamAttendance, canManageSalesTargets, canUseFaceCheck, canAssignRoles } from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
@@ -98,7 +98,7 @@ export function buildSidebarGroups(
     if (canViewTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance', end: true });
     }
-    if (isCeo(role)) {
+    if (canUseFaceCheck(role)) {
       employeeItems.push({ to: '/admin/attendance/face-checks', label: 'Face check photos' });
     }
     if (hasPermission(permissions, 'attendance:export', role)) {
@@ -118,7 +118,7 @@ export function buildSidebarGroups(
     }
 
     const adminItems = [];
-    if (isCeo(role)) {
+    if (canAssignRoles(role)) {
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
@@ -133,7 +133,7 @@ export function buildSidebarGroups(
     if (hasPermission(permissions, 'notifications:signup_recipient', role)) {
       adminItems.push({ to: '/admin/notifications', label: 'Notification Settings' });
     }
-    if (isCeo(role)) {
+    if (canAssignRoles(role)) {
       adminItems.push({ to: '/admin/login-logs', label: 'Login Logs' });
       adminItems.push({ to: '/admin/export-logs', label: 'Export logs' });
     }

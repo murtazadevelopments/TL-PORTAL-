@@ -7,7 +7,6 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-// CEO only (CEO also bypasses inside requireRole for any future roles routes)
-router.post('/assign', requireRole('ceo'), assignRole);
+router.post('/assign', requireRole('ceo', 'manager'), assignRole);
 
 module.exports = router;

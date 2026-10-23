@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../api/client';
 import TeamFilterSelect from '../components/TeamFilterSelect';
-import { isCeo } from '../utils/permissions';
+import { canAssignRoles } from '../utils/permissions';
 import './AdminDashboard.css';
 
 const RANGE_OPTIONS = [
@@ -109,7 +109,7 @@ function LoginLogs() {
       try {
         const { data } = await api.get('/api/users/me');
         if (!active) return;
-        if (!isCeo(data.role)) {
+        if (!canAssignRoles(data.role)) {
           navigate('/dashboard', { replace: true });
           return;
         }
@@ -144,7 +144,7 @@ function LoginLogs() {
       setPagination(data?.pagination || { page: 1, limit: 25, total: 0, totalPages: 1 });
     } catch (err) {
       if (err.response?.status === 403) {
-        setError('Only the CEO can view login logs.');
+        setError('Only the CEO or a Manager can view login logs.');
         navigate('/dashboard', { replace: true });
         return;
       }
@@ -156,7 +156,7 @@ function LoginLogs() {
   }, [page, q, range, team, navigate]);
 
   useEffect(() => {
-    if (!checking && isCeo(role)) {
+    if (!checking && canAssignRoles(role)) {
       loadLogs();
     }
   }, [checking, role, loadLogs]);

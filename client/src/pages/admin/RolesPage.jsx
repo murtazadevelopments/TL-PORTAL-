@@ -4,7 +4,7 @@ import api from '../../api/client';
 import AssignRoleModal from '../../components/AssignRoleModal';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { matchesTeamFilter } from '../../utils/teamNames';
-import { isCeo } from '../../utils/permissions';
+import { canAssignRoles } from '../../utils/permissions';
 import {
   describeEmployeeScope,
   isScopedEmployeePermission,
@@ -180,7 +180,7 @@ export default function RolesPage() {
       try {
         const { data } = await api.get('/api/users/me');
         if (!active) return;
-        if (!isCeo(data.role)) {
+        if (!canAssignRoles(data.role)) {
           navigate('/dashboard', { replace: true });
           return;
         }
@@ -200,7 +200,7 @@ export default function RolesPage() {
   }, [navigate]);
 
   useEffect(() => {
-    if (!checking && isCeo(role)) loadHolders();
+    if (!checking && canAssignRoles(role)) loadHolders();
   }, [checking, role, loadHolders]);
 
   if (checking) {
@@ -221,8 +221,8 @@ export default function RolesPage() {
           <div>
             <h1>Assign Roles</h1>
             <p className="muted" style={{ margin: 0 }}>
-              People with CEO, Manager, or Admin access. Manager has complete access except Sales
-              Targets, which only the CEO can see.
+              People with CEO, Manager, or Admin access. Manager has complete access except Face
+              check photos and Sales Targets, which only the CEO can see.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
@@ -300,7 +300,7 @@ export default function RolesPage() {
                       {String(row.role || '').toLowerCase() === 'ceo' ? (
                         <span className="muted">Full access (all permissions)</span>
                       ) : String(row.role || '').toLowerCase() === 'manager' ? (
-                        <span className="muted">Full access except Sales Targets</span>
+                        <span className="muted">Full access except Face check and Sales Targets</span>
                       ) : Array.isArray(row.permissions) && row.permissions.length > 0 ? (
                         <div className="perm-chip-row">
                           {row.permissions.map((key) => {
@@ -342,6 +342,7 @@ export default function RolesPage() {
 
       <AssignRoleModal
         open={assignOpen}
+        actorRole={role}
         initialUser={assignInitial}
         onClose={() => {
           setAssignOpen(false);

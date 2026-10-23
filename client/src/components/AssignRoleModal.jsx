@@ -44,7 +44,7 @@ function defaultScopesFromUser(user) {
 /**
  * CEO-only modal to assign role + optional admin permission scopes.
  */
-function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
+function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRole = 'ceo' }) {
   const [employees, setEmployees] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -55,6 +55,10 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
   const [userId, setUserId] = useState('');
+  const canAssignCeo = String(actorRole || '').trim().toLowerCase() === 'ceo';
+  const roleOptions = canAssignCeo
+    ? ROLE_OPTIONS
+    : ROLE_OPTIONS.filter((opt) => opt.value !== 'ceo');
   const [role, setRole] = useState('admin');
   const [permissions, setPermissions] = useState([]);
   const [scopes, setScopes] = useState({
@@ -116,10 +120,18 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
   }, [open]);
 
   useEffect(() => {
+    if (!canAssignCeo && role === 'ceo') setRole('admin');
+  }, [canAssignCeo, role]);
+
+  useEffect(() => {
     if (!open) return;
     if (initialUser) {
       setUserId(String(initialUser.id));
-      setRole(initialUser.role || 'admin');
+      setRole(
+        !canAssignCeo && String(initialUser.role || '').toLowerCase() === 'ceo'
+          ? 'admin'
+          : initialUser.role || 'admin'
+      );
       setPermissions(
         Array.isArray(initialUser.permissions) ? [...initialUser.permissions] : []
       );
@@ -144,7 +156,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
       setSearch('');
       setFormError('');
     }
-  }, [open, initialUser]);
+  }, [open, initialUser, canAssignCeo]);
 
   const teamNames = useMemo(
     () =>
@@ -378,7 +390,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
           <div>
             <h2>Assign Role</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Choose an employee and role. Manager has full access except Sales Targets (CEO only).
+              Choose an employee and role. Manager has full access except Face check photos and Sales
+              Targets (CEO only).
             </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
@@ -439,7 +452,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
             <fieldset className="assign-step">
               <legend>2. Role</legend>
               <div className="role-radio-row">
-                {ROLE_OPTIONS.map((opt) => (
+                {roleOptions.map((opt) => (
                   <label key={opt.value} className="role-radio">
                     <input
                       type="radio"
@@ -458,8 +471,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null }) {
               <fieldset className="assign-step">
                 <legend>3. Manager access</legend>
                 <p className="muted" style={{ margin: 0 }}>
-                  Managers can use every admin feature except Sales Targets. That board stays CEO-only
-                  and will not appear in their menu.
+                  Managers can use every admin feature except Face check photos and Sales Targets.
+                  Those stay CEO-only and will not appear in their menu.
                 </p>
               </fieldset>
             )}

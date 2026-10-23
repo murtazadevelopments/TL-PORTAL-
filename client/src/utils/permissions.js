@@ -18,6 +18,20 @@ export function isManager(role) {
   return normalizeRole(role) === 'manager';
 }
 
+export function isCeoOrManager(role) {
+  return isCeo(role) || isManager(role);
+}
+
+/** Face-check capture, photos, and per-day review — CEO only. */
+export function canUseFaceCheck(role) {
+  return isCeo(role);
+}
+
+/** Administration: assign roles, login logs, export logs. */
+export function canAssignRoles(role) {
+  return isCeoOrManager(role);
+}
+
 export function isTeamLeader(role) {
   return normalizeRole(role) === 'team_leader';
 }

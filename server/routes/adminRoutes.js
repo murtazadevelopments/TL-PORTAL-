@@ -223,15 +223,14 @@ router.delete(
 );
 
 // CEO role-assignment helpers (register before /employees/:id)
-router.get('/employees-list', requireRole('ceo'), listEmployeesForRoleAssign);
-router.get('/permissions-catalog', requireRole('ceo'), getPermissionsCatalog);
-router.get('/role-holders', requireRole('ceo'), listRoleHolders);
-router.get('/hr-people', requireRole('ceo'), listHrPeople);
-router.put('/hr-people', requireRole('ceo'), saveHrPeople);
+router.get('/employees-list', requireRole('ceo', 'manager'), listEmployeesForRoleAssign);
+router.get('/permissions-catalog', requireRole('ceo', 'manager'), getPermissionsCatalog);
+router.get('/role-holders', requireRole('ceo', 'manager'), listRoleHolders);
+router.get('/hr-people', requireRole('ceo', 'manager'), listHrPeople);
+router.put('/hr-people', requireRole('ceo', 'manager'), saveHrPeople);
 
-// CEO login activity
-router.get('/login-logs', requireRole('ceo'), listLoginLogs);
-router.get('/export-logs', requireRole('ceo'), listExportLogs);
+router.get('/login-logs', requireRole('ceo', 'manager'), listLoginLogs);
+router.get('/export-logs', requireRole('ceo', 'manager'), listExportLogs);
 
 // Optional API for notification_settings (UI removed — recipients come from permission)
 router.get(
