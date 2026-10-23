@@ -23,14 +23,14 @@ function firstEnv(keys) {
 }
 
 function smtpSettings() {
-  const mailboxUser = firstEnv([
+  const user = firstEnv([
     'SMTP_USER',
     'SMTP_USERNAME',
     'MAIL_USER',
     'MAIL_USERNAME',
     'EMAIL_USER',
   ]);
-  const mailboxPass = firstEnv([
+  const pass = firstEnv([
     'SMTP_PASS',
     'SMTP_PASSWORD',
     'MAIL_PASS',
@@ -38,41 +38,26 @@ function smtpSettings() {
     'EMAIL_PASS',
     'EMAIL_PASSWORD',
   ]);
-  const resendKey = firstEnv(['RESEND_API_KEY']);
 
   let host = firstEnv(['SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST']);
-  const portRaw = firstEnv(['SMTP_PORT', 'MAIL_PORT', 'EMAIL_PORT']);
+  if (!host || host === 'smtp.example.com') host = 'smtp.hostinger.com';
+  const port = Number(firstEnv(['SMTP_PORT', 'MAIL_PORT', 'EMAIL_PORT']) || 465);
 
-  if (mailboxUser && mailboxPass) {
-    if (!host || host === 'smtp.example.com') host = 'smtp.hostinger.com';
-    const port = Number(portRaw || 465);
-    if (!Number.isFinite(port) || port <= 0) {
-      const err = new Error('SMTP_PORT must be a valid port number');
-      err.code = 'SMTP_NOT_CONFIGURED';
-      throw err;
-    }
-    return { host, port, user: mailboxUser, pass: mailboxPass, via: 'mailbox' };
+  if (!user || !pass) {
+    const err = new Error('SMTP_USER and SMTP_PASS must be set (Hostinger mailbox login)');
+    err.code = 'SMTP_NOT_CONFIGURED';
+    throw err;
   }
-
-  // Hostinger still has RESEND_API_KEY from before the SDK removal.
-  // Nodemailer can send over Resend's SMTP with that key as the password.
-  if (resendKey) {
-    if (!host || host === 'smtp.example.com' || host === 'smtp.hostinger.com') {
-      host = 'smtp.resend.com';
-    }
-    const port = Number(portRaw || 465);
-    return { host, port, user: 'resend', pass: resendKey, via: 'resend-smtp' };
+  if (!Number.isFinite(port) || port <= 0) {
+    const err = new Error('SMTP_PORT must be a valid port number');
+    err.code = 'SMTP_NOT_CONFIGURED';
+    throw err;
   }
-
-  const err = new Error(
-    'Set SMTP_USER + SMTP_PASS (Hostinger mailbox) or keep RESEND_API_KEY for smtp.resend.com'
-  );
-  err.code = 'SMTP_NOT_CONFIGURED';
-  throw err;
+  return { host, port, user, pass, via: 'hostinger' };
 }
 
 function getFrom() {
-  const from = firstEnv(['SMTP_FROM', 'MAIL_FROM', 'EMAIL_FROM', 'RESEND_FROM']);
+  const from = firstEnv(['SMTP_FROM', 'MAIL_FROM', 'EMAIL_FROM']);
   if (from) return from;
   const user = firstEnv(['SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER']);
   return user ? `Textured Lab Portal <${user}>` : 'Textured Lab Portal';
