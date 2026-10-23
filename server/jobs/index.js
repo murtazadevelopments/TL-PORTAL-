@@ -4,6 +4,25 @@ const { runLoginLogsPrune } = require('./loginLogsPrune');
 const { runAttendanceMissed } = require('./attendanceMissed');
 const { startZktecoSync } = require('../scripts/sync');
 const { ensureQueryIndexes } = require('../utils/ensureQueryIndexes');
+const { JOB_LOCKS, lockedJob } = require('../utils/pgAdvisoryLock');
+
+const runBirthdayEmailsLocked = lockedJob(
+  'birthday-emails',
+  JOB_LOCKS.birthdayEmails,
+  runBirthdayEmails
+);
+const runLoginLogsPruneLocked = lockedJob(
+  'login-logs-prune',
+  JOB_LOCKS.loginLogsPrune,
+  runLoginLogsPrune
+);
+const runAttendanceMissedLocked = lockedJob(
+  'attendance-missed',
+  JOB_LOCKS.attendanceMissed,
+  runAttendanceMissed
+);
+
+let jobsStarted = false;
 
 /**
  * Register scheduled jobs. Call once after the HTTP server starts.
@@ -13,6 +32,12 @@ const { ensureQueryIndexes } = require('../utils/ensureQueryIndexes');
  * until the next scheduled tick after boot.
  */
 function startScheduledJobs() {
+  if (jobsStarted) {
+    console.warn('[cron] already started in this process — skip duplicate schedule');
+    return;
+  }
+  jobsStarted = true;
+
   ensureQueryIndexes().catch((err) => {
     console.error('[query-indexes] failed:', err.message || err);
   });
@@ -25,7 +50,7 @@ function startScheduledJobs() {
     cron.schedule(
       birthdayExpression,
       () => {
-        runBirthdayEmails().catch((err) => {
+        runBirthdayEmailsLocked().catch((err) => {
           console.error('[birthday-job] failed:', err.message || err);
         });
       },
@@ -40,7 +65,7 @@ function startScheduledJobs() {
     cron.schedule(
       pruneExpression,
       () => {
-        runLoginLogsPrune().catch((err) => {
+        runLoginLogsPruneLocked().catch((err) => {
           console.error('[login-logs-prune] failed:', err.message || err);
         });
       },
@@ -51,7 +76,7 @@ function startScheduledJobs() {
     console.error(`[cron] Invalid LOGIN_LOGS_PRUNE_CRON expression: ${pruneExpression}`);
   }
 
-  runLoginLogsPrune().catch((err) => {
+  runLoginLogsPruneLocked().catch((err) => {
     console.error('[login-logs-prune] startup failed:', err.message || err);
   });
 
@@ -60,7 +85,7 @@ function startScheduledJobs() {
     cron.schedule(
       attendanceExpression,
       () => {
-        runAttendanceMissed().catch((err) => {
+        runAttendanceMissedLocked().catch((err) => {
           console.error('[attendance-missed] failed:', err.message || err);
         });
       },

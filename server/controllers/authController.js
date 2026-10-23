@@ -19,7 +19,7 @@ const {
 } = require('../utils/employmentType');
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
-const { blockedLoginMessage } = require('../utils/accountStatus');
+const { blockedLoginMessage, invalidateAccountStatus } = require('../utils/accountStatus');
 const { findIdentityConflict, preferOpenAccounts } = require('../utils/identityUniqueness');
 
 const MAX_FAILED_LOGINS = 5;
@@ -374,6 +374,7 @@ async function login(req, res) {
           `,
           [nextFails, user.id]
         );
+        invalidateAccountStatus(user.id);
         try {
           await writeAuditLog({
             actorId: user.id,
@@ -414,6 +415,7 @@ async function login(req, res) {
         `,
         [user.id]
       );
+      invalidateAccountStatus(user.id);
     }
 
     const safeUser = await attachReadableUrls(omitPassword(user));

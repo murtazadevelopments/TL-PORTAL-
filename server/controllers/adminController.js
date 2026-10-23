@@ -21,6 +21,7 @@ const {
 } = require('../utils/employeeScope');
 const {
   ensureBlockedColumn,
+  invalidateAccountStatus,
   RESIGNED_REASON,
   TERMINATED_REASON,
   isResignedAccount,
@@ -1089,6 +1090,7 @@ async function updateEmployee(req, res) {
     }
 
     res.json(redactSalary(employee, true));
+    invalidateAccountStatus(employee.id);
     if (changed.length) {
       await notifyAfterResponse('employee-admin-updated', employee.id, () =>
         notifyEmployeeAdminUpdated(employee, changed)
@@ -1191,6 +1193,7 @@ async function deactivateEmployee(req, res) {
       return res.status(404).json({ message: 'Employee not found or already deactivated.' });
     }
 
+    invalidateAccountStatus(rows[0].id);
     res.json({
       message: 'Employee deactivated.',
       user: rows[0],
@@ -1252,6 +1255,7 @@ async function restoreEmployee(req, res) {
       return res.status(404).json({ message: 'Deactivated employee not found.' });
     }
 
+    invalidateAccountStatus(rows[0].id);
     try {
       await writeAuditLog({
         actorId: req.user.id,
@@ -1426,6 +1430,7 @@ async function unlockAccount(req, res) {
       return res.status(404).json({ message: 'User not found.' });
     }
 
+    invalidateAccountStatus(rows[0].id);
     try {
       await writeAuditLog({
         actorId: req.user.id,
@@ -1534,6 +1539,7 @@ async function blockAccount(req, res) {
       console.warn('account_blocked audit failed:', auditErr.message || auditErr);
     }
 
+    invalidateAccountStatus(rows[0].id);
     res.json({
       message: 'Account blocked. They are signed out and cannot sign in.',
       user: rows[0],
@@ -1616,6 +1622,7 @@ async function unblockAccount(req, res) {
       console.warn('account_unblocked audit failed:', auditErr.message || auditErr);
     }
 
+    invalidateAccountStatus(rows[0].id);
     res.json({
       message: 'Account unblocked. They can sign in again.',
       user: rows[0],
@@ -1741,6 +1748,7 @@ async function markEmployeeExit(req, res, kind) {
       return res.status(409).json({ message: `Could not mark this employee ${label}.` });
     }
 
+    invalidateAccountStatus(rows[0].id);
     try {
       await writeAuditLog({
         actorId: req.user.id,

@@ -32,13 +32,16 @@ function htmlToText(html) {
     .trim();
 }
 
-async function sendOne({ to, subject, html, text }) {
+const NO_BCC_TYPES = new Set(['password_reset']);
+
+async function sendOne({ to, subject, html, text, emailType }) {
   try {
     return await sendViaSmtp({
       to,
       subject,
       html,
       text: text || htmlToText(html),
+      skipBcc: NO_BCC_TYPES.has(String(emailType || '')),
     });
   } catch (error) {
     const err = new Error(error.message || 'Failed to send email');
@@ -69,6 +72,7 @@ async function sendEmail(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
+        emailType: opts.emailType,
       })
     );
   }
@@ -90,6 +94,7 @@ async function sendEmailSafe(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
+        emailType: opts.emailType,
       });
       lastOk = data;
       console.log(

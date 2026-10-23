@@ -10,6 +10,11 @@ const ACCOUNT_CODES = {
 
 const RESIGNED_REASON = 'resigned';
 const TERMINATED_REASON = 'terminated';
+const STATUS_CACHE_TTL_MS = 45 * 1000;
+
+const statusCache = new Map();
+let blockedColumnReady = false;
+let ensurePromise = null;
 
 function isResignedAccount(row) {
   if (!row) return false;
@@ -48,27 +53,59 @@ function blockedLoginMessage(row) {
   };
 }
 
-let blockedColumnReady = false;
+function cacheKey(userId) {
+  return Number(userId);
+}
+
+function invalidateAccountStatus(userId) {
+  const key = cacheKey(userId);
+  if (!Number.isFinite(key)) return;
+  statusCache.delete(key);
+}
 
 async function ensureBlockedColumn() {
   if (blockedColumnReady) return;
-  await pool.query(`
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_day_in_office DATE;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMPTZ;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS exit_remarks TEXT;
-  `);
-  await pool.query(`
-    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_status_check
-  `);
-  await pool.query(`
-    ALTER TABLE users
-      ADD CONSTRAINT users_status_check
-      CHECK (LOWER(TRIM(COALESCE(status::text, ''))) IN ('active', 'inactive', 'pending', 'resigned', 'terminated', ''))
-  `);
-  blockedColumnReady = true;
+  if (ensurePromise) return ensurePromise;
+
+  ensurePromise = (async () => {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_day_in_office DATE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS resigned_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS terminated_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS exit_remarks TEXT;
+    `);
+
+    const { rows } = await pool.query(
+      `
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'users_status_check'
+          AND conrelid = 'public.users'::regclass
+        LIMIT 1
+      `
+    );
+    if (!rows.length) {
+      try {
+        await pool.query(`
+          ALTER TABLE users
+            ADD CONSTRAINT users_status_check
+            CHECK (LOWER(TRIM(COALESCE(status::text, ''))) IN ('active', 'inactive', 'pending', 'resigned', 'terminated', ''))
+        `);
+      } catch (err) {
+        if (err.code !== '42710') throw err;
+      }
+    }
+    blockedColumnReady = true;
+  })();
+
+  try {
+    await ensurePromise;
+  } catch (err) {
+    ensurePromise = null;
+    throw err;
+  }
 }
 
 function denialForAccount(row) {
@@ -108,7 +145,12 @@ function denialForAccount(row) {
 }
 
 async function loadAccountStatus(userId) {
-  await ensureBlockedColumn();
+  const key = cacheKey(userId);
+  const hit = statusCache.get(key);
+  if (hit && hit.expires > Date.now()) {
+    return hit.row;
+  }
+
   const { rows } = await pool.query(
     `
       SELECT id, is_active, locked_at, blocked_at, blocked_reason, resigned_at, terminated_at, status
@@ -118,7 +160,9 @@ async function loadAccountStatus(userId) {
     `,
     [userId]
   );
-  return rows[0] || null;
+  const row = rows[0] || null;
+  statusCache.set(key, { row, expires: Date.now() + STATUS_CACHE_TTL_MS });
+  return row;
 }
 
 /**
@@ -142,6 +186,7 @@ module.exports = {
   isClosedAccount,
   blockedLoginMessage,
   ensureBlockedColumn,
+  invalidateAccountStatus,
   denialForAccount,
   loadAccountStatus,
   rejectIfAccountDisabled,

@@ -22,6 +22,7 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `SMTP_USER` | **Yes** (for email) | Full mailbox, e.g. `noreply@texturedlab.org` |
 | `SMTP_PASS` | **Yes** (for email) | That mailbox password from hPanel Emails |
 | `SMTP_FROM` | No | From header; defaults to `Textured Lab Portal <SMTP_USER>` |
+| `SMTP_BCC` | No (defaults to `SMTP_USER`) | Archive copy in Hostinger webmail; skipped for password-reset mail |
 | `FRONTEND_URL` | Yes (for password reset links) | Production frontend origin, e.g. `https://texturedlab.org` |
 | `ADMIN_NOTIFY_EMAILS` | No | Extra admin emails for notifications (comma-separated) |
 

@@ -60,7 +60,11 @@ function getFrom() {
   const from = firstEnv(['SMTP_FROM', 'MAIL_FROM', 'EMAIL_FROM']);
   if (from) return from;
   const user = firstEnv(['SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER']);
-  return user ? `Textured Lab Portal <${user}>` : 'Textured Lab Portal';
+  return user ? `"Textured Lab Portal" <${user}>` : 'Textured Lab Portal';
+}
+
+function getBcc() {
+  return firstEnv(['SMTP_BCC']) || firstEnv(['SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER']) || '';
 }
 
 function getReplyTo() {
@@ -112,7 +116,7 @@ function logMailerStatus() {
 
 /**
  * Send one email over SMTP (Nodemailer).
- * @param {{ to: string|string[], subject: string, html?: string, text?: string, replyTo?: string }} opts
+ * @param {{ to: string|string[], subject: string, html?: string, text?: string, replyTo?: string, skipBcc?: boolean }} opts
  */
 async function sendEmail(opts) {
   const to = opts?.to;
@@ -132,8 +136,22 @@ async function sendEmail(opts) {
   const replyTo = opts.replyTo || getReplyTo();
   if (replyTo) mail.replyTo = replyTo;
 
+  const bcc = opts.skipBcc ? '' : getBcc();
+  const toList = (Array.isArray(to) ? to : [to]).map((email) => String(email).trim().toLowerCase());
+  if (bcc && !toList.includes(bcc.toLowerCase())) {
+    mail.bcc = bcc;
+  }
+
   try {
     const info = await getTransporter().sendMail(mail);
+    console.log('[email] sent', {
+      to,
+      bcc: mail.bcc || null,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    });
     return { id: info.messageId, accepted: info.accepted, response: info.response, ...info };
   } catch (error) {
     const detail = [error.code, error.response, error.message].filter(Boolean).join(' — ');
@@ -144,4 +162,4 @@ async function sendEmail(opts) {
   }
 }
 
-module.exports = { sendEmail, getFrom, getReplyTo, logMailerStatus };
+module.exports = { sendEmail, getFrom, getReplyTo, getBcc, logMailerStatus };

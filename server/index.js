@@ -258,27 +258,56 @@ if (spaEnabled) {
 }
 
 const PORT = Number(process.env.PORT) || 5001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on 0.0.0.0:${PORT}`);
-  console.log('CORS origins:', allowedOrigins.join(', '));
-  try {
-    require('./lib/mailer').logMailerStatus();
-  } catch (err) {
-    console.error('[mailer] status check failed:', err.message || err);
+
+function startHttpServer() {
+  if (global.__tlPortalListening) {
+    console.warn('[boot] HTTP server already started in this process — skip duplicate listen');
+    return;
   }
-  if (spaEnabled) {
-    console.log(`SPA enabled from ${spaDir}`);
-  } else {
-    console.log('SPA not served (client/dist missing)');
-  }
-  if (apiBootError) {
-    console.error('API routes unavailable until env is fixed:', apiBootError.message);
-  }
+  global.__tlPortalListening = true;
+
+  const listen = () => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on 0.0.0.0:${PORT}`);
+      console.log('CORS origins:', allowedOrigins.join(', '));
+      try {
+        require('./lib/mailer').logMailerStatus();
+      } catch (err) {
+        console.error('[mailer] status check failed:', err.message || err);
+      }
+      if (spaEnabled) {
+        console.log(`SPA enabled from ${spaDir}`);
+      } else {
+        console.log('SPA not served (client/dist missing)');
+      }
+      if (apiBootError) {
+        console.error('API routes unavailable until env is fixed:', apiBootError.message);
+      }
+
+      try {
+        const { startScheduledJobs } = require('./jobs');
+        startScheduledJobs();
+      } catch (err) {
+        console.error('Failed to start scheduled jobs:', err.message || err);
+      }
+    });
+  };
 
   try {
-    const { startScheduledJobs } = require('./jobs');
-    startScheduledJobs();
+    const { ensureBlockedColumn } = require('./utils/accountStatus');
+    ensureBlockedColumn()
+      .catch((err) => {
+        console.error('[account-status] schema ensure failed:', err.message || err);
+      })
+      .finally(listen);
   } catch (err) {
-    console.error('Failed to start scheduled jobs:', err.message || err);
+    console.error('[account-status] schema ensure failed:', err.message || err);
+    listen();
   }
-});
+}
+
+if (require.main === module) {
+  startHttpServer();
+} else {
+  module.exports = { app, startHttpServer };
+}
