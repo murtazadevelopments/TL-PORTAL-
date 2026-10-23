@@ -91,6 +91,8 @@ export default function AttendancePage() {
   const [openCheck, setOpenCheck] = useState(null);
   const [sundayHoliday, setSundayHoliday] = useState(false);
   const [attendanceEnabled, setAttendanceEnabled] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(true);
+  const [profileIncompleteMessage, setProfileIncompleteMessage] = useState('');
   const [checksPerShift, setChecksPerShift] = useState(5);
   const [flexibleHours, setFlexibleHours] = useState(false);
   const [faceCheckCapture, setFaceCheckCapture] = useState(false);
@@ -121,6 +123,11 @@ export default function AttendancePage() {
     setOpenCheck(att.open_check || null);
     setSundayHoliday(Boolean(att.holiday));
     setAttendanceEnabled(att.attendance_enabled !== false);
+    setProfileComplete(att.profile_complete !== false);
+    setProfileIncompleteMessage(
+      att.profile_incomplete_message ||
+        'Complete your profile before attendance can be marked.'
+    );
     setFlexibleHours(Boolean(att.flexible_hours));
     setFaceCheckCapture(Boolean(att.face_check_capture));
     setDurationLabel(att.duration_label || '');
@@ -502,7 +509,14 @@ export default function AttendancePage() {
       {flexibleHours && durationLabel ? (
         <p className="success">Today’s duration after check-out: {durationLabel}</p>
       ) : null}
-      {!attendanceEnabled ? (
+      {!profileComplete ? (
+        <p className="attendance-open-banner">
+          {profileIncompleteMessage}{' '}
+          <Link to="/account">Open profile</Link>
+          {' · '}
+          <Link to="/account/documents">Open documents</Link>
+        </p>
+      ) : !attendanceEnabled ? (
         <p className="attendance-open-banner">Attendance is paused for your account. Check-in will open again when an admin turns it on.</p>
       ) : sundayHoliday ? (
         <p className="attendance-open-banner">Sunday is a holiday. Attendance checks are not required.</p>
@@ -542,7 +556,7 @@ export default function AttendancePage() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={phase !== 'idle' || !modelsReady}
+                disabled={phase !== 'idle' || !modelsReady || !profileComplete}
                 onClick={handleEnroll}
               >
                 {phase === 'enroll' ? 'Capturing…' : 'Enroll face'}
@@ -551,14 +565,16 @@ export default function AttendancePage() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={phase !== 'idle' || !canCheckIn || !modelsReady}
+                disabled={phase !== 'idle' || !canCheckIn || !modelsReady || !profileComplete}
                 onClick={handleCheckIn}
               >
                 {phase === 'checkin'
                   ? openCheck?.kind === 'checkout'
                     ? 'Checking out…'
                     : 'Checking in…'
-                  : !attendanceEnabled
+                  : !profileComplete
+                    ? 'Complete profile first'
+                    : !attendanceEnabled
                     ? 'Attendance off'
                     : canCheckIn
                       ? openCheck?.kind === 'checkout'

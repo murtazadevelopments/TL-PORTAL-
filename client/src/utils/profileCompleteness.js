@@ -57,6 +57,11 @@ export function missingAdminAssignFields(row) {
   return ADMIN_ASSIGN_FIELDS.filter((field) => isBlank(row[field.key]));
 }
 
+export function isEmployeeProfileComplete(row) {
+  if (!row) return false;
+  return missingEmployeePortalFields(row).length === 0 && missingAdminAssignFields(row).length === 0;
+}
+
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const PROFILE_ALERT_MAX = 3;
 export const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';

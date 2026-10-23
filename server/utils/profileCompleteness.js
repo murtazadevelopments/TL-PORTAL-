@@ -58,6 +58,42 @@ function missingAdminAssignFields(row) {
   return missingFromCatalog(row, ADMIN_ASSIGN_FIELDS);
 }
 
+function profileRow(row) {
+  if (!row) return row;
+  return withDocumentPresence({
+    ...row,
+    reference_person_name: row.reference_person_name || row.reference_person,
+  });
+}
+
+function missingProfileFields(row) {
+  const user = profileRow(row);
+  return [...missingAdminAssignFields(user), ...missingEmployeePortalFields(user)];
+}
+
+function isEmployeeProfileComplete(row) {
+  return missingProfileFields(row).length === 0;
+}
+
+const PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE =
+  'Complete your profile before attendance can be marked. Fill the missing fields in your account, then try again.';
+
+function isRemoteProfileIncomplete(row) {
+  if (String(row?.employment_type || '').trim().toLowerCase() !== 'remote') return false;
+  return !isEmployeeProfileComplete(row);
+}
+
+function rejectIfRemoteProfileIncomplete(res, user) {
+  if (!isRemoteProfileIncomplete(user)) return false;
+  const missing = missingProfileFields(user);
+  res.status(403).json({
+    code: 'PROFILE_INCOMPLETE',
+    message: PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
+    missing_fields: missing.map((field) => field.label),
+  });
+  return true;
+}
+
 function formatFieldList(fields) {
   return fields.map((f) => f.label).join(', ');
 }
@@ -162,6 +198,11 @@ module.exports = {
   isBlank,
   missingEmployeePortalFields,
   missingAdminAssignFields,
+  missingProfileFields,
+  isEmployeeProfileComplete,
+  isRemoteProfileIncomplete,
+  rejectIfRemoteProfileIncomplete,
+  PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
   withDocumentPresence,
   formatFieldList,
   ensureProfileAlertColumns,

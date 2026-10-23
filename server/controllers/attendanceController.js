@@ -28,6 +28,11 @@ const {
 } = require('../utils/faceCheckCapture');
 const { notifyRemoteAttendanceOpened } = require('../utils/attendanceReviewEmail');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
+const {
+  isRemoteProfileIncomplete,
+  rejectIfRemoteProfileIncomplete,
+  PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
+} = require('../utils/profileCompleteness');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -99,9 +104,12 @@ async function loadUser(userId) {
   const { rows } = await pool.query(
     `
       SELECT id, name, username, email, role, employment_type, branch, department,
-             is_active, status, profile_picture_url, employee_id, shift,
+             is_active, status, profile_picture_url, employee_id, shift, designation,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count, flexible_hours, face_check_capture
+             remote_check_count, flexible_hours, face_check_capture, staff_kind,
+             reference_person, emergency_contact_name, emergency_contact_number,
+             bank_name, account_title, iban, account_number,
+             cnic_front_url, cnic_back_url, cv_url
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -232,8 +240,10 @@ async function getMyAttendance(req, res) {
 
     const sundayHoliday = isSundayDateKey(shiftDate);
     const attendanceEnabled = userAttendanceEnabled(user);
+    const profileComplete = !isRemoteProfileIncomplete(user);
     if (
       attendanceEnabled &&
+      profileComplete &&
       normalizeEmploymentType(user.employment_type) === 'remote' &&
       !sundayHoliday
     ) {
@@ -300,7 +310,9 @@ async function getMyAttendance(req, res) {
     );
 
     const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now);
-    const canCheckIn = Boolean(attendanceEnabled && !sundayHoliday && opened?.pub?.can_check_in);
+    const canCheckIn = Boolean(
+      attendanceEnabled && profileComplete && !sundayHoliday && opened?.pub?.can_check_in
+    );
     const month = await monthHistory(user, shiftDate.slice(0, 7));
     const todayMeta = (month.days || []).find((d) => d.date === shiftDate) || {};
     const flexible = userFlexibleHours(user);
@@ -309,6 +321,10 @@ async function getMyAttendance(req, res) {
       timezone: TIMEZONE,
       current_hour_key: opened?.pub?.hour_key || null,
       attendance_enabled: attendanceEnabled,
+      profile_complete: profileComplete,
+      profile_incomplete_message: profileComplete
+        ? ''
+        : PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
       flexible_hours: flexible,
       face_check_capture: userFaceCheckCapture(user),
       can_check_in: canCheckIn,
@@ -348,6 +364,7 @@ async function checkIn(req, res) {
       return res.status(403).json({ message: 'Face check-in is only for remote employees.' });
     }
     if (await rejectIfUserAttendanceStopped(res, user)) return;
+    if (rejectIfRemoteProfileIncomplete(res, user)) return;
     if (rateLimited(req.user.id)) {
       return res.status(429).json({ message: 'Too many check-in attempts. Try again later.' });
     }
@@ -591,9 +608,12 @@ async function adminOverview(req, res) {
     const { rows: people } = await pool.query(
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
-               profile_picture_url, shift, is_active, status, work_start_hour, work_end_hour,
+               profile_picture_url, shift, designation, is_active, status, work_start_hour, work_end_hour,
                remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours,
-               face_check_capture
+               face_check_capture, staff_kind, reference_person,
+               emergency_contact_name, emergency_contact_number,
+               bank_name, account_title, iban, account_number,
+               cnic_front_url, cnic_back_url, cv_url
         FROM users
         WHERE is_active = true
           AND status = 'active'
@@ -735,6 +755,7 @@ async function adminOverview(req, res) {
         const hours = workHoursFromUser(person);
         const dayMeta = dayMetaByUser.get(String(person.id));
         const flexible = userFlexibleHours(person);
+        const profileComplete = !isRemoteProfileIncomplete(person);
         return {
           id: person.id,
           employee_id: person.employee_id,
@@ -753,7 +774,7 @@ async function adminOverview(req, res) {
             ? `Flexible · ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`
             : `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
           day_status: rowStatus,
-          can_manual: employeeMatchesScope(person, editScope),
+          can_manual: Boolean(employeeMatchesScope(person, editScope) && profileComplete),
           can_toggle_attendance: employeeMatchesScope(person, editScope),
           can_delete: Boolean(
             isCeoRole(req.user?.role) && (personLogs.length > 0 || dayByUser.has(String(person.id)))
@@ -765,6 +786,7 @@ async function adminOverview(req, res) {
           slots,
           latest,
           attendance_enabled: userAttendanceEnabled(person),
+          profile_complete: profileComplete,
           flexible_hours: flexible,
           face_check_capture: isCeoRole(req.user?.role) ? userFaceCheckCapture(person) : undefined,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
@@ -774,8 +796,14 @@ async function adminOverview(req, res) {
             : '',
           checked_out_at: dayMeta?.checked_out_at || null,
           first_check_in: dayMeta?.first_check_in || null,
-          can_check_in_request: Boolean(userAttendanceEnabled(person) && requestGate.allowed),
-          check_in_request_reason: userAttendanceEnabled(person) ? requestGate.reason : 'stopped',
+          can_check_in_request: Boolean(
+            userAttendanceEnabled(person) && profileComplete && requestGate.allowed
+          ),
+          check_in_request_reason: !userAttendanceEnabled(person)
+            ? 'stopped'
+            : !profileComplete
+              ? 'profile_incomplete'
+              : requestGate.reason,
           check_in_request_available_at: requestGate.available_at,
         };
       })
@@ -888,6 +916,7 @@ async function adminManualMark(req, res) {
     if (target.employment_type !== 'remote') {
       return res.status(400).json({ message: 'Attendance is only tracked for remote employees.' });
     }
+    if (rejectIfRemoteProfileIncomplete(res, target)) return;
 
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
@@ -1008,6 +1037,7 @@ async function adminRequestCheckIn(req, res) {
       return res.status(400).json({ message: 'Check-in requests are only for remote employees.' });
     }
     if (await rejectIfUserAttendanceStopped(res, target)) return;
+    if (rejectIfRemoteProfileIncomplete(res, target)) return;
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
