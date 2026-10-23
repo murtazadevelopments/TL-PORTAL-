@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const MailComposer = require('nodemailer/lib/mail-composer');
+const { ImapFlow } = require('imapflow');
 
 let transporter;
 let loggedStatus = false;
@@ -63,12 +65,28 @@ function getFrom() {
   return user ? `"Textured Lab Portal" <${user}>` : 'Textured Lab Portal';
 }
 
-function getBcc() {
-  return firstEnv(['SMTP_BCC']) || firstEnv(['SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER']) || '';
-}
-
 function getReplyTo() {
   return firstEnv(['SMTP_REPLY_TO', 'MAIL_REPLY_TO']) || undefined;
+}
+
+function htmlToText(html) {
+  return String(html || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/(div|h1|h2|h3|tr|li)>/gi, '\n')
+    .replace(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, '$2 ($1)')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function transportOptions({ host, port, user, pass }) {
@@ -114,9 +132,27 @@ function logMailerStatus() {
   }
 }
 
+async function saveToSent(mail) {
+  const raw = await new MailComposer(mail).compile().build();
+  const { user, pass } = smtpSettings();
+  const client = new ImapFlow({
+    host: 'imap.hostinger.com',
+    port: 993,
+    secure: true,
+    auth: { user, pass },
+    logger: false,
+  });
+  try {
+    await client.connect();
+    await client.append('INBOX.Sent', raw, ['\\Seen']);
+  } finally {
+    await client.logout();
+  }
+}
+
 /**
  * Send one email over SMTP (Nodemailer).
- * @param {{ to: string|string[], subject: string, html?: string, text?: string, replyTo?: string, skipBcc?: boolean }} opts
+ * @param {{ to: string|string[], subject: string, html?: string, text?: string, replyTo?: string }} opts
  */
 async function sendEmail(opts) {
   const to = opts?.to;
@@ -126,31 +162,29 @@ async function sendEmail(opts) {
     throw err;
   }
 
+  const html = opts.html;
+  const text = opts.text || htmlToText(html);
   const mail = {
     from: getFrom(),
     to,
     subject: opts.subject,
-    html: opts.html,
-    text: opts.text,
+    html,
+    text,
   };
   const replyTo = opts.replyTo || getReplyTo();
   if (replyTo) mail.replyTo = replyTo;
-
-  const bcc = opts.skipBcc ? '' : getBcc();
-  const toList = (Array.isArray(to) ? to : [to]).map((email) => String(email).trim().toLowerCase());
-  if (bcc && !toList.includes(bcc.toLowerCase())) {
-    mail.bcc = bcc;
-  }
 
   try {
     const info = await getTransporter().sendMail(mail);
     console.log('[email] sent', {
       to,
-      bcc: mail.bcc || null,
       messageId: info.messageId,
       accepted: info.accepted,
       rejected: info.rejected,
       response: info.response,
+    });
+    saveToSent(mail).catch((err) => {
+      console.error('[email] save-to-sent failed', err.message || err);
     });
     return { id: info.messageId, accepted: info.accepted, response: info.response, ...info };
   } catch (error) {
@@ -162,4 +196,4 @@ async function sendEmail(opts) {
   }
 }
 
-module.exports = { sendEmail, getFrom, getReplyTo, getBcc, logMailerStatus };
+module.exports = { sendEmail, getFrom, getReplyTo, logMailerStatus };

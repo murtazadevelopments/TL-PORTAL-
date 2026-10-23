@@ -32,16 +32,13 @@ function htmlToText(html) {
     .trim();
 }
 
-const NO_BCC_TYPES = new Set(['password_reset']);
-
-async function sendOne({ to, subject, html, text, emailType }) {
+async function sendOne({ to, subject, html, text }) {
   try {
     return await sendViaSmtp({
       to,
       subject,
       html,
       text: text || htmlToText(html),
-      skipBcc: NO_BCC_TYPES.has(String(emailType || '')),
     });
   } catch (error) {
     const err = new Error(error.message || 'Failed to send email');
