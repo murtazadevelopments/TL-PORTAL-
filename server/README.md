@@ -17,10 +17,10 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `SUPABASE_URL` | **Yes** | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
 | `ALLOWED_ORIGINS` | No | Comma-separated frontend origins (defaults include portal + Hostinger URL + localhost) |
-| `SMTP_HOST` | **Yes** (for email) | SMTP server hostname |
-| `SMTP_PORT` | No (default `587`) | SMTP port (`465` uses TLS by default) |
-| `SMTP_USER` | **Yes** (for email) | SMTP username |
-| `SMTP_PASS` | **Yes** (for email) | SMTP password |
+| `SMTP_HOST` | No (default `smtp.hostinger.com`) | SMTP server |
+| `SMTP_PORT` | No (default `465`) | `465` SSL or `587` STARTTLS |
+| `SMTP_USER` | **Yes** (for email) | Full mailbox, e.g. `noreply@texturedlab.org` |
+| `SMTP_PASS` | **Yes** (for email) | That mailbox password from hPanel Emails |
 | `SMTP_FROM` | No | From header; defaults to `Textured Lab Portal <SMTP_USER>` |
 | `FRONTEND_URL` | Yes (for password reset links) | Production frontend origin, e.g. `https://texturedlab.org` |
 | `ADMIN_NOTIFY_EMAILS` | No | Extra admin emails for notifications (comma-separated) |

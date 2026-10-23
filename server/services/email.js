@@ -104,7 +104,7 @@ async function sendEmailSafe(opts) {
       }
     } catch (err) {
       console.error(
-        `[email] FAIL type=${opts.emailType || 'generic'} to=${recipient} from=${getFrom()}:`,
+        `[email] FAIL type=${opts.emailType || 'generic'} to=${recipient} from=${getFrom()} code=${err.code || 'n/a'}:`,
         err.message || err
       );
       await logEmail({

@@ -261,6 +261,11 @@ const PORT = Number(process.env.PORT) || 5001;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on 0.0.0.0:${PORT}`);
   console.log('CORS origins:', allowedOrigins.join(', '));
+  try {
+    require('./lib/mailer').logMailerStatus();
+  } catch (err) {
+    console.error('[mailer] status check failed:', err.message || err);
+  }
   if (spaEnabled) {
     console.log(`SPA enabled from ${spaDir}`);
   } else {

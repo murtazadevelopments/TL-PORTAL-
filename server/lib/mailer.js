@@ -1,14 +1,51 @@
 const nodemailer = require('nodemailer');
 
 let transporter;
+let loggedStatus = false;
+
+function unquote(value) {
+  const s = String(value || '').trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"') && s.length >= 2) ||
+    (s.startsWith("'") && s.endsWith("'") && s.length >= 2)
+  ) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
+function firstEnv(keys) {
+  for (const key of keys) {
+    const value = unquote(process.env[key]);
+    if (value) return value;
+  }
+  return '';
+}
 
 function smtpSettings() {
-  const host = String(process.env.SMTP_HOST || '').trim();
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = String(process.env.SMTP_USER || '').trim();
-  const pass = String(process.env.SMTP_PASS || '');
-  if (!host || !user || !pass) {
-    const err = new Error('SMTP_HOST, SMTP_USER, and SMTP_PASS must be set');
+  let host = firstEnv(['SMTP_HOST', 'MAIL_HOST', 'EMAIL_HOST']);
+  if (!host || host === 'smtp.example.com') host = 'smtp.hostinger.com';
+
+  const portRaw = firstEnv(['SMTP_PORT', 'MAIL_PORT', 'EMAIL_PORT']);
+  const port = Number(portRaw || 465);
+  const user = firstEnv([
+    'SMTP_USER',
+    'SMTP_USERNAME',
+    'MAIL_USER',
+    'MAIL_USERNAME',
+    'EMAIL_USER',
+  ]);
+  const pass = firstEnv([
+    'SMTP_PASS',
+    'SMTP_PASSWORD',
+    'MAIL_PASS',
+    'MAIL_PASSWORD',
+    'EMAIL_PASS',
+    'EMAIL_PASSWORD',
+  ]);
+
+  if (!user || !pass) {
+    const err = new Error('SMTP_USER and SMTP_PASS must be set (Hostinger mailbox login)');
     err.code = 'SMTP_NOT_CONFIGURED';
     throw err;
   }
@@ -21,28 +58,55 @@ function smtpSettings() {
 }
 
 function getFrom() {
-  const from = String(process.env.SMTP_FROM || '').trim();
+  const from = firstEnv(['SMTP_FROM', 'MAIL_FROM', 'EMAIL_FROM', 'RESEND_FROM']);
   if (from) return from;
-  const user = String(process.env.SMTP_USER || '').trim();
+  const user = firstEnv(['SMTP_USER', 'SMTP_USERNAME', 'MAIL_USER', 'MAIL_USERNAME', 'EMAIL_USER']);
   return user ? `Textured Lab Portal <${user}>` : 'Textured Lab Portal';
 }
 
 function getReplyTo() {
-  return String(process.env.SMTP_REPLY_TO || '').trim() || undefined;
+  return firstEnv(['SMTP_REPLY_TO', 'MAIL_REPLY_TO']) || undefined;
+}
+
+function transportOptions({ host, port, user, pass }) {
+  const secureEnv = firstEnv(['SMTP_SECURE', 'MAIL_SECURE']).toLowerCase();
+  const secure = secureEnv
+    ? ['1', 'true', 'yes'].includes(secureEnv)
+    : port === 465;
+  return {
+    host,
+    port,
+    secure,
+    requireTLS: !secure,
+    auth: { user, pass },
+    family: 4,
+    name: 'texturedlab.org',
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    tls: {
+      minVersion: 'TLSv1.2',
+      servername: host,
+    },
+  };
 }
 
 function getTransporter() {
   if (transporter) return transporter;
-  const { host, port, user, pass } = smtpSettings();
-  const secureEnv = String(process.env.SMTP_SECURE || '').trim().toLowerCase();
-  const secure = secureEnv ? ['1', 'true', 'yes'].includes(secureEnv) : port === 465;
-  transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-  });
+  const settings = smtpSettings();
+  transporter = nodemailer.createTransport(transportOptions(settings));
   return transporter;
+}
+
+function logMailerStatus() {
+  if (loggedStatus) return;
+  loggedStatus = true;
+  try {
+    const { host, port, user } = smtpSettings();
+    console.log(`[mailer] SMTP ready host=${host} port=${port} user=${user} from=${getFrom()}`);
+  } catch (err) {
+    console.error(`[mailer] ${err.message}. Emails will not send until Hostinger env is set.`);
+  }
 }
 
 /**
@@ -67,8 +131,16 @@ async function sendEmail(opts) {
   const replyTo = opts.replyTo || getReplyTo();
   if (replyTo) mail.replyTo = replyTo;
 
-  const info = await getTransporter().sendMail(mail);
-  return { id: info.messageId, ...info };
+  try {
+    const info = await getTransporter().sendMail(mail);
+    return { id: info.messageId, accepted: info.accepted, response: info.response, ...info };
+  } catch (error) {
+    const detail = [error.code, error.response, error.message].filter(Boolean).join(' — ');
+    const err = new Error(detail || 'Failed to send email');
+    err.code = error.code || 'SMTP_SEND_FAILED';
+    err.cause = error;
+    throw err;
+  }
 }
 
-module.exports = { sendEmail, getFrom, getReplyTo };
+module.exports = { sendEmail, getFrom, getReplyTo, logMailerStatus };
