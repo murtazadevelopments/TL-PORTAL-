@@ -9,7 +9,7 @@ const {
   employeeMatchesScope,
   scopeWhereClause,
 } = require('../utils/employeeScope');
-const { loadAdminPermissionAccess, isCeoRole } = require('../middleware/permissions');
+const { loadAdminPermissionAccess, isCeoRole, isManagerRole } = require('../middleware/permissions');
 const { getShiftByName, loadShiftCatalog } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
 const { queueCeoBranchManagerNotice } = require('../services/notifications');
@@ -138,7 +138,7 @@ async function persistLiveStatus(row, shift) {
 }
 
 async function resolveOnsiteEditScope(req) {
-  if (isCeoRole(req.user?.role)) return { type: 'all' };
+  if (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) return { type: 'all' };
   const access = await loadAdminPermissionAccess(req.user.id);
   if ((access.permissions || []).includes('hr:add_employee')) return { type: 'all' };
   if ((access.permissions || []).includes('attendance:edit')) {
@@ -151,7 +151,7 @@ async function resolveOnsiteEditScope(req) {
 }
 
 async function resolveOnsiteViewScope(req) {
-  if (isCeoRole(req.user?.role)) return { type: 'all' };
+  if (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) return { type: 'all' };
   const access = await loadAdminPermissionAccess(req.user.id);
   if ((access.permissions || []).includes('hr:add_employee')) return { type: 'all' };
   const scopes = access.scopes || {};

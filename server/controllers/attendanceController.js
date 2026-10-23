@@ -555,7 +555,7 @@ async function checkIn(req, res) {
 }
 
 async function resolveAttendanceScope(req, permissionKey) {
-  if (isCeoRole(req.user?.role)) return { type: 'all' };
+  if (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) return { type: 'all' };
   const access = await loadAdminPermissionAccess(req.user.id);
   const scopes = access.scopes || {};
   const keys = access.permissions || [];
@@ -600,9 +600,7 @@ async function adminOverview(req, res) {
     const teamFilter = String(req.query.team || req.query.department || '').trim().toLowerCase();
 
     const viewScope = await resolveAttendanceScope(req, 'attendance:view');
-    const editScope = isCeoRole(req.user?.role)
-      ? { type: 'all' }
-      : await resolveAttendanceScope(req, 'attendance:edit');
+    const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     const filter = scopeWhereClause(viewScope, 1);
 
     const { rows: people } = await pool.query(
@@ -774,7 +772,7 @@ async function adminOverview(req, res) {
             ? `Flexible · ${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`
             : `${formatHourLabel(hours.start)}–${formatHourLabel(hours.end)}`,
           day_status: rowStatus,
-          can_manual: Boolean(employeeMatchesScope(person, editScope) && profileComplete),
+          can_manual: employeeMatchesScope(person, editScope),
           can_toggle_attendance: employeeMatchesScope(person, editScope),
           can_delete: Boolean(
             isCeoRole(req.user?.role) && (personLogs.length > 0 || dayByUser.has(String(person.id)))
@@ -797,13 +795,11 @@ async function adminOverview(req, res) {
           checked_out_at: dayMeta?.checked_out_at || null,
           first_check_in: dayMeta?.first_check_in || null,
           can_check_in_request: Boolean(
-            userAttendanceEnabled(person) && profileComplete && requestGate.allowed
+            userAttendanceEnabled(person) && requestGate.allowed
           ),
           check_in_request_reason: !userAttendanceEnabled(person)
             ? 'stopped'
-            : !profileComplete
-              ? 'profile_incomplete'
-              : requestGate.reason,
+            : requestGate.reason,
           check_in_request_available_at: requestGate.available_at,
         };
       })
@@ -916,7 +912,6 @@ async function adminManualMark(req, res) {
     if (target.employment_type !== 'remote') {
       return res.status(400).json({ message: 'Attendance is only tracked for remote employees.' });
     }
-    if (rejectIfRemoteProfileIncomplete(res, target)) return;
 
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
@@ -1037,7 +1032,6 @@ async function adminRequestCheckIn(req, res) {
       return res.status(400).json({ message: 'Check-in requests are only for remote employees.' });
     }
     if (await rejectIfUserAttendanceStopped(res, target)) return;
-    if (rejectIfRemoteProfileIncomplete(res, target)) return;
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
     if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });

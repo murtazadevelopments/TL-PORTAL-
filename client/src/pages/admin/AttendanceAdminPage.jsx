@@ -119,12 +119,6 @@ function checkInRequestButton(row) {
   if (row.check_in_request_reason === 'stopped') {
     return { label: 'Check in Request', title: 'Attendance is turned off.' };
   }
-  if (row.check_in_request_reason === 'profile_incomplete' || row.profile_complete === false) {
-    return {
-      label: 'Check in Request',
-      title: 'Profile is incomplete. Attendance is not marked until the profile is completed.',
-    };
-  }
   if (row.check_in_request_reason === 'holiday') {
     return { label: 'Check in Request', title: 'Sunday is a holiday.' };
   }
@@ -705,12 +699,7 @@ export default function AttendanceAdminPage() {
   }
 
   async function sendCheckInRequest(row) {
-    if (
-      row.attendance_enabled === false ||
-      row.profile_complete === false ||
-      !row?.id ||
-      row.can_check_in_request === false
-    ) {
+    if (row.attendance_enabled === false || !row?.id || row.can_check_in_request === false) {
       return;
     }
     setRequestingId(row.id);
@@ -1038,7 +1027,9 @@ export default function AttendanceAdminPage() {
                 </div>
               </header>
               {row.profile_complete === false ? (
-                <p className="muted">Profile is incomplete. Attendance is not marked until the profile is completed.</p>
+                <p className="muted">
+                  Profile is incomplete. This employee cannot self check-in until they complete it.
+                </p>
               ) : row.attendance_enabled === false ? (
                 <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
               ) : null}
@@ -1099,6 +1090,7 @@ export default function AttendanceAdminPage() {
                   <button
                     type="button"
                     className="btn btn-ghost"
+                    title="Manually mark this check"
                     onClick={() =>
                       setManual({
                         user: row,
