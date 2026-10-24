@@ -22,6 +22,7 @@ const {
   addDaysKey,
   userFlexibleHours,
   flexibleDayBounds,
+  flexibleDisplayScheduledAt,
 } = require('./remoteCheckWindows');
 const { isSundayDateKey } = require('./workWeek');
 const { normalizeEmploymentType } = require('./employmentType');
@@ -59,7 +60,7 @@ function remoteSlotLabel(seq, kind) {
   return Number(seq) === 1 || kind === 'start' ? 'Start' : `Check ${Number(seq)}`;
 }
 
-function slotsFromChallenges(challengeRows, logsByHour, now) {
+function slotsFromChallenges(challengeRows, logsByHour, now, user = null) {
   return sortRemoteChecks(challengeRows).map((row, i) => {
     const seq = i + 1;
     const log = logsByHour[row.hour_key];
@@ -72,7 +73,7 @@ function slotsFromChallenges(challengeRows, logsByHour, now) {
       state: challengeSlotState(log || row, now),
       method: log?.method || null,
       checked_in_at: log?.checked_in_at || null,
-      scheduled_at: row.scheduled_at || null,
+      scheduled_at: flexibleDisplayScheduledAt(user, row.shift_date, row) || row.scheduled_at || null,
       id: row.id || null,
     };
   });
@@ -290,7 +291,7 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
 
   if (isRemoteUser(user)) {
     const slots = challengeRows.length
-      ? slotsFromChallenges(challengeRows, byHour, now)
+      ? slotsFromChallenges(challengeRows, byHour, now, user)
       : dateKey >= zonedParts(now).dateKey
         ? plannedRemoteSlots(dateKey, user, now)
         : emptyRemoteSlots(dateKey, user);
@@ -301,7 +302,7 @@ function buildDayRecord(dateKey, user, logs, now, challengeRows = []) {
     return {
       date: dateKey,
       status: computeDayStatus(logs, user, dateKey, now),
-      slots: slotsFromChallenges(challengeRows, byHour, now),
+      slots: slotsFromChallenges(challengeRows, byHour, now, user),
     };
   }
 
@@ -414,7 +415,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
     }
     if (leaveByDate.has(dateKey)) {
       const leaveSlots = (dayChallenges.length
-        ? slotsFromChallenges(dayChallenges, byHour, now)
+        ? slotsFromChallenges(dayChallenges, byHour, now, user)
         : isRemoteUser(user)
           ? emptyRemoteSlots(dateKey, user)
           : slotsForUser(dateKey, user)

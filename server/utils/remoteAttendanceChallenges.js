@@ -18,7 +18,9 @@ const {
   userFlexibleHours,
   flexibleDayBounds,
   flexibleStartWindows,
+  flexibleDisplayScheduledAt,
   flexibleCheckoutWindows,
+  zonedInstant,
   pickRandomInstants,
   seededRandom,
   MIN_CHECK_GAP_MINUTES,
@@ -120,7 +122,7 @@ async function minuteTaken(userId, at) {
 
 function windowsForPlanRow(user, shiftDate, kind, at) {
   if (kind === 'checkout') return flexibleCheckoutWindows(shiftDate, at);
-  if (kind === 'start' && userFlexibleHours(user)) return flexibleStartWindows(shiftDate);
+  if (kind === 'start' && userFlexibleHours(user)) return flexibleStartWindows(shiftDate, user);
   return windowsForScheduled(at);
 }
 
@@ -239,7 +241,7 @@ async function scheduleFlexibleFollowUps(user, shiftDate, now = new Date()) {
 
 async function ensureFlexibleChallenges(user, shiftDate, now) {
   const checkCount = checkCountFromUser(user);
-  const startWindows = flexibleStartWindows(shiftDate);
+  const startWindows = flexibleStartWindows(shiftDate, user);
   await pool.query(
     `
       DELETE FROM attendance_challenges
@@ -279,6 +281,15 @@ async function ensureFlexibleChallenges(user, shiftDate, now) {
         WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'notified')
       `,
       [startRow.id, user.id, startWindows.scheduled_at, startWindows.late_at, startWindows.absent_at]
+    );
+  } else if (new Date(startRow.scheduled_at).getTime() !== startWindows.scheduled_at.getTime()) {
+    await pool.query(
+      `
+        UPDATE attendance_challenges
+        SET scheduled_at = $3, kind = 'start'
+        WHERE id = $1 AND user_id = $2
+      `,
+      [startRow.id, user.id, startWindows.scheduled_at]
     );
   }
 
@@ -396,12 +407,23 @@ async function updateChallengeSchedule(userId, challengeId, scheduledAt) {
       [challengeId, userId]
     )
   ).rows[0];
-  const windows =
-    current?.kind === 'checkout'
-      ? flexibleCheckoutWindows(current.shift_date, at)
-      : current?.kind === 'start'
-        ? windowsForScheduled(at)
-        : windowsForScheduled(at);
+  const person = (
+    await pool.query(
+      `SELECT flexible_hours, work_start_hour, work_end_hour FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    )
+  ).rows[0];
+  let windows = windowsForScheduled(at);
+  if (current?.kind === 'checkout') {
+    windows = flexibleCheckoutWindows(current.shift_date, at);
+  } else if (current?.kind === 'start' && userFlexibleHours(person)) {
+    const day = flexibleDayBounds(current.shift_date);
+    windows = {
+      scheduled_at: at,
+      late_at: new Date(day.end.getTime() - 60 * 1000),
+      absent_at: day.end,
+    };
+  }
   const { rows } = await pool.query(
     `
       UPDATE attendance_challenges
@@ -430,11 +452,22 @@ async function dropOpenChallenges(userId, shiftDate) {
   );
 }
 
-function publicChallenge(row, { revealFuture = false, now = new Date() } = {}) {
+function publicChallenge(row, { revealFuture = false, now = new Date(), user = null } = {}) {
   const scheduled = new Date(row.scheduled_at);
   const lateAt = new Date(row.late_at);
   const absentAt = new Date(row.absent_at);
-  const opened = now.getTime() >= scheduled.getTime();
+  const displayAt = new Date(
+    flexibleDisplayScheduledAt(user, row.shift_date, row) || row.scheduled_at
+  );
+  const wideWindow =
+    Number.isFinite(scheduled.getTime()) &&
+    Number.isFinite(absentAt.getTime()) &&
+    absentAt.getTime() - scheduled.getTime() > (ABSENT_AFTER_MINUTES + 20) * 60 * 1000;
+  const dayOpen =
+    row.shift_date && (row.kind === 'start' || row.kind === 'checkout') && wideWindow
+      ? zonedInstant(row.shift_date, 0, 0)
+      : scheduled;
+  const opened = now.getTime() >= dayOpen.getTime();
   const hidden = row.kind === 'random' && !row.notified_at && !opened && !revealFuture;
   let state = row.status;
   if (state === 'pending' || state === 'notified') {
@@ -456,9 +489,9 @@ function publicChallenge(row, { revealFuture = false, now = new Date() } = {}) {
       : row.kind === 'checkout'
         ? 'Check out'
         : row.seq === 1 || row.kind === 'start'
-          ? `First check-in (${formatClock(scheduled)})`
+          ? `First check-in (${formatClock(displayAt)})`
           : `Check ${row.seq} (${formatClock(scheduled)})`,
-    scheduled_at: hidden ? null : row.scheduled_at,
+    scheduled_at: hidden ? null : Number.isFinite(displayAt.getTime()) ? displayAt : row.scheduled_at,
     late_at: hidden ? null : row.late_at,
     absent_at: hidden ? null : row.absent_at,
     notified_at: row.notified_at,

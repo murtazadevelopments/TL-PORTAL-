@@ -85,13 +85,24 @@ function flexibleDayBounds(shiftDate) {
   return { start, end };
 }
 
-function flexibleStartWindows(shiftDate) {
-  const { start, end } = flexibleDayBounds(shiftDate);
+function flexibleStartWindows(shiftDate, user) {
+  const day = flexibleDayBounds(shiftDate);
+  const assigned = shiftBounds(shiftDate, user);
   return {
-    scheduled_at: start,
-    late_at: new Date(end.getTime() - 60 * 1000),
-    absent_at: end,
+    scheduled_at: assigned.start,
+    late_at: new Date(day.end.getTime() - 60 * 1000),
+    absent_at: day.end,
   };
+}
+
+function flexibleDisplayScheduledAt(user, shiftDate, row) {
+  if (!row || !userFlexibleHours(user)) return row?.scheduled_at || null;
+  const dateKey = shiftDate || row.shift_date || String(row.hour_key || '').slice(0, 10);
+  if (!dateKey) return row.scheduled_at || null;
+  const { start, end } = shiftBounds(dateKey, user);
+  if (row.kind === 'checkout') return end;
+  if (row.kind === 'start' || Number(row.seq) === 1) return start;
+  return row.scheduled_at || null;
 }
 
 function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date()) {
@@ -270,7 +281,7 @@ function randomWindowStart(start, now, existing = [], firstAt = null) {
 
 function planChallengeTimes(shiftDate, user, now = new Date(), existing = []) {
   if (userFlexibleHours(user)) {
-    const windows = flexibleStartWindows(shiftDate);
+    const windows = flexibleStartWindows(shiftDate, user);
     return [
       {
         seq: 1,
@@ -380,6 +391,7 @@ module.exports = {
   shiftBounds,
   flexibleDayBounds,
   flexibleStartWindows,
+  flexibleDisplayScheduledAt,
   flexibleCheckoutWindows,
   currentShiftDateKey,
   activeShiftDate,

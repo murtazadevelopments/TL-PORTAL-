@@ -281,7 +281,11 @@ async function getMyAttendance(req, res) {
     const revealAdmin = false;
     const timeline = (challengeRows.length
       ? remoteChallenges.sortRemoteChecks(challengeRows).map((row, i) => {
-          const pub = remoteChallenges.publicChallenge(row, { revealFuture: revealAdmin, now });
+          const pub = remoteChallenges.publicChallenge(row, {
+            revealFuture: revealAdmin,
+            now,
+            user,
+          });
           const seq = i + 1;
           const log = byHour[row.hour_key];
           return {
@@ -291,7 +295,7 @@ async function getMyAttendance(req, res) {
               row.kind === 'checkout'
                 ? 'Check out'
                 : seq === 1
-                  ? `First check-in (${remoteChallenges.formatClock(row.scheduled_at)})`
+                  ? `First check-in (${remoteChallenges.formatClock(pub.scheduled_at || row.scheduled_at)})`
                   : pub.state === 'upcoming'
                     ? `Availability check ${seq}`
                     : `Check ${seq} (${remoteChallenges.formatClock(row.scheduled_at)})`,
@@ -688,7 +692,7 @@ async function adminOverview(req, res) {
             (challengesByUser.get(String(person.id)) || []).filter((row) => String(row.shift_date).slice(0, 10) === dateKey)
           )
           .map((row, i) => {
-          const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now });
+          const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now, user: person });
           const seq = i + 1;
           const log = personLogs.find((l) => l.hour_key === row.hour_key);
           let state = pub.state;
