@@ -145,7 +145,9 @@ async function assignRole(req, res) {
     }
 
     if (
-      target.role === 'ceo' &&
+      String(target.role || '')
+        .trim()
+        .toLowerCase() === 'ceo' &&
       String(target.id) !== String(req.user.id) &&
       role !== 'ceo'
     ) {
@@ -304,9 +306,14 @@ async function listRoleHolders(req, res) {
           ) AS permission_rows
         FROM users u
         WHERE u.is_active = true
-          AND u.role IN ('admin', 'ceo', 'manager')
+          AND LOWER(TRIM(COALESCE(u.role, ''))) IN ('admin', 'ceo', 'manager')
         ORDER BY
-          CASE u.role WHEN 'ceo' THEN 0 WHEN 'manager' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END,
+          CASE LOWER(TRIM(COALESCE(u.role, '')))
+            WHEN 'ceo' THEN 0
+            WHEN 'manager' THEN 1
+            WHEN 'admin' THEN 2
+            ELSE 3
+          END,
           u.name ASC NULLS LAST,
           u.id ASC
       `
@@ -326,7 +333,9 @@ async function listRoleHolders(req, res) {
           name: r.name,
           username: r.username,
           email: r.email,
-          role: r.role,
+          role: String(r.role || '')
+            .trim()
+            .toLowerCase(),
           department: r.department,
           designation: r.designation,
           permissions,

@@ -289,10 +289,13 @@ export default function RolesPage() {
                     <td>
                       <span
                         className={`status-pill ${
-                          row.role === 'ceo' ? 'active' : row.role === 'manager' ? 'active' : 'unset'
+                          String(row.role || '').toLowerCase() === 'ceo' ||
+                          String(row.role || '').toLowerCase() === 'manager'
+                            ? 'active'
+                            : 'unset'
                         }`}
                       >
-                        {row.role}
+                        {String(row.role || '').toLowerCase() || row.role}
                       </span>
                     </td>
                     <td>{row.branch || '—'}</td>
