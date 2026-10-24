@@ -40,6 +40,7 @@ const {
   withDocumentPresence,
   profileAlertCount,
   PROFILE_ALERT_MAX,
+  isProfileLockExempt,
 } = require('../utils/profileCompleteness');
 const {
   ensureEmploymentTypeColumn,
@@ -1815,7 +1816,7 @@ function profileAlertSkipReason(target) {
   if (String(target.status || '').toLowerCase() !== 'active') return 'pending';
   const missing = missingEmployeePortalFields(withDocumentPresence(target));
   if (!missing.length) return 'complete';
-  if (profileAlertCount(target) >= PROFILE_ALERT_MAX) return 'locked';
+  if (!isProfileLockExempt(target) && profileAlertCount(target) >= PROFILE_ALERT_MAX) return 'locked';
   const cooldown = profileAlertCooldown(target);
   if (cooldown.active) return 'cooldown';
   return null;
@@ -1827,7 +1828,7 @@ async function dispatchProfileAlert(req, target, sender) {
   const fieldList = formatFieldList(missing);
   const currentCount = profileAlertCount(target);
   const nextCount = currentCount + 1;
-  const lockNow = nextCount >= PROFILE_ALERT_MAX;
+  const lockNow = nextCount >= PROFILE_ALERT_MAX && !isProfileLockExempt(target);
   const firstName = String(target.name || target.username || 'there').split(' ')[0];
   const subject = 'Please complete your portal profile';
   const messageBody =

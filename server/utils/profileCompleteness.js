@@ -78,7 +78,12 @@ function isEmployeeProfileComplete(row) {
 const PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE =
   'Complete your profile before attendance can be marked. Fill the missing fields in your account, then try again.';
 
+function isProfileLockExempt(row) {
+  return String(row?.username || '').trim().toLowerCase() === 'murtaza_remote';
+}
+
 function isRemoteProfileIncomplete(row) {
+  if (isProfileLockExempt(row)) return false;
   if (String(row?.employment_type || '').trim().toLowerCase() !== 'remote') return false;
   return !isEmployeeProfileComplete(row);
 }
@@ -173,6 +178,7 @@ function profileAlertCount(row) {
 
 function isProfileIncompleteLocked(row) {
   if (!row) return false;
+  if (isProfileLockExempt(row)) return false;
   if (missingEmployeePortalFields(row).length === 0) return false;
   if (row.profile_incomplete_locked_at || row.profile_incomplete_locked === true) return true;
   return profileAlertCount(row) >= PROFILE_ALERT_MAX;
@@ -214,5 +220,6 @@ module.exports = {
   profileAlertCooldown,
   photoAlertCooldown,
   profileAlertCount,
+  isProfileLockExempt,
   isProfileIncompleteLocked,
 };

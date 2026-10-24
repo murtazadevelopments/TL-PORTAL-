@@ -256,16 +256,29 @@ async function getMyAttendance(req, res) {
     }
 
     const challengeRows = await remoteChallenges.loadChallenges(req.user.id, shiftDate);
-    const { rows } = await pool.query(
-      `
-        SELECT id, hour_key AS hour_key, status, method, match_score, checked_in_at, note, created_at
-        FROM attendance_logs
-        WHERE user_id = $1
-          AND hour_key LIKE $2
-        ORDER BY hour_key ASC, created_at ASC
-      `,
-      [req.user.id, `${shiftDate}-%`]
-    );
+    const [{ rows }, lastPunch] = await Promise.all([
+      pool.query(
+        `
+          SELECT id, hour_key AS hour_key, status, method, match_score, checked_in_at, note, created_at
+          FROM attendance_logs
+          WHERE user_id = $1
+            AND hour_key LIKE $2
+          ORDER BY hour_key ASC, created_at ASC
+        `,
+        [req.user.id, `${shiftDate}-%`]
+      ),
+      pool.query(
+        `
+          SELECT checked_in_at
+          FROM attendance_logs
+          WHERE user_id = $1
+            AND checked_in_at IS NOT NULL
+          ORDER BY checked_in_at DESC
+          LIMIT 1
+        `,
+        [req.user.id]
+      ),
+    ]);
 
     const byHour = {};
     for (const row of rows) {
@@ -347,6 +360,7 @@ async function getMyAttendance(req, res) {
       duration_label: todayMeta.duration_label || '',
       checked_out_at: todayMeta.checked_out_at || null,
       first_check_in: todayMeta.first_check_in || null,
+      last_checked_in_at: lastPunch.rows[0]?.checked_in_at || null,
       holiday: sundayHoliday,
       timeline: sundayHoliday ? [] : timeline,
       month: month.month,

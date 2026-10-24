@@ -43,6 +43,22 @@ function remainFromCheck(check, nowTick, field) {
   return Math.max(0, end - nowTick);
 }
 
+function formatKarachiDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Karachi',
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(d);
+}
+
 function friendlyDayStatus(status) {
   if (status === 'present' || status === 'verified') return 'Present';
   if (status === 'late') return 'Late';
@@ -97,6 +113,7 @@ export default function AttendancePage() {
   const [flexibleHours, setFlexibleHours] = useState(false);
   const [faceCheckCapture, setFaceCheckCapture] = useState(false);
   const [durationLabel, setDurationLabel] = useState('');
+  const [lastCheckedInAt, setLastCheckedInAt] = useState(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const [guideOpen, setGuideOpen] = useState(false);
 
@@ -131,6 +148,7 @@ export default function AttendancePage() {
     setFlexibleHours(Boolean(att.flexible_hours));
     setFaceCheckCapture(Boolean(att.face_check_capture));
     setDurationLabel(att.duration_label || '');
+    setLastCheckedInAt(att.last_checked_in_at || null);
     setChecksPerShift(Number(att.checks_per_shift) > 0 ? Number(att.checks_per_shift) : 5);
   }, []);
 
@@ -586,11 +604,9 @@ export default function AttendancePage() {
               </button>
             )}
           </div>
-          {enrollment?.enrolled && (
-            <p className="muted center">
-              Enrolled {enrollment.updated_at ? new Date(enrollment.updated_at).toLocaleString() : ''}
-            </p>
-          )}
+          {lastCheckedInAt ? (
+            <p className="muted center">Last check-in {formatKarachiDateTime(lastCheckedInAt)}</p>
+          ) : null}
         </section>
       )}
 
