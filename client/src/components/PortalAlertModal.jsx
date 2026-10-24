@@ -1,5 +1,9 @@
 import { Link, useNavigate } from 'react-router';
-import { PHOTO_ALERT_BODY, PHOTO_ALERT_SUBJECT } from '../utils/profileCompleteness';
+import {
+  PHOTO_ALERT_BODY,
+  PHOTO_ALERT_SUBJECT,
+  PROFILE_ALERT_MAX,
+} from '../utils/profileCompleteness';
 import './ProfileIncompleteLock.css';
 
 export default function PortalAlertModal({ user, onContinue }) {
@@ -8,7 +12,10 @@ export default function PortalAlertModal({ user, onContinue }) {
     ? user.profile_alert_fields
     : user?.missing_portal_fields || [];
   const hasProfileAlert = Boolean(user?.profile_alert_at) && fields.length > 0;
-  const hasPhotoAlert = Boolean(user?.photo_alert_sent_at);
+  const hasPhotoAlert =
+    user?.photo_alert_pending === true ||
+    (Boolean(user?.photo_alert_sent_at) &&
+      Number(user?.photo_alert_seen_count || 0) < PROFILE_ALERT_MAX);
   if (!hasProfileAlert && !hasPhotoAlert) return null;
 
   function goDashboard() {

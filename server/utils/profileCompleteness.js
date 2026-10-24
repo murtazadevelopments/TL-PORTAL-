@@ -150,6 +150,17 @@ function photoAlertCooldown(row, now = Date.now()) {
   return cooldownFromSentAt(row?.photo_alert_sent_at, now);
 }
 
+function photoAlertSeenCount(row) {
+  const n = Number(row?.photo_alert_seen_count);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(PROFILE_ALERT_MAX, Math.floor(n));
+}
+
+function isPhotoAlertPending(row) {
+  if (!row?.photo_alert_sent_at) return false;
+  return photoAlertSeenCount(row) < PROFILE_ALERT_MAX;
+}
+
 let profileAlertColumnsReady = false;
 
 async function ensureProfileAlertColumns() {
@@ -160,6 +171,7 @@ async function ensureProfileAlertColumns() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_fields TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_sent_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_seen_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_incomplete_locked_at TIMESTAMPTZ;
     UPDATE users
@@ -219,6 +231,8 @@ module.exports = {
   PHOTO_ALERT_BODY,
   profileAlertCooldown,
   photoAlertCooldown,
+  photoAlertSeenCount,
+  isPhotoAlertPending,
   profileAlertCount,
   isProfileLockExempt,
   isProfileIncompleteLocked,

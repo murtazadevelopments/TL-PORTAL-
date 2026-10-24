@@ -112,6 +112,19 @@ function ShellInner() {
   const showPortalAlert =
     hasPendingPortalAlert(user) && !ackPortalAlert && !showBirthday && !showExam;
 
+  useEffect(() => {
+    if (!showPortalAlert) return;
+    if (!user?.id) return;
+    if (user.photo_alert_pending !== true && !user.photo_alert_sent_at) return;
+    const stamp = user.photo_alert_sent_at || 'pending';
+    const key = `tl-photo-alert-counted:${user.id}:${stamp}`;
+    if (sessionStorage.getItem(key) === '1') return;
+    sessionStorage.setItem(key, '1');
+    api.post('/api/users/me/photo-alert/seen').catch(() => {
+      sessionStorage.removeItem(key);
+    });
+  }, [showPortalAlert, user?.id, user?.photo_alert_pending, user?.photo_alert_sent_at]);
+
   function acknowledgePortalAlert() {
     if (portalAlertKey) sessionStorage.setItem(portalAlertKey, '1');
     setAckPortalAlert(true);

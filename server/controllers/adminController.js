@@ -2189,6 +2189,7 @@ async function sendPhotoAlert(req, res) {
       `
         UPDATE users
         SET photo_alert_sent_at = NOW(),
+            photo_alert_seen_count = 0,
             updated_at = NOW()
         WHERE id = $1
       `,

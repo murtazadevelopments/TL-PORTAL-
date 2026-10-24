@@ -10,6 +10,7 @@ const {
   updateProfilePicture,
   updateDocuments,
   ackExamCongrats,
+  ackPhotoAlertSeen,
 } = require('../controllers/userController');
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.use(authMiddleware);
 router.get('/me', getMe);
 router.put('/me', updateMe);
 router.post('/me/exam-congrats/ack', ackExamCongrats);
+router.post('/me/photo-alert/seen', ackPhotoAlertSeen);
 router.put('/me/avatar', profilePictureUpload, updateProfilePicture);
 router.put('/me/documents', documentUpload, updateDocuments);
 

@@ -166,7 +166,13 @@ export function portalAlertSeenKey(row) {
 }
 
 export function hasPendingPortalAlert(row) {
-  return Boolean(row?.profile_alert_at || row?.photo_alert_sent_at);
+  if (row?.profile_alert_at) return true;
+  if (row?.photo_alert_pending === true) return true;
+  if (row?.photo_alert_pending === false) return false;
+  if (!row?.photo_alert_sent_at) return false;
+  const seen = Number(row.photo_alert_seen_count);
+  if (Number.isFinite(seen) && seen >= PROFILE_ALERT_MAX) return false;
+  return true;
 }
 
 export function photoAlertCooldown(row, now = Date.now()) {

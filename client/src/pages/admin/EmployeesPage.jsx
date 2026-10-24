@@ -1062,7 +1062,11 @@ function EmployeesPage() {
     try {
       const { data } = await api.post(`/api/admin/employees/${target.id}/photo-alert`);
       const sentAt = data?.photoAlertSentAt || new Date().toISOString();
-      applyAccountPatch(target.id, { photo_alert_sent_at: sentAt });
+      applyAccountPatch(target.id, {
+        photo_alert_sent_at: sentAt,
+        photo_alert_seen_count: 0,
+        photo_alert_pending: true,
+      });
       setNowMs(Date.now());
       setPhotoConfirm(null);
       setSaveSuccess(data?.message || 'Photo alert sent.');

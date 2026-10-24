@@ -1,0 +1,2 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS photo_alert_seen_count INTEGER NOT NULL DEFAULT 0;

@@ -17,7 +17,10 @@ const {
   missingEmployeePortalFields,
   parseAlertFields,
   profileAlertCount,
+  photoAlertSeenCount,
+  isPhotoAlertPending,
   isProfileIncompleteLocked,
+  PROFILE_ALERT_MAX,
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
@@ -42,7 +45,7 @@ const USER_PUBLIC_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   profile_alert_at, profile_alert_fields, profile_alert_count, profile_incomplete_locked_at,
-  photo_alert_sent_at
+  photo_alert_sent_at, photo_alert_seen_count
 `;
 
 const EMPLOYEE_UPDATE_WHITELIST = [
@@ -110,6 +113,11 @@ async function decorateProfileAlert(user) {
     user.profile_alert_fields = [];
     user.profile_alert_count = 0;
     user.profile_incomplete_locked_at = null;
+  }
+  user.photo_alert_seen_count = photoAlertSeenCount(user);
+  user.photo_alert_pending = isPhotoAlertPending(user);
+  if (!user.photo_alert_pending) {
+    user.photo_alert_sent_at = null;
   }
   user.profile_incomplete_locked = isProfileIncompleteLocked(user);
   return user;
@@ -443,6 +451,7 @@ async function updateMe(req, res) {
  */
 async function updateProfilePicture(req, res) {
   try {
+    await ensureProfileAlertColumns();
     const file = req.file;
     if (!file) {
       return res.status(400).json({ message: 'profile_picture file is required.' });
@@ -471,14 +480,17 @@ async function updateProfilePicture(req, res) {
     const { rows } = await pool.query(
       `
         UPDATE users
-        SET profile_picture_url = $1, updated_at = NOW()
+        SET profile_picture_url = $1,
+            photo_alert_sent_at = NULL,
+            photo_alert_seen_count = 0,
+            updated_at = NOW()
         WHERE id = $2
         RETURNING ${USER_PUBLIC_COLUMNS}
       `,
       [objectPath, req.user.id]
     );
 
-    const user = hideSalary(await attachReadableUrls(rows[0]));
+    const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
     res.json(user);
     void notifyAfterResponse('profile-photo-update', user.id, () =>
       notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)'])
@@ -572,6 +584,51 @@ async function updateDocuments(req, res) {
   }
 }
 
+async function ackPhotoAlertSeen(req, res) {
+  try {
+    await ensureProfileAlertColumns();
+    const { rows } = await pool.query(
+      `
+        SELECT photo_alert_sent_at, photo_alert_seen_count
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const row = rows[0];
+    if (!row?.photo_alert_sent_at) {
+      return res.json({ ok: true, photo_alert_pending: false, photo_alert_seen_count: 0 });
+    }
+    if (photoAlertSeenCount(row) >= PROFILE_ALERT_MAX) {
+      return res.json({
+        ok: true,
+        photo_alert_pending: false,
+        photo_alert_seen_count: PROFILE_ALERT_MAX,
+      });
+    }
+    const { rows: next } = await pool.query(
+      `
+        UPDATE users
+        SET photo_alert_seen_count = LEAST($2, COALESCE(photo_alert_seen_count, 0) + 1),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING photo_alert_sent_at, photo_alert_seen_count
+      `,
+      [req.user.id, PROFILE_ALERT_MAX]
+    );
+    const updated = next[0];
+    return res.json({
+      ok: true,
+      photo_alert_seen_count: photoAlertSeenCount(updated),
+      photo_alert_pending: isPhotoAlertPending(updated),
+    });
+  } catch (err) {
+    console.error('ackPhotoAlertSeen error:', err);
+    return res.status(500).json({ message: 'Could not save photo alert.' });
+  }
+}
+
 async function ackExamCongrats(req, res) {
   try {
     const congratsId = String(req.body?.id || req.body?.congrats_id || '').trim();
@@ -591,5 +648,6 @@ module.exports = {
   updateMe,
   updateProfilePicture,
   updateDocuments,
+  ackPhotoAlertSeen,
   ackExamCongrats,
 };
