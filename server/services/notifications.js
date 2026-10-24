@@ -671,11 +671,6 @@ async function notifyRemoteAttendanceCheck(user, challenge) {
       subject,
       html,
     });
-    await logEmail({
-      emailType: 'remote_attendance_check',
-      recipient: user.email,
-      meta: { userId: user.id, challengeId: challenge.id, seq: challenge.seq, ok: Boolean(emailResult) },
-    });
   }
 
   try {

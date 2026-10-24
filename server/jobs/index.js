@@ -4,7 +4,7 @@ const { runLoginLogsPrune } = require('./loginLogsPrune');
 const { runAttendanceMissed } = require('./attendanceMissed');
 const { startZktecoSync } = require('../scripts/sync');
 const { ensureQueryIndexes } = require('../utils/ensureQueryIndexes');
-const { JOB_LOCKS, lockedJob } = require('../utils/pgAdvisoryLock');
+const { JOB_LOCKS, lockedJob, acquireJobLeadership } = require('../utils/pgAdvisoryLock');
 
 const runBirthdayEmailsLocked = lockedJob(
   'birthday-emails',
@@ -101,4 +101,29 @@ function startScheduledJobs() {
   }
 }
 
-module.exports = { startScheduledJobs };
+function startScheduledJobsIfLeader() {
+  acquireJobLeadership()
+    .then((won) => {
+      if (won) {
+        startScheduledJobs();
+        return;
+      }
+      console.log('[cron] follower — HTTP only; jobs run on the leader process');
+      setInterval(() => {
+        if (jobsStarted) return;
+        acquireJobLeadership()
+          .then((nowLeader) => {
+            if (nowLeader) startScheduledJobs();
+          })
+          .catch((err) => {
+            console.error('[cron] leader retry failed:', err.message || err);
+          });
+      }, 30000);
+    })
+    .catch((err) => {
+      console.error('[cron] leader election failed, starting jobs anyway:', err.message || err);
+      startScheduledJobs();
+    });
+}
+
+module.exports = { startScheduledJobs, startScheduledJobsIfLeader };

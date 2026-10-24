@@ -46,18 +46,35 @@ async function notifyRemoteAttendanceOpened(target, { force = false } = {}) {
   const email = String(target.email || '').trim();
   if (!email) return { sent: false, reason: 'no_email' };
 
+  const { rows: beforeRows } = await pool.query(
+    `SELECT attendance_review_email_at FROM users WHERE id = $1 LIMIT 1`,
+    [target.id]
+  );
+  const previousAt = beforeRows[0]?.attendance_review_email_at || null;
   if (!force) {
-    const { rows } = await pool.query(
-      `SELECT attendance_review_email_at FROM users WHERE id = $1 LIMIT 1`,
-      [target.id]
-    );
-    const last = rows[0]?.attendance_review_email_at
-      ? new Date(rows[0].attendance_review_email_at).getTime()
-      : 0;
+    const last = previousAt ? new Date(previousAt).getTime() : 0;
     if (Number.isFinite(last) && last > 0 && Date.now() - last < COOLDOWN_MS) {
       return { sent: false, reason: 'cooldown' };
     }
   }
+
+  const claimed = (
+    await pool.query(
+      `
+        UPDATE users
+        SET attendance_review_email_at = NOW(), updated_at = NOW()
+        WHERE id = $1
+          AND (
+            $2::boolean
+            OR attendance_review_email_at IS NULL
+            OR attendance_review_email_at < NOW() - INTERVAL '12 hours'
+          )
+        RETURNING id
+      `,
+      [target.id, Boolean(force)]
+    )
+  ).rows[0];
+  if (!claimed) return { sent: false, reason: 'cooldown' };
 
   const firstName = String(target.name || target.username || 'there').split(' ')[0];
   const subject = 'Your attendance was reviewed';
@@ -80,16 +97,17 @@ async function notifyRemoteAttendanceOpened(target, { force = false } = {}) {
     `,
     emailType: 'attendance_review',
   });
-  if (!result) return { sent: false, reason: 'email_failed' };
-
-  await pool.query(
-    `
-      UPDATE users
-      SET attendance_review_email_at = NOW(), updated_at = NOW()
-      WHERE id = $1
-    `,
-    [target.id]
-  );
+  if (!result) {
+    await pool.query(
+      `
+        UPDATE users
+        SET attendance_review_email_at = $2, updated_at = NOW()
+        WHERE id = $1
+      `,
+      [target.id, previousAt]
+    );
+    return { sent: false, reason: 'email_failed' };
+  }
   return { sent: true, to: email, subject };
 }
 

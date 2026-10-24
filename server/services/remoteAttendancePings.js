@@ -70,11 +70,17 @@ async function dispatchDueNotifications(now = new Date()) {
   for (const row of due) {
     const person = await loadRemote(row.user_id);
     if (isRemoteProfileIncomplete(person)) continue;
-    await challenges.markNotified(row.id, now);
+    const claimed = await challenges.markNotified(row.id, now);
+    if (!claimed) continue;
     try {
-      await notifyRemoteAttendanceCheck(row, row);
+      const result = await notifyRemoteAttendanceCheck(person, row);
+      if (!result && person?.email) {
+        await challenges.clearNotifiedIfUnused(row.id);
+        continue;
+      }
       sent += 1;
     } catch (err) {
+      await challenges.clearNotifiedIfUnused(row.id);
       console.error('[remote-attendance] notify failed:', err.message || err);
     }
   }

@@ -294,8 +294,8 @@ function startHttpServer() {
     }
 
     try {
-      const { startScheduledJobs } = require('./jobs');
-      startScheduledJobs();
+      const { startScheduledJobsIfLeader } = require('./jobs');
+      startScheduledJobsIfLeader();
     } catch (err) {
       console.error('Failed to start scheduled jobs:', err.message || err);
     }

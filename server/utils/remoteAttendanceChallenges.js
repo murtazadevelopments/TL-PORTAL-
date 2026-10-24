@@ -550,14 +550,31 @@ async function dueNotifications(now = new Date()) {
 }
 
 async function markNotified(id, now = new Date()) {
-  await pool.query(
+  const { rows } = await pool.query(
     `
       UPDATE attendance_challenges
       SET notified_at = $2, status = 'notified'
       WHERE id = $1 AND notified_at IS NULL AND status = 'pending'
+      RETURNING id
     `,
     [id, now]
   );
+  return Boolean(rows[0]);
+}
+
+async function clearNotifiedIfUnused(id) {
+  const { rows } = await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET notified_at = NULL, status = 'pending'
+      WHERE id = $1
+        AND status = 'notified'
+        AND attendance_log_id IS NULL
+      RETURNING id
+    `,
+    [id]
+  );
+  return Boolean(rows[0]);
 }
 
 async function expiredOpen(now = new Date()) {
@@ -599,6 +616,7 @@ module.exports = {
   markChallengeResult,
   dueNotifications,
   markNotified,
+  clearNotifiedIfUnused,
   expiredOpen,
   activeShiftDate,
   currentShiftDateKey,

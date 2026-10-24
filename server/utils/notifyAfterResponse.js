@@ -1,4 +1,4 @@
-const NOTIFY_TIMEOUT_MS = 25000;
+const NOTIFY_TIMEOUT_MS = 120000;
 
 /**
  * Best-effort side notification after the HTTP response is already sent.
@@ -8,7 +8,7 @@ async function notifyAfterResponse(label, userId, work) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), NOTIFY_TIMEOUT_MS);
   try {
-    await Promise.race([
+    const result = await Promise.race([
       Promise.resolve().then(work),
       new Promise((_, reject) => {
         controller.signal.addEventListener(
@@ -22,7 +22,11 @@ async function notifyAfterResponse(label, userId, work) {
         );
       }),
     ]);
-    console.log(`[${label}] success for user id=${userId}`);
+    if (result && result.sent === false) {
+      console.log(`[${label}] skipped for user id=${userId} reason=${result.reason || 'n/a'}`);
+    } else {
+      console.log(`[${label}] success for user id=${userId}`);
+    }
   } catch (err) {
     console.error(`[${label}] failed for user id=${userId}:`, err.message || err);
   } finally {
