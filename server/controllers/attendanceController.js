@@ -834,10 +834,12 @@ async function adminOverview(req, res) {
           can_manual: employeeMatchesScope(person, editScope),
           can_toggle_attendance: employeeMatchesScope(person, editScope),
           can_delete: Boolean(
-            isCeoRole(req.user?.role) &&
+            (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
               (personLogs.length > 0 || Boolean(personDay) || mapped.length > 0)
           ),
-          can_delete_last: Boolean(isCeoRole(req.user?.role) && personLogs.length > 0),
+          can_delete_last: Boolean(
+            (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) && personLogs.length > 0
+          ),
           shift_date: personDate,
           row_status: rowStatus,
           verified_count: verifiedCount,
@@ -1695,8 +1697,8 @@ async function getMyHistory(req, res) {
  */
 async function adminDeleteRemoteLast(req, res) {
   try {
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can delete attendance.' });
+    if (!isCeoRole(req.user?.role) && !isManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();
     const userId = Number(req.params.userId);
@@ -1774,8 +1776,8 @@ async function adminDeleteRemoteLast(req, res) {
  */
 async function adminDeleteRemoteDay(req, res) {
   try {
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can delete attendance.' });
+    if (!isCeoRole(req.user?.role) && !isManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();
     const userId = Number(req.params.userId);

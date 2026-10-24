@@ -12,6 +12,7 @@ import {
   canViewRemoteTeamAttendance,
   canViewTeamAttendance,
   isCeo,
+  isCeoOrManager,
 } from '../../utils/permissions';
 import './AttendanceAdminPage.css';
 
@@ -315,6 +316,7 @@ function AttendancePhoto({ row, onOpen }) {
 export default function AttendanceAdminPage() {
   const { user, permissions, loading: authLoading } = useAuthUser();
   const ceo = isCeo(user?.role);
+  const canDeleteAttendance = isCeoOrManager(user?.role);
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
@@ -1013,7 +1015,7 @@ export default function AttendanceAdminPage() {
                         Change status
                       </button>
                     )}
-                    {ceo && row.record && (
+                    {canDeleteAttendance && row.can_delete && (
                       <button
                         type="button"
                         className="btn btn-danger"
@@ -1154,7 +1156,7 @@ export default function AttendanceAdminPage() {
                   >
                     Manual mark
                   </button>
-                  {ceo && row.can_delete_last && (
+                  {canDeleteAttendance && row.can_delete_last && (
                     <button
                       type="button"
                       className="btn btn-danger"
@@ -1164,7 +1166,7 @@ export default function AttendanceAdminPage() {
                       {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
                     </button>
                   )}
-                  {ceo && row.can_delete && (
+                  {canDeleteAttendance && row.can_delete && (
                     <button
                       type="button"
                       className="btn btn-danger"
@@ -1183,7 +1185,7 @@ export default function AttendanceAdminPage() {
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
                     This month
                   </button>
-                  {ceo && row.can_delete_last && (
+                  {canDeleteAttendance && row.can_delete_last && (
                     <button
                       type="button"
                       className="btn btn-danger"
@@ -1193,7 +1195,7 @@ export default function AttendanceAdminPage() {
                       {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
                     </button>
                   )}
-                  {ceo && row.can_delete && (
+                  {canDeleteAttendance && row.can_delete && (
                     <button
                       type="button"
                       className="btn btn-danger"

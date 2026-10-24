@@ -448,12 +448,12 @@ router.post(
 );
 router.delete(
   '/attendance/:userId/days/:dateKey/last',
-  requireRole('ceo'),
+  requireRole('ceo', 'manager'),
   adminDeleteRemoteLast
 );
 router.delete(
   '/attendance/:userId/days/:dateKey',
-  requireRole('ceo'),
+  requireRole('ceo', 'manager'),
   adminDeleteRemoteDay
 );
 
@@ -495,7 +495,7 @@ router.patch(
 );
 router.delete(
   '/onsite-attendance/:id',
-  requireRole('ceo'),
+  requireRole('ceo', 'manager'),
   adminDeleteOnsite
 );
 

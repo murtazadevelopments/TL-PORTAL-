@@ -588,7 +588,7 @@ async function adminListOnsite(req, res) {
         row_status: rowStatus,
         can_manual: Boolean(canEdit && (!rec || isCeoRole(req.user?.role))),
         can_override: Boolean(canEdit && rec),
-        can_delete: Boolean(isCeoRole(req.user?.role) && rec),
+        can_delete: Boolean((isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) && rec),
         can_toggle_attendance: Boolean(canEdit),
         attendance_enabled: userAttendanceEnabled(person),
         record: publicRow(rec),
@@ -835,12 +835,12 @@ async function adminOverrideOnsite(req, res) {
 
 /**
  * DELETE /api/admin/onsite-attendance/:id
- * CEO only — removes one employee's check-in for that record's work date.
+ * CEO or manager — removes one employee's check-in for that record's work date.
  */
 async function adminDeleteOnsite(req, res) {
   try {
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can delete attendance.' });
+    if (!isCeoRole(req.user?.role) && !isManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureOnsiteAttendanceSchema();
     const id = Number(req.params.id);
