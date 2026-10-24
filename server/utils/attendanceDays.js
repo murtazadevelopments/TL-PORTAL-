@@ -126,7 +126,7 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
   const hours = workHoursFromUser(user);
   const hourList = hoursBetween(hours.start, hours.end);
   if (logs.some((l) => l.status === 'leave')) return 'leave';
-  if (isSundayDateKey(dateKey)) return 'holiday';
+  if (isSundayDateKey(dateKey) && !isRemoteUser(user)) return 'holiday';
 
   const challengeLogs = logs.filter(
     (l) => isChallengeKey(l.hour_key) && ['verified', 'late', 'missed'].includes(l.status)
@@ -233,7 +233,7 @@ async function upsertAttendanceDay(userId, dateKey, status, extra = {}) {
 }
 
 async function refreshAttendanceDay(user, dateKey, extra = {}) {
-  if (isSundayDateKey(dateKey) && extra.forceStatus !== 'leave') {
+  if (isSundayDateKey(dateKey) && extra.forceStatus !== 'leave' && !isRemoteUser(user)) {
     await upsertAttendanceDay(user.id, dateKey, 'holiday', extra);
     return 'holiday';
   }
@@ -422,7 +422,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
       ).map((s) => ({ ...s, state: 'leave' }));
       return { date: dateKey, status: 'leave', slots: leaveSlots };
     }
-    if (isSundayDateKey(dateKey)) {
+    if (isSundayDateKey(dateKey) && !isRemoteUser(user)) {
       return { date: dateKey, status: 'holiday', slots: [] };
     }
     const rec = buildDayRecord(dateKey, user, logs, now, dayChallenges);

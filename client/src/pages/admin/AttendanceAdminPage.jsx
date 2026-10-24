@@ -109,7 +109,7 @@ function checkInRequestButton(row) {
     const n = Number(row.checks_per_shift) || 5;
     return {
       label: `All ${n} checks done`,
-      title: 'Opens again on the next shift day.',
+      title: 'Opens again in their next working hours.',
     };
   }
   if (row.check_in_request_reason === 'cooldown' && row.check_in_request_available_at) {
@@ -119,13 +119,43 @@ function checkInRequestButton(row) {
   if (row.check_in_request_reason === 'stopped') {
     return { label: 'Check in Request', title: 'Attendance is turned off.' };
   }
-  if (row.check_in_request_reason === 'holiday') {
-    return { label: 'Check in Request', title: 'Sunday is a holiday.' };
-  }
-  if (row.check_in_request_reason === 'no_shift') {
-    return { label: 'Check in Request', title: 'Employee is not in an active shift.' };
+  if (row.check_in_request_reason === 'holiday' || row.check_in_request_reason === 'no_shift') {
+    return { label: 'Check in Request', title: 'Not in this employee’s working hours right now.' };
   }
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
+}
+
+function liveStatusLabel(row) {
+  const s = row.live_status || row.row_status;
+  if (s === 'in_shift') return 'In shift';
+  if (s === 'off_shift') return 'Off shift';
+  if (s === 'complete') return 'Shift done';
+  if (s === 'absent' || s === 'missed' || s === 'failed') return 'Absent';
+  if (s === 'verified' || s === 'present') return 'Present';
+  if (s === 'late') return 'Late';
+  if (s === 'leave') return 'Leave';
+  if (s === 'pending') return 'Pending';
+  return s || '—';
+}
+
+function slotDotLabel(slot) {
+  if (slot.kind === 'checkout' || /out/i.test(slot.label || '')) return 'Out';
+  if (slot.kind === 'start' || Number(slot.seq) === 1) return 'In';
+  return String(slot.seq || '');
+}
+
+function shiftTrackLine(row) {
+  const bits = [];
+  if (row.work_hours_label) bits.push(row.work_hours_label);
+  if (row.shift_date) bits.push(row.shift_date);
+  if (row.in_shift && row.shift_ends_at) bits.push(`until ${formatKarachiClock(row.shift_ends_at)}`);
+  const needed = Number(row.checks_needed || row.checks_per_shift || 0);
+  const done = Number(row.checks_done || 0);
+  if (needed > 0) bits.push(`${done} of ${needed} checks`);
+  if (row.last_checked_in_at) bits.push(`last in ${formatKarachiClock(row.last_checked_in_at)}`);
+  if (row.next_check_label && row.live_status !== 'complete') bits.push(`next ${row.next_check_label}`);
+  if (row.duration_label) bits.push(row.duration_label);
+  return bits.join(' · ');
 }
 
 function EmployeePowerSwitch({ label, name, on, busy, disabled, onToggle }) {
@@ -565,16 +595,40 @@ export default function AttendanceAdminPage() {
     }
   }
 
-  async function deleteRemoteDay(row) {
+  function remoteShiftDate(row) {
+    return String(row?.shift_date || date).slice(0, 10);
+  }
+
+  async function deleteRemoteLast(row) {
     if (!ceo || !row?.id) return;
+    const shiftDate = remoteShiftDate(row);
     const ok = window.confirm(
-      `Delete ${row.name}'s attendance for ${date}? Face and manual marks for that date will be removed.`
+      `Delete ${row.name}'s last attendance punch on ${shiftDate}? That check will open again.`
     );
     if (!ok) return;
-    setDeletingId(`remote-${row.id}`);
+    setDeletingId(`remote-last-${row.id}`);
     setError('');
     try {
-      await api.delete(`/api/admin/attendance/${row.id}/days/${date}`);
+      await api.delete(`/api/admin/attendance/${row.id}/days/${shiftDate}/last`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not delete last attendance.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function deleteRemoteDay(row) {
+    if (!ceo || !row?.id) return;
+    const shiftDate = remoteShiftDate(row);
+    const ok = window.confirm(
+      `Delete ${row.name}'s full-day attendance for ${shiftDate}? Face and manual marks for that date will be removed.`
+    );
+    if (!ok) return;
+    setDeletingId(`remote-day-${row.id}`);
+    setError('');
+    try {
+      await api.delete(`/api/admin/attendance/${row.id}/days/${shiftDate}`);
       await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete attendance.');
@@ -797,9 +851,9 @@ export default function AttendanceAdminPage() {
         ) : (
           <>
             <div className="attendance-stat"><span>People</span><strong>{summary.employees}</strong></div>
-            <div className="attendance-stat"><span>Verified slots</span><strong>{summary.verified}</strong></div>
+            <div className="attendance-stat"><span>On shift now</span><strong>{(data?.employees || []).filter((row) => row.in_shift).length}</strong></div>
+            <div className="attendance-stat"><span>Waiting on a check</span><strong>{(data?.employees || []).filter((row) => row.in_shift && row.next_check_label).length}</strong></div>
             <div className="attendance-stat"><span>Missed</span><strong>{summary.missed}</strong></div>
-            <div className="attendance-stat"><span>Manual</span><strong>{summary.manual}</strong></div>
           </>
         )}
       </div>
@@ -990,7 +1044,10 @@ export default function AttendanceAdminPage() {
       <div className="attendance-admin-list">
         {(data?.employees || []).map((row) => {
           return (
-            <article key={row.id} className="attendance-admin-card">
+            <article
+              key={row.id}
+              className={`attendance-admin-card${row.in_shift ? ' is-on-shift' : ''}`}
+            >
               <header>
                 <AttendancePhoto row={row} onOpen={setPhotoPreview} />
                 <div>
@@ -998,9 +1055,7 @@ export default function AttendanceAdminPage() {
                   <p className="muted">
                     {row.employee_id || 'No ID'}
                     {row.branch ? ` · ${row.branch}` : ''}
-                    {' · '}
-                    {row.work_hours_label || '9:00 AM–6:00 PM'}
-                    {` · ${row.checks_per_shift || 5} checks`}
+                    {row.department ? ` · ${row.department}` : ''}
                   </p>
                 </div>
                 <div className="attendance-card-meta">
@@ -1023,21 +1078,18 @@ export default function AttendanceAdminPage() {
                       />
                     ) : null}
                   </div>
-                  <span className={`badge ${row.row_status}`}>{row.row_status}</span>
+                  <span className={`badge ${row.live_status || row.row_status}`}>
+                    {liveStatusLabel(row)}
+                  </span>
                 </div>
               </header>
+              <p className="attendance-shift-track">{shiftTrackLine(row)}</p>
               {row.profile_complete === false ? (
                 <p className="muted">
                   Profile is incomplete. This employee cannot self check-in until they complete it.
                 </p>
               ) : row.attendance_enabled === false ? (
                 <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
-              ) : null}
-              {row.flexible_hours ? (
-                <p className="muted">
-                  Flexible hours: first check-in, then a random check during assigned time, then check-out.
-                  {row.duration_label ? ` Today: ${row.duration_label}.` : ''}
-                </p>
               ) : null}
               {ceo && row.face_check_capture ? (
                 <p className="muted">Picture capture is on — check-in photos are saved for review.</p>
@@ -1049,9 +1101,9 @@ export default function AttendanceAdminPage() {
                   <span
                     key={slot.hour_key}
                     className={`dot ${slot.state}`}
-                    title={`${slot.label}${slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''} · ${slot.state}`}
+                    title={`${slot.label}${slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''}${slot.checked_in_at ? ` · in ${formatKarachiTime(slot.checked_in_at)}` : ''} · ${slot.state}`}
                   >
-                    {slot.seq || String(slot.label || '').replace(/Availability check /i, '#')}
+                    {slotDotLabel(slot)}
                   </span>
                 ))}
               </div>
@@ -1102,14 +1154,24 @@ export default function AttendanceAdminPage() {
                   >
                     Manual mark
                   </button>
+                  {ceo && row.can_delete_last && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={deletingId === `remote-last-${row.id}`}
+                      onClick={() => deleteRemoteLast(row)}
+                    >
+                      {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
+                    </button>
+                  )}
                   {ceo && row.can_delete && (
                     <button
                       type="button"
                       className="btn btn-danger"
-                      disabled={deletingId === `remote-${row.id}`}
+                      disabled={deletingId === `remote-day-${row.id}`}
                       onClick={() => deleteRemoteDay(row)}
                     >
-                      {deletingId === `remote-${row.id}` ? 'Deleting…' : 'Delete attendance'}
+                      {deletingId === `remote-day-${row.id}` ? 'Deleting…' : 'Delete full day attendance'}
                     </button>
                   )}
                 </div>
@@ -1121,14 +1183,24 @@ export default function AttendanceAdminPage() {
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
                     This month
                   </button>
+                  {ceo && row.can_delete_last && (
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={deletingId === `remote-last-${row.id}`}
+                      onClick={() => deleteRemoteLast(row)}
+                    >
+                      {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
+                    </button>
+                  )}
                   {ceo && row.can_delete && (
                     <button
                       type="button"
                       className="btn btn-danger"
-                      disabled={deletingId === `remote-${row.id}`}
+                      disabled={deletingId === `remote-day-${row.id}`}
                       onClick={() => deleteRemoteDay(row)}
                     >
-                      {deletingId === `remote-${row.id}` ? 'Deleting…' : 'Delete attendance'}
+                      {deletingId === `remote-day-${row.id}` ? 'Deleting…' : 'Delete full day attendance'}
                     </button>
                   )}
                   <p className="muted">Out of your edit scope</p>

@@ -241,6 +241,18 @@
   gap: 0.8rem;
 }
 
+.attendance-admin-card.is-on-shift {
+  border-color: rgba(61, 255, 122, 0.45);
+  box-shadow: 0 0 0 1px rgba(61, 255, 122, 0.12);
+}
+
+.attendance-shift-track {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-h);
+  line-height: 1.4;
+}
+
 .attendance-admin-card header {
   display: flex;
   gap: 0.8rem;
@@ -318,6 +330,18 @@
 .attendance-admin-card .badge.holiday {
   color: #ddd6fe;
   border-color: rgba(167, 139, 250, 0.5);
+}
+.attendance-admin-card .badge.in_shift {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(61, 255, 122, 0.1);
+}
+.attendance-admin-card .badge.off_shift {
+  color: var(--muted);
+}
+.attendance-admin-card .badge.complete {
+  color: var(--cyan);
+  border-color: rgba(126, 203, 255, 0.5);
 }
 
 .attendance-mini-slots {

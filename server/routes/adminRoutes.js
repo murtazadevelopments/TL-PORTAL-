@@ -88,6 +88,7 @@ const {
   adminSetHours,
   adminUpdateCheckTime,
   adminEmployeeDays,
+  adminDeleteRemoteLast,
   adminDeleteRemoteDay,
   putUserAttendanceEnabled,
   putUserFaceCheckCapture,
@@ -444,6 +445,11 @@ router.post(
   requireRole('admin'),
   requireCeoOrAnyPermission('employees:remote'),
   adminManualMark
+);
+router.delete(
+  '/attendance/:userId/days/:dateKey/last',
+  requireRole('ceo'),
+  adminDeleteRemoteLast
 );
 router.delete(
   '/attendance/:userId/days/:dateKey',

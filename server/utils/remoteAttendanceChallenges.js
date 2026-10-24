@@ -1,6 +1,5 @@
 const pool = require('../config/db');
 const { normalizeEmploymentType } = require('./employmentType');
-const { isSundayDateKey } = require('./workWeek');
 const { workHoursFromUser } = require('./workHours');
 const {
   CHECK_COUNT,
@@ -308,18 +307,6 @@ async function ensureFlexibleChallenges(user, shiftDate, now) {
 
 async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
   if (normalizeEmploymentType(user.employment_type) !== 'remote') return [];
-  if (isSundayDateKey(shiftDate)) {
-    await pool.query(
-      `
-        DELETE FROM attendance_challenges
-        WHERE user_id = $1
-          AND shift_date = $2
-          AND status IN ('pending', 'notified')
-      `,
-      [user.id, shiftDate]
-    );
-    return [];
-  }
   if (userFlexibleHours(user)) {
     return ensureFlexibleChallenges(user, shiftDate, now);
   }
@@ -378,7 +365,11 @@ async function realignRandomSeqs() {
 }
 
 async function reopenForImmediateCheck(challenge, now = new Date()) {
-  const windows = windowsForScheduled(now);
+  const windows =
+    challenge.kind === 'checkout'
+      ? flexibleCheckoutWindows(challenge.shift_date, now)
+      : windowsForScheduled(now);
+  const scheduledAt = windows.scheduled_at || now;
   await pool.query(
     `
       UPDATE attendance_challenges
@@ -390,7 +381,7 @@ async function reopenForImmediateCheck(challenge, now = new Date()) {
       WHERE id = $1
         AND status IN ('pending', 'notified')
     `,
-    [challenge.id, now, windows.late_at, windows.absent_at]
+    [challenge.id, scheduledAt, windows.late_at, windows.absent_at]
   );
   const rows = await loadChallenges(challenge.user_id, challenge.shift_date);
   return rows.find((row) => Number(row.id) === Number(challenge.id)) || null;
@@ -546,7 +537,7 @@ async function dueNotifications(now = new Date()) {
     `,
     [now]
   );
-  return rows.filter((row) => !isSundayDateKey(row.shift_date));
+  return rows;
 }
 
 async function markNotified(id, now = new Date()) {
@@ -592,7 +583,7 @@ async function expiredOpen(now = new Date()) {
     `,
     [now]
   );
-  return rows.filter((row) => !isSundayDateKey(row.shift_date));
+  return rows;
 }
 
 module.exports = {

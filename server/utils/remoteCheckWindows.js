@@ -1,6 +1,5 @@
 const { zonedParts } = require('./attendanceWindows');
 const { workHoursFromUser, normalizeWorkHours } = require('./workHours');
-const { isSundayDateKey } = require('./workWeek');
 
 const DEFAULT_CHECK_COUNT = 5;
 const CHECK_COUNT = DEFAULT_CHECK_COUNT;
@@ -117,21 +116,28 @@ function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date()) {
 
 function activeShiftDate(now, user) {
   const today = zonedParts(now).dateKey;
-  if (userFlexibleHours(user)) {
-    if (isSundayDateKey(today)) return null;
-    return today;
-  }
   const hours = workHoursFromUser(user);
   const yesterday = addDaysKey(today, -1);
-  const candidates = hours.overnight ? [yesterday, today] : [today];
   const lead = GENERATE_LEAD_MINUTES * 60 * 1000;
-  for (const date of candidates) {
-    if (isSundayDateKey(date)) continue;
-    const { start, end } = shiftBounds(date, { start: hours.start, end: hours.end });
-    if (now.getTime() >= start.getTime() - lead && now.getTime() <= end.getTime()) {
-      return date;
-    }
+  const ts = now.getTime();
+
+  if (hours.overnight) {
+    const yBounds = shiftBounds(yesterday, user);
+    const yOpen = userFlexibleHours(user)
+      ? zonedInstant(yesterday, 0, 0).getTime()
+      : yBounds.start.getTime() - lead;
+    if (ts >= yOpen && ts <= yBounds.end.getTime()) return yesterday;
+
+    const tBounds = shiftBounds(today, user);
+    if (ts >= tBounds.start.getTime() - lead && ts <= tBounds.end.getTime()) return today;
+    return null;
   }
+
+  const tBounds = shiftBounds(today, user);
+  const openFrom = userFlexibleHours(user)
+    ? zonedInstant(today, 0, 0).getTime()
+    : tBounds.start.getTime() - lead;
+  if (ts >= openFrom && ts <= tBounds.end.getTime()) return today;
   return null;
 }
 
