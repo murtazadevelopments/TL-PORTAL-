@@ -120,7 +120,10 @@ function checkInRequestButton(row) {
   if (row.check_in_request_reason === 'stopped') {
     return { label: 'Check in Request', title: 'Attendance is turned off.' };
   }
-  if (row.check_in_request_reason === 'holiday' || row.check_in_request_reason === 'no_shift') {
+  if (row.check_in_request_reason === 'holiday') {
+    return { label: 'Day off', title: 'This weekday is turned off for this employee.' };
+  }
+  if (row.check_in_request_reason === 'no_shift') {
     return { label: 'Check in Request', title: 'Not in this employee’s working hours right now.' };
   }
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
@@ -135,6 +138,7 @@ function liveStatusLabel(row) {
   if (s === 'verified' || s === 'present') return 'Present';
   if (s === 'late') return 'Late';
   if (s === 'leave') return 'Leave';
+  if (s === 'holiday') return 'Day off';
   if (s === 'pending') return 'Pending';
   return s || '—';
 }
@@ -148,6 +152,7 @@ function slotDotLabel(slot) {
 function shiftTrackLine(row) {
   const bits = [];
   if (row.work_hours_label) bits.push(row.work_hours_label);
+  if (row.work_days_label) bits.push(row.work_days_label);
   if (row.shift_date) bits.push(row.shift_date);
   if (row.in_shift && row.shift_ends_at) bits.push(`until ${formatKarachiClock(row.shift_ends_at)}`);
   const needed = Number(row.checks_needed || row.checks_per_shift || 0);
@@ -159,9 +164,12 @@ function shiftTrackLine(row) {
   return bits.join(' · ');
 }
 
-function EmployeePowerSwitch({ label, name, on, busy, disabled, onToggle }) {
+function EmployeePowerSwitch({ label, name, on, busy, disabled, onToggle, title }) {
   return (
-    <div className={`attendance-power attendance-power-sm ${on ? '' : 'is-off'}`}>
+    <div
+      className={`attendance-power attendance-power-sm ${on ? '' : 'is-off'}`}
+      title={title}
+    >
       <span>{label}</span>
       <button
         type="button"
@@ -205,6 +213,39 @@ function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
       onToggle={() => onToggle(row)}
     />
   );
+}
+
+const WORK_DAY_OPTIONS = [
+  { key: 'mon', label: 'Monday' },
+  { key: 'tue', label: 'Tuesday' },
+  { key: 'wed', label: 'Wednesday' },
+  { key: 'thu', label: 'Thursday' },
+  { key: 'fri', label: 'Friday' },
+  { key: 'sat', label: 'Saturday' },
+  { key: 'sun', label: 'Sunday' },
+];
+
+function defaultWorkDays() {
+  return {
+    mon: true,
+    tue: true,
+    wed: true,
+    thu: true,
+    fri: true,
+    sat: true,
+    sun: true,
+  };
+}
+
+function workDaysFromRow(row) {
+  const days = defaultWorkDays();
+  const incoming = row?.work_days && typeof row.work_days === 'object' ? row.work_days : {};
+  for (const { key } of WORK_DAY_OPTIONS) {
+    if (incoming[key] === false || incoming[key] === 0 || incoming[key] === 'off' || incoming[key] === 'false') {
+      days[key] = false;
+    }
+  }
+  return days;
 }
 
 function EmployeePictureSwitch({ row, busy, onToggle }) {
@@ -295,6 +336,38 @@ function attendancePhotoUrl(row) {
   );
 }
 
+function RemoteDeleteButtons({ row, canDelete, deletingId, onDeleteLast, onDeleteDay }) {
+  if (!canDelete) return null;
+  const lastBusy = deletingId === `remote-last-${row.id}`;
+  const dayBusy = deletingId === `remote-day-${row.id}`;
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-danger"
+        disabled={lastBusy || row.can_delete_last === false}
+        title={
+          row.can_delete_last === false
+            ? 'No check-in on this shift day yet'
+            : 'Remove the latest check-in for this shift day'
+        }
+        onClick={() => onDeleteLast(row)}
+      >
+        {lastBusy ? 'Deleting…' : 'Delete last attendance'}
+      </button>
+      <button
+        type="button"
+        className="btn btn-danger"
+        disabled={dayBusy}
+        title="Remove every check for this shift day"
+        onClick={() => onDeleteDay(row)}
+      >
+        {dayBusy ? 'Deleting…' : 'Delete full day attendance'}
+      </button>
+    </>
+  );
+}
+
 function AttendancePhoto({ row, onOpen }) {
   const [failed, setFailed] = useState(false);
   const src = attendancePhotoUrl(row);
@@ -349,6 +422,8 @@ export default function AttendanceAdminPage() {
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
+  const [daysEdit, setDaysEdit] = useState(null);
+  const [savingDays, setSavingDays] = useState(false);
   const [togglingPictureId, setTogglingPictureId] = useState(null);
   const [dayFaceChecks, setDayFaceChecks] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
@@ -720,6 +795,63 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  function openDaysEditor(row) {
+    if (!row?.id || row.can_toggle_attendance === false) return;
+    setDaysEdit({ user: row, days: workDaysFromRow(row) });
+  }
+
+  async function saveWorkDays(nextDays) {
+    if (!daysEdit?.user?.id) return;
+    const days = { ...defaultWorkDays(), ...nextDays };
+    if (!WORK_DAY_OPTIONS.some(({ key }) => days[key])) {
+      setError('Turn on at least one day.');
+      return;
+    }
+    setSavingDays(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${daysEdit.user.id}/work-days`, {
+        days,
+      });
+      const saved = payload?.days || days;
+      setDaysEdit((prev) => (prev ? { ...prev, days: workDaysFromRow({ work_days: saved }) } : prev));
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              employees: (prev.employees || []).map((item) =>
+                item.id === daysEdit.user.id
+                  ? {
+                      ...item,
+                      work_days: saved,
+                      work_days_label: payload?.work_days_label || item.work_days_label,
+                    }
+                  : item
+              ),
+            }
+          : prev
+      );
+      setNotice(payload?.message || `Work days saved for ${daysEdit.user.name}.`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save work days.');
+    } finally {
+      setSavingDays(false);
+    }
+  }
+
+  function toggleWorkDay(key) {
+    if (!daysEdit || savingDays) return;
+    const days = { ...daysEdit.days, [key]: daysEdit.days[key] !== true };
+    if (!WORK_DAY_OPTIONS.some(({ key: dayKey }) => days[dayKey])) {
+      setError('Turn on at least one day.');
+      return;
+    }
+    setDaysEdit((prev) => (prev ? { ...prev, days } : prev));
+    saveWorkDays(days);
+  }
+
   async function toggleEmployeePicture(row) {
     if (!ceo || !row?.id) return;
     const next = row.face_check_capture !== true;
@@ -1015,7 +1147,7 @@ export default function AttendanceAdminPage() {
                         Change status
                       </button>
                     )}
-                    {canDeleteAttendance && row.can_delete && (
+                    {canDeleteAttendance && row.record && (
                       <button
                         type="button"
                         className="btn btn-danger"
@@ -1072,6 +1204,14 @@ export default function AttendanceAdminPage() {
                       busy={togglingFlexibleId === row.id}
                       onToggle={toggleEmployeeFlexible}
                     />
+                    <button
+                      type="button"
+                      className="btn btn-ghost attendance-days-btn"
+                      disabled={row.can_toggle_attendance === false}
+                      onClick={() => openDaysEditor(row)}
+                    >
+                      Days
+                    </button>
                     {ceo ? (
                       <EmployeePictureSwitch
                         row={row}
@@ -1092,6 +1232,8 @@ export default function AttendanceAdminPage() {
                 </p>
               ) : row.attendance_enabled === false ? (
                 <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
+              ) : row.live_status === 'holiday' || row.row_status === 'holiday' ? (
+                <p className="muted">Day off — this weekday is turned off. No checks today.</p>
               ) : null}
               {ceo && row.face_check_capture ? (
                 <p className="muted">Picture capture is on — check-in photos are saved for review.</p>
@@ -1156,26 +1298,13 @@ export default function AttendanceAdminPage() {
                   >
                     Manual mark
                   </button>
-                  {canDeleteAttendance && row.can_delete_last && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={deletingId === `remote-last-${row.id}`}
-                      onClick={() => deleteRemoteLast(row)}
-                    >
-                      {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
-                    </button>
-                  )}
-                  {canDeleteAttendance && row.can_delete && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={deletingId === `remote-day-${row.id}`}
-                      onClick={() => deleteRemoteDay(row)}
-                    >
-                      {deletingId === `remote-day-${row.id}` ? 'Deleting…' : 'Delete full day attendance'}
-                    </button>
-                  )}
+                  <RemoteDeleteButtons
+                    row={row}
+                    canDelete={canDeleteAttendance}
+                    deletingId={deletingId}
+                    onDeleteLast={deleteRemoteLast}
+                    onDeleteDay={deleteRemoteDay}
+                  />
                 </div>
               ) : (
                 <div className="attendance-admin-actions">
@@ -1185,26 +1314,13 @@ export default function AttendanceAdminPage() {
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
                     This month
                   </button>
-                  {canDeleteAttendance && row.can_delete_last && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={deletingId === `remote-last-${row.id}`}
-                      onClick={() => deleteRemoteLast(row)}
-                    >
-                      {deletingId === `remote-last-${row.id}` ? 'Deleting…' : 'Delete last attendance'}
-                    </button>
-                  )}
-                  {canDeleteAttendance && row.can_delete && (
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={deletingId === `remote-day-${row.id}`}
-                      onClick={() => deleteRemoteDay(row)}
-                    >
-                      {deletingId === `remote-day-${row.id}` ? 'Deleting…' : 'Delete full day attendance'}
-                    </button>
-                  )}
+                  <RemoteDeleteButtons
+                    row={row}
+                    canDelete={canDeleteAttendance}
+                    deletingId={deletingId}
+                    onDeleteLast={deleteRemoteLast}
+                    onDeleteDay={deleteRemoteDay}
+                  />
                   <p className="muted">Out of your edit scope</p>
                 </div>
               )}
@@ -1265,6 +1381,45 @@ export default function AttendanceAdminPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {daysEdit?.user && (
+        <div className="modal-backdrop modal-backdrop-stack" onClick={() => !savingDays && setDaysEdit(null)}>
+          <div
+            className="modal-card work-days-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Work days"
+          >
+            <h2>Days</h2>
+            <p className="muted">
+              {daysEdit.user.name} — turn each weekday on or off. Off days have no attendance checks.
+            </p>
+            <ul className="work-days-list">
+              {WORK_DAY_OPTIONS.map(({ key, label }) => {
+                const on = daysEdit.days[key] !== false;
+                return (
+                  <li key={key}>
+                    <EmployeePowerSwitch
+                      label={label}
+                      name={daysEdit.user.name}
+                      on={on}
+                      busy={savingDays}
+                      disabled={savingDays}
+                      onToggle={() => toggleWorkDay(key)}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-primary" disabled={savingDays} onClick={() => setDaysEdit(null)}>
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

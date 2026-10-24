@@ -537,7 +537,7 @@ export default function AttendancePage() {
       ) : !attendanceEnabled ? (
         <p className="attendance-open-banner">Attendance is paused for your account. Check-in will open again when an admin turns it on.</p>
       ) : sundayHoliday ? (
-        <p className="attendance-open-banner">Sunday is a holiday. Attendance checks are not required.</p>
+        <p className="attendance-open-banner">Today is a day off. Attendance checks are not required.</p>
       ) : openCheck?.can_check_in ? (
         <p className="attendance-open-banner">
           {openCheck.kind === 'checkout'
@@ -599,7 +599,7 @@ export default function AttendancePage() {
                         ? 'Check out now'
                         : 'Check in now'
                       : sundayHoliday
-                        ? 'Sunday holiday'
+                        ? 'Day off'
                         : 'Waiting for next check'}
               </button>
             )}
@@ -624,7 +624,7 @@ export default function AttendancePage() {
           ))}
           {timeline.length === 0 && (
             <li className="muted">
-              {sundayHoliday ? 'Sunday is a holiday — no checks today.' : 'Checks appear at the start of your shift.'}
+              {sundayHoliday ? 'Today is a day off — no checks.' : 'Checks appear at the start of your shift.'}
             </li>
           )}
         </ol>

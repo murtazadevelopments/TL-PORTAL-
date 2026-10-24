@@ -17,11 +17,12 @@ Set these in **Hostinger’s environment variable panel** (or a local `server/.e
 | `SUPABASE_URL` | **Yes** | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SECRET_KEY` | **Yes** | Server secret key (`sb_secret_...`) for Storage uploads & signed URLs |
 | `ALLOWED_ORIGINS` | No | Comma-separated frontend origins (defaults include portal + Hostinger URL + localhost) |
-| `SMTP_HOST` | No (default `smtp.hostinger.com`) | SMTP server |
-| `SMTP_PORT` | No (default `465`) | `465` SSL or `587` STARTTLS |
-| `SMTP_USER` | **Yes** (for email) | Full mailbox, e.g. `noreply@texturedlab.org` |
-| `SMTP_PASS` | **Yes** (for email) | That mailbox password from hPanel Emails |
-| `SMTP_FROM` | No | From header; defaults to `Textured Lab Portal <SMTP_USER>` |
+| `SMTP_HOST` | **Yes** (for email) | Brevo SMTP host, `smtp-relay.brevo.com` |
+| `SMTP_PORT` | No (default `587`) | STARTTLS port |
+| `SMTP_USER` | **Yes** (for email) | Brevo SMTP login |
+| `SMTP_PASS` | **Yes** (for email) | Brevo SMTP key |
+| `MAIL_FROM` | **Yes** (for email) | Verified sender, `Textured Lab Portal <noreply@texturedlab.org>` |
+| `MAIL_DAILY_WARN` | No (default `250`) | Log a warning after this many sends in a calendar day |
 | `FRONTEND_URL` | Yes (for password reset links) | Production frontend origin, e.g. `https://texturedlab.org` |
 | `ADMIN_NOTIFY_EMAILS` | No | Extra admin emails for notifications (comma-separated) |
 

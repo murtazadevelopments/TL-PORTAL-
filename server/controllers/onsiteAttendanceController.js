@@ -588,7 +588,7 @@ async function adminListOnsite(req, res) {
         row_status: rowStatus,
         can_manual: Boolean(canEdit && (!rec || isCeoRole(req.user?.role))),
         can_override: Boolean(canEdit && rec),
-        can_delete: Boolean((isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) && rec),
+        can_delete: Boolean(isCeoRole(req.user?.role) || isManagerRole(req.user?.role)),
         can_toggle_attendance: Boolean(canEdit),
         attendance_enabled: userAttendanceEnabled(person),
         record: publicRow(rec),

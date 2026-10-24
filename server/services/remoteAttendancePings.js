@@ -9,7 +9,7 @@ async function loadRemote(userId) {
   const { rows } = await pool.query(
     `
       SELECT id, name, username, email, employment_type, work_start_hour, work_end_hour, is_active, status,
-             remote_check_count, flexible_hours, employee_id, department, designation, branch, shift,
+             remote_check_count, flexible_hours, six_day_week, work_days, employee_id, department, designation, branch, shift,
              staff_kind, reference_person, emergency_contact_name, emergency_contact_number,
              bank_name, account_title, iban, account_number,
              profile_picture_url, cnic_front_url, cnic_back_url, cv_url
@@ -26,7 +26,7 @@ async function ensureActiveShiftChallenges(now = new Date()) {
   const { rows: remotes } = await pool.query(
     `
       SELECT id, name, username, email, employee_id, employment_type, work_start_hour, work_end_hour,
-             remote_check_count, flexible_hours, department, designation, branch, shift, staff_kind,
+             remote_check_count, flexible_hours, six_day_week, work_days, department, designation, branch, shift, staff_kind,
              status, reference_person, emergency_contact_name, emergency_contact_number,
              bank_name, account_title, iban, account_number,
              profile_picture_url, cnic_front_url, cnic_back_url, cv_url

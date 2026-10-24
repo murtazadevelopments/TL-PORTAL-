@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { normalizeEmploymentType } = require('./employmentType');
+const { isAttendanceHoliday } = require('./workDays');
 const { workHoursFromUser } = require('./workHours');
 const {
   CHECK_COUNT,
@@ -307,6 +308,10 @@ async function ensureFlexibleChallenges(user, shiftDate, now) {
 
 async function ensureChallengesForUser(user, shiftDate, now = new Date()) {
   if (normalizeEmploymentType(user.employment_type) !== 'remote') return [];
+  if (isAttendanceHoliday(user, shiftDate)) {
+    await dropOpenChallenges(user.id, shiftDate);
+    return [];
+  }
   if (userFlexibleHours(user)) {
     return ensureFlexibleChallenges(user, shiftDate, now);
   }

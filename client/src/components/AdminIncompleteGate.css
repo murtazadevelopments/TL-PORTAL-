@@ -150,3 +150,97 @@
   color: var(--muted, #8b97ad);
   justify-content: center !important;
 }
+
+.hr-incomplete-toggle {
+  order: 2;
+}
+
+.hr-incomplete-panel {
+  order: 1;
+}
+
+.hr-incomplete-copy {
+  min-width: 0;
+}
+
+.hr-incomplete-label-short {
+  display: none;
+}
+
+body.has-hr-incomplete-dock .app-main {
+  padding-bottom: 5.5rem;
+}
+
+@media (max-width: 720px) {
+  .hr-incomplete-dock {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-width: none;
+    align-items: stretch;
+  }
+
+  .hr-incomplete-toggle {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.45rem;
+    border-radius: 14px;
+    padding: 0.42rem 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .hr-incomplete-copy {
+    flex: 1;
+  }
+
+  .hr-incomplete-label-full {
+    display: none;
+  }
+
+  .hr-incomplete-label-short {
+    display: inline;
+  }
+
+  .hr-incomplete-hint {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .hr-incomplete-count {
+    min-width: 1.55rem;
+    height: 1.55rem;
+    font-size: 0.78rem;
+  }
+
+  .hr-incomplete-panel {
+    max-height: min(62vh, 480px);
+    border-radius: 14px;
+  }
+
+  .hr-incomplete-panel header {
+    padding: 0.75rem 0.8rem 0.55rem;
+    align-items: flex-start;
+  }
+
+  .hr-incomplete-panel h2 {
+    font-size: 0.95rem;
+  }
+
+  .hr-incomplete-panel header p {
+    font-size: 0.74rem;
+  }
+
+  .hr-incomplete-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hr-incomplete-list .btn {
+    width: 100%;
+  }
+
+  body.has-hr-incomplete-dock .app-main {
+    padding-bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -19,6 +19,12 @@ const {
 } = require('../utils/attendanceEnabled');
 const { userFlexibleHours, setUserFlexibleHours } = require('../utils/flexibleHours');
 const {
+  workDaysFromUser,
+  workDaysSummary,
+  isAttendanceHoliday,
+  setUserWorkDays,
+} = require('../utils/workDays');
+const {
   userFaceCheckCapture,
   setUserFaceCheckCapture,
   saveCheckInSnapshot,
@@ -105,7 +111,7 @@ async function loadUser(userId) {
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift, designation,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count, flexible_hours, face_check_capture, staff_kind,
+             remote_check_count, flexible_hours, six_day_week, work_days, face_check_capture, staff_kind,
              reference_person, emergency_contact_name, emergency_contact_number,
              bank_name, account_title, iban, account_number,
              cnic_front_url, cnic_back_url, cv_url
@@ -237,7 +243,7 @@ async function getMyAttendance(req, res) {
       parts.dateKey;
     const hours = workHoursFromUser(user);
 
-    const sundayHoliday = false;
+    const sundayHoliday = isAttendanceHoliday(user, shiftDate);
     const attendanceEnabled = userAttendanceEnabled(user);
     const profileComplete = !isRemoteProfileIncomplete(user);
     if (
@@ -341,6 +347,8 @@ async function getMyAttendance(req, res) {
         ? ''
         : PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
       flexible_hours: flexible,
+      work_days: workDaysFromUser(user),
+      work_days_label: workDaysSummary(workDaysFromUser(user)),
       face_check_capture: userFaceCheckCapture(user),
       can_check_in: canCheckIn,
       open_check: opened?.pub || null,
@@ -621,7 +629,7 @@ async function adminOverview(req, res) {
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, designation, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours,
+               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours, six_day_week, work_days,
                face_check_capture, staff_kind, reference_person,
                emergency_contact_name, emergency_contact_number,
                bank_name, account_title, iban, account_number,
@@ -736,8 +744,11 @@ async function adminOverview(req, res) {
             checked_in_at: log?.checked_in_at || null,
           };
         });
+        const holiday = isAttendanceHoliday(person, personDate);
         const slotCount = remoteChallenges.checkCountFromUser(person);
-        const slots = mapped.length
+        const slots = holiday
+          ? []
+          : mapped.length
           ? mapped
           : Array.from({ length: slotCount }, (_, i) => {
               const seq = i + 1;
@@ -758,6 +769,7 @@ async function adminOverview(req, res) {
         const manualCount = personLogs.filter((l) => l.method === 'manual').length;
 
         let rowStatus = personDay?.status || 'pending';
+        if (holiday && rowStatus !== 'leave') rowStatus = 'holiday';
         if (rowStatus === 'pending') {
           if (missedCount > 0 && verifiedCount === 0) rowStatus = 'missed';
           else if (failedCount > 0 && verifiedCount === 0) rowStatus = 'failed';
@@ -770,7 +782,9 @@ async function adminOverview(req, res) {
         );
         const doneCount = activeRows.filter((row) => CHECK_DONE_STATES.has(row.status)).length;
         let requestGate = { allowed: false, reason: 'no_shift', available_at: null };
-        if (activeDate) {
+        if (holiday) {
+          requestGate = { allowed: false, reason: 'holiday', available_at: null };
+        } else if (activeDate) {
           requestGate = checkInRequestGate(
             now,
             person.remote_check_request_at,
@@ -806,6 +820,7 @@ async function adminOverview(req, res) {
         );
         let liveStatus = rowStatus;
         if (rowStatus === 'leave') liveStatus = 'leave';
+        else if (holiday) liveStatus = 'holiday';
         else if (shiftComplete) liveStatus = 'complete';
         else if (inShift) liveStatus = 'in_shift';
         else if (rowStatus === 'missed' || rowStatus === 'absent' || rowStatus === 'failed') {
@@ -833,10 +848,7 @@ async function adminOverview(req, res) {
           day_status: rowStatus,
           can_manual: employeeMatchesScope(person, editScope),
           can_toggle_attendance: employeeMatchesScope(person, editScope),
-          can_delete: Boolean(
-            (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
-              (personLogs.length > 0 || Boolean(personDay) || mapped.length > 0)
-          ),
+          can_delete: Boolean(isCeoRole(req.user?.role) || isManagerRole(req.user?.role)),
           can_delete_last: Boolean(
             (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) && personLogs.length > 0
           ),
@@ -850,6 +862,8 @@ async function adminOverview(req, res) {
           attendance_enabled: userAttendanceEnabled(person),
           profile_complete: profileComplete,
           flexible_hours: flexible,
+          work_days: workDaysFromUser(person),
+          work_days_label: workDaysSummary(workDaysFromUser(person)),
           face_check_capture: isCeoRole(req.user?.role) ? userFaceCheckCapture(person) : undefined,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
           duration_minutes: personDay?.duration_minutes ?? null,
@@ -1440,6 +1454,65 @@ async function putUserFlexibleHours(req, res) {
   }
 }
 
+async function putUserWorkDays(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Work days are only for remote employees.' });
+    }
+
+    if (!isCeoRole(req.user?.role)) {
+      const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+      }
+    }
+
+    const saved = await setUserWorkDays(targetId, req.body?.days || req.body?.work_days || {});
+    const days = workDaysFromUser({ work_days: saved?.work_days });
+    const updated = await loadUser(targetId);
+    const now = new Date();
+    const shiftDate =
+      remoteChallenges.activeShiftDate(now, updated) ||
+      remoteChallenges.currentShiftDateKey(now, updated);
+    if (shiftDate && userAttendanceEnabled(updated)) {
+      if (isAttendanceHoliday(updated, shiftDate)) {
+        await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
+      } else {
+        await remoteChallenges.dropOpenChallenges(targetId, shiftDate);
+        await remoteChallenges.ensureChallengesForUser(updated, shiftDate);
+      }
+    }
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'attendance.work_days',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: `Set work days for ${target.name || target.username}: ${workDaysSummary(days)}`,
+    });
+    return res.json({
+      days,
+      work_days_label: workDaysSummary(days),
+      message: `Work days saved for ${target.name || target.username}: ${workDaysSummary(days)}.`,
+    });
+  } catch (err) {
+    if (err.statusCode === 400) {
+      return res.status(400).json({ message: err.message });
+    }
+    console.error('putUserWorkDays error:', err);
+    return res.status(500).json({ message: 'Server error saving work days.' });
+  }
+}
+
 async function adminSetHours(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1857,4 +1930,5 @@ module.exports = {
   listFaceCheckCaptures,
   streamFaceCheckCapture,
   putUserFlexibleHours,
+  putUserWorkDays,
 };

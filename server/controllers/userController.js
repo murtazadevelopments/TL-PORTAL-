@@ -163,6 +163,7 @@ async function getMe(req, res) {
     const role = String(user.role || '')
       .trim()
       .toLowerCase();
+    user.role = role;
 
     if (role === 'ceo') {
       user.permissions = ['*'];

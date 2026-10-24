@@ -82,7 +82,7 @@ export function canManageRemoteEmployees(role, permissions) {
 
 /** Remote team attendance: CEO or Assign Roles “Remote employees” only. Not HR, not other admins. */
 export function canViewRemoteTeamAttendance(role, permissions) {
-  if (isCeo(role)) return true;
+  if (isCeo(role) || isManager(role)) return true;
   const keys = Array.isArray(permissions) ? permissions : [];
   return keys.includes('employees:remote');
 }

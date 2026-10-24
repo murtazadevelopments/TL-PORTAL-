@@ -24,7 +24,7 @@ const {
   flexibleDayBounds,
   flexibleDisplayScheduledAt,
 } = require('./remoteCheckWindows');
-const { isSundayDateKey } = require('./workWeek');
+const { isAttendanceHoliday } = require('./workDays');
 const { normalizeEmploymentType } = require('./employmentType');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
@@ -126,7 +126,7 @@ function computeDayStatus(logs, user, dateKey, now = new Date()) {
   const hours = workHoursFromUser(user);
   const hourList = hoursBetween(hours.start, hours.end);
   if (logs.some((l) => l.status === 'leave')) return 'leave';
-  if (isSundayDateKey(dateKey) && !isRemoteUser(user)) return 'holiday';
+  if (isAttendanceHoliday(user, dateKey)) return 'holiday';
 
   const challengeLogs = logs.filter(
     (l) => isChallengeKey(l.hour_key) && ['verified', 'late', 'missed'].includes(l.status)
@@ -233,7 +233,7 @@ async function upsertAttendanceDay(userId, dateKey, status, extra = {}) {
 }
 
 async function refreshAttendanceDay(user, dateKey, extra = {}) {
-  if (isSundayDateKey(dateKey) && extra.forceStatus !== 'leave' && !isRemoteUser(user)) {
+  if (isAttendanceHoliday(user, dateKey) && extra.forceStatus !== 'leave') {
     await upsertAttendanceDay(user.id, dateKey, 'holiday', extra);
     return 'holiday';
   }
@@ -422,7 +422,7 @@ async function monthHistory(user, monthKey, now = new Date()) {
       ).map((s) => ({ ...s, state: 'leave' }));
       return { date: dateKey, status: 'leave', slots: leaveSlots };
     }
-    if (isSundayDateKey(dateKey) && !isRemoteUser(user)) {
+    if (isAttendanceHoliday(user, dateKey)) {
       return { date: dateKey, status: 'holiday', slots: [] };
     }
     const rec = buildDayRecord(dateKey, user, logs, now, dayChallenges);

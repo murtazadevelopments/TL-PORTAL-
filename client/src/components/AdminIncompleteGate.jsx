@@ -73,6 +73,15 @@ export default function AdminIncompleteGate({ user }) {
     if (fillId) setOpen(false);
   }, [fillId]);
 
+  useEffect(() => {
+    if (!hrOnly || incomplete.length === 0) {
+      document.body.classList.remove('has-hr-incomplete-dock');
+      return undefined;
+    }
+    document.body.classList.add('has-hr-incomplete-dock');
+    return () => document.body.classList.remove('has-hr-incomplete-dock');
+  }, [hrOnly, incomplete.length]);
+
   if (!hrOnly || incomplete.length === 0) return null;
 
   function openEmployee(id) {
@@ -89,12 +98,13 @@ export default function AdminIncompleteGate({ user }) {
         onClick={() => setOpen((v) => !v)}
       >
         <span className="hr-incomplete-count">{incomplete.length}</span>
-        <span>
-          {incomplete.length === 1
-            ? 'employee incomplete'
-            : 'employees incomplete'}
+        <span className="hr-incomplete-copy">
+          <span className="hr-incomplete-label-full">
+            {incomplete.length === 1 ? 'employee incomplete' : 'employees incomplete'}
+          </span>
+          <span className="hr-incomplete-label-short">incomplete</span>
         </span>
-        <span className="hr-incomplete-hint">{open ? 'Hide list' : 'Show all'}</span>
+        <span className="hr-incomplete-hint">{open ? 'Hide' : 'Show'}</span>
       </button>
 
       {open && (

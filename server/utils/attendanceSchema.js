@@ -210,6 +210,8 @@ async function runEnsureAttendanceTables() {
   await ensureAttendanceEnabledColumn();
   const { ensureFlexibleHoursColumn } = require('./flexibleHours');
   await ensureFlexibleHoursColumn();
+  const { ensureWorkDaysColumn } = require('./workDays');
+  await ensureWorkDaysColumn();
   const { ensureFaceCheckCapture } = require('./faceCheckCapture');
   await ensureFaceCheckCapture();
   const { ensureAttendanceReviewEmailColumn } = require('./attendanceReviewEmail');

@@ -1,4 +1,5 @@
 const { zonedParts } = require('./attendanceWindows');
+const { isAttendanceHoliday } = require('./workDays');
 const { workHoursFromUser, normalizeWorkHours } = require('./workHours');
 
 const DEFAULT_CHECK_COUNT = 5;
@@ -114,31 +115,38 @@ function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date()) {
   };
 }
 
+function skipOffWorkDay(user, dateKey) {
+  return Boolean(dateKey) && isAttendanceHoliday(user, dateKey);
+}
+
 function activeShiftDate(now, user) {
   const today = zonedParts(now).dateKey;
   const hours = workHoursFromUser(user);
   const yesterday = addDaysKey(today, -1);
   const lead = GENERATE_LEAD_MINUTES * 60 * 1000;
   const ts = now.getTime();
+  let shiftDate = null;
 
   if (hours.overnight) {
     const yBounds = shiftBounds(yesterday, user);
     const yOpen = userFlexibleHours(user)
       ? zonedInstant(yesterday, 0, 0).getTime()
       : yBounds.start.getTime() - lead;
-    if (ts >= yOpen && ts <= yBounds.end.getTime()) return yesterday;
-
+    if (ts >= yOpen && ts <= yBounds.end.getTime()) shiftDate = yesterday;
+    else {
+      const tBounds = shiftBounds(today, user);
+      if (ts >= tBounds.start.getTime() - lead && ts <= tBounds.end.getTime()) shiftDate = today;
+    }
+  } else {
     const tBounds = shiftBounds(today, user);
-    if (ts >= tBounds.start.getTime() - lead && ts <= tBounds.end.getTime()) return today;
-    return null;
+    const openFrom = userFlexibleHours(user)
+      ? zonedInstant(today, 0, 0).getTime()
+      : tBounds.start.getTime() - lead;
+    if (ts >= openFrom && ts <= tBounds.end.getTime()) shiftDate = today;
   }
 
-  const tBounds = shiftBounds(today, user);
-  const openFrom = userFlexibleHours(user)
-    ? zonedInstant(today, 0, 0).getTime()
-    : tBounds.start.getTime() - lead;
-  if (ts >= openFrom && ts <= tBounds.end.getTime()) return today;
-  return null;
+  if (skipOffWorkDay(user, shiftDate)) return null;
+  return shiftDate;
 }
 
 function windowsForScheduled(scheduledAt) {

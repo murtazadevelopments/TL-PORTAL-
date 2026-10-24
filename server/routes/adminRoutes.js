@@ -94,6 +94,7 @@ const {
   putUserFaceCheckCapture,
   listFaceCheckCaptures,
   putUserFlexibleHours,
+  putUserWorkDays,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
 
@@ -409,6 +410,17 @@ router.put(
     'employees:edit'
   ),
   putUserFlexibleHours
+);
+router.put(
+  '/attendance/:userId/work-days',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:edit',
+    'employees:remote',
+    'hr:add_employee',
+    'employees:edit'
+  ),
+  putUserWorkDays
 );
 router.get(
   '/attendance',

@@ -395,6 +395,46 @@
   padding: 0.45rem 0.9rem;
 }
 
+.attendance-days-btn {
+  border-radius: 12px;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.work-days-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.work-days-list li {
+  display: flex;
+}
+
+.work-days-list .attendance-power {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.work-days-modal {
+  width: min(420px, 100%);
+}
+
+@media (max-width: 720px) {
+  .attendance-admin-card header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .attendance-admin-actions .btn {
+    flex: 1 1 auto;
+    min-height: 2.4rem;
+  }
+}
+
 .attendance-admin .modal-backdrop,
 .attendance-admin .modal-backdrop.modal-backdrop-stack {
   position: fixed;
