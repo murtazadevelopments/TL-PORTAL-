@@ -179,6 +179,7 @@ function SignIn() {
               maxLength={30}
               pattern="[a-z0-9._]+"
               title="lowercase letters, numbers, dots, and underscores only"
+              data-input-kind="username"
             />
           </label>
 

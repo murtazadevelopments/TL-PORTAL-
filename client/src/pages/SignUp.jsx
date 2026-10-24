@@ -157,6 +157,7 @@ function SignUp() {
               maxLength={30}
               pattern="[a-z0-9._]+"
               title="lowercase letters, numbers, dots, and underscores only"
+              data-input-kind="username"
             />
             <span className="field-hint">
               lowercase letters, numbers, dots, and underscores only
@@ -165,7 +166,14 @@ function SignUp() {
 
           <label>
             <LabelText required>Name</LabelText>
-            <input type="text" name="name" value={form.name} onChange={handleChange} required />
+            <input
+              type="text"
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              data-input-kind="text"
+            />
           </label>
 
           <label>
@@ -177,6 +185,7 @@ function SignUp() {
               onChange={handleChange}
               required
               autoComplete="email"
+              data-input-kind="email"
             />
           </label>
 
@@ -198,6 +207,8 @@ function SignUp() {
               value={form.contact_number}
               onChange={handleChange}
               required
+              inputMode="numeric"
+              data-input-kind="integer"
             />
           </label>
 
@@ -282,6 +293,7 @@ function SignUp() {
                 value={form.bank_name}
                 onChange={handleChange}
                 required
+                data-input-kind="text"
               />
             </label>
             <label>
@@ -292,6 +304,7 @@ function SignUp() {
                 value={form.account_title}
                 onChange={handleChange}
                 required
+                data-input-kind="text"
               />
             </label>
           </div>
@@ -304,6 +317,8 @@ function SignUp() {
                 value={form.account_number}
                 onChange={handleChange}
                 required
+                inputMode="numeric"
+                data-input-kind="integer"
               />
             </label>
             <label>
@@ -319,6 +334,10 @@ function SignUp() {
               name="cnic_number"
               value={form.cnic_number}
               onChange={handleChange}
+              inputMode="numeric"
+              data-input-kind="integer"
+              maxLength={13}
+              placeholder="13-digit CNIC"
             />
           </label>
 

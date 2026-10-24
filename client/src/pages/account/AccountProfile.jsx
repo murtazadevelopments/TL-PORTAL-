@@ -320,7 +320,14 @@ export default function AccountProfile() {
               <>
               <label>
                 Name
-                <input type="text" name="name" value={form.name} onChange={handleChange} required />
+                <input
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  required
+                  data-input-kind="text"
+                />
               </label>
               <label>
                 Email
@@ -331,6 +338,7 @@ export default function AccountProfile() {
                   onChange={handleChange}
                   required
                   autoComplete="email"
+                  data-input-kind="email"
                 />
               </label>
               <label>
@@ -340,6 +348,8 @@ export default function AccountProfile() {
                   name="contact_number"
                   value={form.contact_number}
                   onChange={handleChange}
+                  inputMode="numeric"
+                  data-input-kind="integer"
                 />
               </label>
               <label>
@@ -349,7 +359,10 @@ export default function AccountProfile() {
                   name="cnic_number"
                   value={form.cnic_number}
                   onChange={handleChange}
-                  placeholder="e.g. 42101-1234567-1"
+                  placeholder="13-digit CNIC"
+                  inputMode="numeric"
+                  data-input-kind="integer"
+                  maxLength={13}
                 />
               </label>
               <label>
@@ -406,11 +419,12 @@ export default function AccountProfile() {
                 Reference person
                 <input
                   type="text"
-                  name="reference_person_name"
-                  value={form.reference_person_name}
-                  onChange={handleChange}
-                  required={locked}
-                />
+                    name="reference_person_name"
+                    value={form.reference_person_name}
+                    onChange={handleChange}
+                    required={locked}
+                    data-input-kind="text"
+                  />
               </label>
               )}
               {(showField('emergency_contact_name') || showField('emergency_contact_number')) && (
@@ -424,6 +438,7 @@ export default function AccountProfile() {
                     value={form.emergency_contact_name}
                     onChange={handleChange}
                     required={locked}
+                    data-input-kind="text"
                   />
                 </label>
                 )}
@@ -436,6 +451,8 @@ export default function AccountProfile() {
                     value={form.emergency_contact_number}
                     onChange={handleChange}
                     required={locked}
+                    inputMode="numeric"
+                    data-input-kind="integer"
                   />
                 </label>
                 )}
@@ -457,6 +474,7 @@ export default function AccountProfile() {
                     value={form.bank_name}
                     onChange={handleChange}
                     required={locked}
+                    data-input-kind="text"
                   />
                 </label>
                 )}
@@ -469,6 +487,7 @@ export default function AccountProfile() {
                     value={form.account_title}
                     onChange={handleChange}
                     required={locked}
+                    data-input-kind="text"
                   />
                 </label>
                 )}
@@ -497,6 +516,8 @@ export default function AccountProfile() {
                     value={form.account_number}
                     onChange={handleChange}
                     required={locked}
+                    inputMode="numeric"
+                    data-input-kind="integer"
                   />
                 </label>
                 )}

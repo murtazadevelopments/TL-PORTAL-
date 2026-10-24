@@ -458,26 +458,8 @@ async function notifyEmployeeAdminUpdated(employee, changedFields) {
   });
 }
 
-async function notifyAdminsEmployeeSelfUpdate(employee, changedFields) {
-  const ceoEmails = await getCeoEmails();
-  const employeeEmail = String(employee?.email || '').trim().toLowerCase();
-  const to = [...new Set([...ceoEmails, employeeEmail].filter(Boolean))];
-  if (!to.length) return;
-
-  const list =
-    changedFields.length > 0
-      ? `<ul>${changedFields.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>`
-      : '<p>Profile fields were updated.</p>';
-
-  await sendEmailSafe({
-    to,
-    subject: `Employee profile updated: ${employee.name || employee.username}`,
-    html: `
-      <p>Employee <strong>${escapeHtml(employee.name || employee.username)}</strong> updated their profile.</p>
-      ${list}
-      <p><em>Banking/password values are not included.</em></p>
-    `,
-  });
+async function notifyAdminsEmployeeSelfUpdate() {
+  return;
 }
 
 /**

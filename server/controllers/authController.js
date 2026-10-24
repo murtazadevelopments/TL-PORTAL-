@@ -20,7 +20,13 @@ const {
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { blockedLoginMessage, invalidateAccountStatus } = require('../utils/accountStatus');
-const { findIdentityConflict, preferOpenAccounts } = require('../utils/identityUniqueness');
+const {
+  findIdentityConflict,
+  preferOpenAccounts,
+  digitsOnly,
+} = require('../utils/identityUniqueness');
+
+const INVALID_CNIC_MESSAGE = 'Invalid CNIC number.';
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -433,115 +439,117 @@ async function login(req, res) {
   }
 }
 
+function recoveryEmail(body) {
+  return String(body?.email || '').trim().toLowerCase();
+}
+
+function recoveryUsername(body) {
+  return String(body?.username || '').trim().toLowerCase();
+}
+
+async function findRecoveryUsers(email, username, cnic) {
+  const cnicDigits = digitsOnly(cnic);
+  if ((!email && !username) || !cnicDigits) return [];
+  const params = [];
+  const parts = [];
+  if (email) {
+    params.push(email);
+    parts.push(`lower(trim(email)) = $${params.length}`);
+  }
+  if (username) {
+    params.push(username);
+    parts.push(`lower(trim(username)) = $${params.length}`);
+  }
+  params.push(cnicDigits);
+  const cnicSql = `regexp_replace(COALESCE(cnic_number, ''), '[^0-9]', '', 'g') = $${params.length}`;
+  const { rows } = await pool.query(
+    `
+      SELECT id, name, username, email, is_active, blocked_at, role,
+             status, resigned_at, terminated_at, blocked_reason, cnic_number
+      FROM users
+      WHERE (${parts.join(' OR ')})
+        AND ${cnicSql}
+        AND NULLIF(TRIM(username), '') IS NOT NULL
+      ORDER BY (is_active IS TRUE) DESC, id DESC
+      LIMIT 8
+    `,
+    params
+  );
+  return preferOpenAccounts(rows).filter((row) => !row.blocked_at);
+}
+
+function recoveryIdentity(body) {
+  const email = recoveryEmail(body);
+  const username = recoveryUsername(body);
+  const identifier = String(body?.identifier || '').trim().toLowerCase();
+  if (email || username) return { email, username };
+  if (!identifier) return { email: '', username: '' };
+  if (identifier.includes('@')) return { email: identifier, username: '' };
+  return { email: '', username: identifier };
+}
+
 /**
- * POST /api/auth/forgot-username  { email }
+ * POST /api/auth/forgot-username  { email, username, cnic }
  */
 async function forgotUsername(req, res) {
-  const generic = {
-    message: 'If an account exists for that email, we sent the username.',
-  };
-
   try {
-    const email = String(req.body?.email || '')
-      .trim()
-      .toLowerCase();
-    if (!email) {
-      return res.status(400).json({ message: 'Email is required.' });
+    const { email, username } = recoveryIdentity(req.body);
+    if (!email && !username) {
+      return res.status(400).json({ message: 'Email or username is required.' });
     }
 
-    const { rows } = await pool.query(
-      `
-        SELECT id, name, username, email, is_active, status, resigned_at, terminated_at, blocked_reason
-        FROM users
-        WHERE lower(email) = $1
-          AND NULLIF(TRIM(username), '') IS NOT NULL
-        ORDER BY (is_active IS TRUE) DESC, id DESC
-      `,
-      [email]
-    );
-
-    const reminderRows = preferOpenAccounts(rows);
-    if (reminderRows.length) {
-      console.log(
-        `[forgot-username] email=${email} matches=${reminderRows.length} usernames=${reminderRows.map((r) => r.username).join(',')}`
-      );
-      await notifyAfterResponse('forgot-username', reminderRows[0].id, () =>
-        notifyUsernameReminder(reminderRows)
-      );
-      return res.json(generic);
+    const users = await findRecoveryUsers(email, username, req.body?.cnic || req.body?.cnic_number);
+    const user = users[0];
+    if (!user) {
+      return res.status(400).json({ message: INVALID_CNIC_MESSAGE });
     }
 
-    console.warn(`[forgot-username] no account with a username for email=${email}`);
-    return res.json(generic);
+    console.log(`[forgot-username] email=${user.email} username=${user.username} id=${user.id}`);
+    await notifyAfterResponse('forgot-username', user.id, () => notifyUsernameReminder(users));
+    return res.json({ message: 'We sent your username to your registered email.' });
   } catch (err) {
     console.error('forgotUsername error:', err);
-    return res.json(generic);
+    return res.status(500).json({ message: 'Unable to process request.' });
   }
 }
 
 /**
- * POST /api/auth/forgot-password  { email }
+ * POST /api/auth/forgot-password  { email, username, cnic }
  */
 async function forgotPassword(req, res) {
-  const generic = {
-    message: 'If an account exists for that email, we sent a password reset link.',
-  };
-
   try {
-    const email = String(req.body?.email || '')
-      .trim()
-      .toLowerCase();
-    if (!email) {
-      return res.status(400).json({ message: 'Email is required.' });
+    const { email, username } = recoveryIdentity(req.body);
+    if (!email && !username) {
+      return res.status(400).json({ message: 'Email or username is required.' });
     }
 
-    const { rows } = await pool.query(
-      `
-        SELECT id, name, username, email, is_active, blocked_at, role,
-               status, resigned_at, terminated_at, blocked_reason
-        FROM users
-        WHERE lower(trim(email)) = $1
-           OR lower(trim(username)) = $1
-        ORDER BY id ASC
-      `,
-      [email]
-    );
-
-    const usernameMatch = rows.filter(
-      (row) => String(row.username || '').trim().toLowerCase() === email
-    );
-    const candidates = preferOpenAccounts(usernameMatch.length ? usernameMatch : rows).filter(
-      (row) => !row.blocked_at
-    );
-
-    if (!candidates.length) {
-      console.warn(`[forgot-password] no sendable account for identifier=${email}`);
-      return res.json(generic);
+    const users = await findRecoveryUsers(email, username, req.body?.cnic || req.body?.cnic_number);
+    const user = users[0];
+    if (!user) {
+      return res.status(400).json({ message: INVALID_CNIC_MESSAGE });
     }
 
-    for (const user of candidates) {
-      const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-      await pool.query(
-        `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3)`,
-        [user.id, tokenHash, expiresAt]
-      );
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, tokenHash, expiresAt]
+    );
 
-      const resetUrl = `${frontendBaseUrl()}/reset-password?token=${rawToken}`;
-      console.log(
-        `[forgot-password] sending username=${user.username} id=${user.id} to=${user.email}`
-      );
-      await notifyAfterResponse('forgot-password', user.id, () =>
-        notifyPasswordReset(user, resetUrl)
-      );
-    }
-    return res.json(generic);
+    const resetUrl = `${frontendBaseUrl()}/reset-password?token=${rawToken}`;
+    console.log(
+      `[forgot-password] sending username=${user.username} id=${user.id} to=${user.email}`
+    );
+    await notifyAfterResponse('forgot-password', user.id, () =>
+      notifyPasswordReset(user, resetUrl)
+    );
+    return res.json({ message: 'We sent a password reset link to your registered email.' });
   } catch (err) {
     console.error('forgotPassword error:', err);
-    return res.json(generic);
+    return res.status(500).json({ message: 'Unable to process request.' });
   }
 }
 

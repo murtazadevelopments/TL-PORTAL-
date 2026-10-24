@@ -4173,11 +4173,18 @@ function EmployeesPage() {
                     minLength={3}
                     maxLength={30}
                     autoComplete="off"
+                    data-input-kind="username"
                   />
                 </label>
                 <label>
                   Full name <span className="req-star" aria-hidden="true">*</span>
-                  <input name="name" value={addForm.name} onChange={handleAddChange} required />
+                  <input
+                    name="name"
+                    value={addForm.name}
+                    onChange={handleAddChange}
+                    required
+                    data-input-kind="text"
+                  />
                 </label>
                 <label>
                   Email <span className="req-star" aria-hidden="true">*</span>
@@ -4188,6 +4195,7 @@ function EmployeesPage() {
                     onChange={handleAddChange}
                     required
                     autoComplete="off"
+                    data-input-kind="email"
                   />
                 </label>
                 <PasswordInput
@@ -4207,6 +4215,8 @@ function EmployeesPage() {
                     value={addForm.contact_number}
                     onChange={handleAddChange}
                     required
+                    inputMode="numeric"
+                    data-input-kind="integer"
                   />
                 </label>
                 <label>
@@ -4314,7 +4324,12 @@ function EmployeesPage() {
                 </label>
                 <label>
                   Bank name
-                  <input name="bank_name" value={addForm.bank_name} onChange={handleAddChange} />
+                  <input
+                    name="bank_name"
+                    value={addForm.bank_name}
+                    onChange={handleAddChange}
+                    data-input-kind="text"
+                  />
                 </label>
                 <label>
                   Account title
@@ -4322,6 +4337,7 @@ function EmployeesPage() {
                     name="account_title"
                     value={addForm.account_title}
                     onChange={handleAddChange}
+                    data-input-kind="text"
                   />
                 </label>
                 <label>
@@ -4330,6 +4346,8 @@ function EmployeesPage() {
                     name="account_number"
                     value={addForm.account_number}
                     onChange={handleAddChange}
+                    inputMode="numeric"
+                    data-input-kind="integer"
                   />
                 </label>
                 <label>
