@@ -3,7 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
 import SidebarNav from '../components/SidebarNav';
-import { isCeo, isTeamLeader } from '../utils/permissions';
+import { isCeoOrManager, isTeamLeader } from '../utils/permissions';
 import {
   missingEmployeePortalFields,
   isProfileIncompleteLocked,
@@ -26,7 +26,7 @@ import './AppShell.css';
 function ShellInner() {
   const { user, role, permissions, loading, logout, refreshUser } = useAuthUser();
   const tlDashboardAccess =
-    Boolean(user?.tl_dashboard_access) || isCeo(role) || isTeamLeader(role);
+    Boolean(user?.tl_dashboard_access) || isCeoOrManager(role) || isTeamLeader(role);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);

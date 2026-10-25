@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
-import { canAccessAdmin, hasPermission, isCeo } from '../../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeoOrManager } from '../../utils/permissions';
 import { matchesTeamFilter } from '../../utils/teamNames';
 import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
@@ -32,7 +32,7 @@ export default function DeactivatedEmployeesPage() {
 
   const canView = hasPermission(permissions, 'employees:deactivate', role);
   const canRestore = canView;
-  const canPurge = isCeo(role);
+  const canPurge = isCeoOrManager(role);
 
   const load = useCallback(async () => {
     setLoading(true);

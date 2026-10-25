@@ -191,7 +191,16 @@ async function getMe(req, res) {
       user.permissions = managerPermissionKeys();
       user.scopes = {};
       user.t_pin_configured = false;
-      user.tl_dashboard_access = false;
+      user.tl_dashboard_access = true;
+      try {
+        const { rows: pinRows } = await pool.query(
+          'SELECT t_pin_hash IS NOT NULL AS configured FROM users WHERE id = $1',
+          [user.id]
+        );
+        user.t_pin_configured = Boolean(pinRows[0]?.configured);
+      } catch {
+        /* migration 009 not applied yet */
+      }
     } else if (role === 'admin') {
       const access = await loadAdminPermissionAccess(user.id);
       user.permissions = access.permissions;
@@ -245,7 +254,7 @@ async function getMe(req, res) {
     }
 
     const keys = Array.isArray(user.permissions) ? user.permissions : [];
-    user.is_hr = role !== 'ceo' && keys.includes('hr:followup');
+    user.is_hr = role !== 'ceo' && role !== 'manager' && keys.includes('hr:followup');
     user.sales_agent_dashboard = false;
     try {
       const { employeeHasSalesAgentDashboard } = require('../utils/salesTeams');

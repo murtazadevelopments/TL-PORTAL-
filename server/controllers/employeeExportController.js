@@ -18,7 +18,8 @@ const EXPORT_COLUMNS_SQL = `
 `;
 
 function isCeo(req) {
-  return String(req.user?.role || '').toLowerCase() === 'ceo';
+  const role = String(req.user?.role || '').toLowerCase();
+  return role === 'ceo' || role === 'manager';
 }
 
 function exportScope(req) {

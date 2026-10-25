@@ -60,7 +60,7 @@ async function ensureTransferTable() {
 function directoryAccess(req) {
   const role = String(req.user?.role || '').toLowerCase();
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  const ceo = role === 'ceo' || perms.includes('*');
+  const ceo = role === 'ceo' || role === 'manager' || perms.includes('*');
   return {
     ceo,
     canEditOnsite: ceo || perms.includes('employees:edit') || perms.includes('hr:add_employee'),
@@ -70,7 +70,7 @@ function directoryAccess(req) {
 
 async function resolvePermissionScopes(req) {
   const role = String(req.user?.role || '').toLowerCase();
-  if (role === 'ceo') return {};
+  if (role === 'ceo' || role === 'manager') return {};
   if (req.user?.permissionScopes && typeof req.user.permissionScopes === 'object') {
     return req.user.permissionScopes;
   }

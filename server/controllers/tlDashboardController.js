@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const {
-  isCeoRole,
+  isCeoOrManagerRole,
   isTeamLeaderRole,
   hasTeamLeaderDashboardAccess,
   canViewAllTlCategories,
@@ -15,10 +15,6 @@ function normalizeSection(value) {
     .trim()
     .toLowerCase();
   return SECTIONS.has(s) ? s : null;
-}
-
-function isCeo(req) {
-  return isCeoRole(req.user?.role);
 }
 
 async function loadUserAccessFlags(userId) {
@@ -65,9 +61,9 @@ async function getAccess(req, res) {
     return res.json({
       access,
       role: row.role,
-      canManage: isCeoRole(row.role),
+      canManage: isCeoOrManagerRole(row.role),
       isTeamLeader: isTeamLeaderRole(row.role) || canViewAllTlCategories(row),
-      tPinConfigured: Boolean(row.t_pin_configured) && isCeoRole(row.role),
+      tPinConfigured: Boolean(row.t_pin_configured) && isCeoOrManagerRole(row.role),
     });
   } catch (err) {
     console.error('tl getAccess error:', err);
@@ -91,7 +87,7 @@ async function listCategories(req, res) {
     }
     req.user.role = row.role;
 
-    const ceo = isCeoRole(row.role);
+    const ceo = isCeoOrManagerRole(row.role);
     const viewAll = canViewAllTlCategories(row);
     const assigned = viewAll ? true : await userHasAssignment(req.user.id);
 
@@ -209,6 +205,7 @@ async function listAssignableUsers(req, res) {
         FROM users
         WHERE is_active IS DISTINCT FROM FALSE
           AND LOWER(TRIM(role)) <> 'ceo'
+          AND LOWER(TRIM(role)) <> 'manager'
           AND LOWER(TRIM(COALESCE(status, ''))) = 'active'
         ORDER BY name ASC NULLS LAST, username ASC
       `

@@ -1,6 +1,11 @@
 const pool = require('../config/db');
 const audit = require('../utils/auditLog');
-const permissionsMw = require('../middleware/permissions');
+const {
+  loadAdminPermissionAccess,
+  isCeoRole,
+  isManagerRole,
+  isCeoOrManagerRole,
+} = require('../middleware/permissions');
 const employeeScope = require('../utils/employeeScope');
 const attendanceSchema = require('../utils/attendanceSchema');
 const faceMath = require('../utils/faceMath');
@@ -48,9 +53,10 @@ function pick(obj, name) {
 }
 
 const writeAuditLog = pick(audit, 'writeauditlog');
-const loadAdminPermissionAccess = pick(permissionsMw, 'loadadminpermissionaccess');
-const isCeoRole = pick(permissionsMw, 'isceorole');
-const isManagerRole = pick(permissionsMw, 'ismanagerrole');
+
+function hasFullAttendanceDays(role) {
+  return Boolean(isCeoOrManagerRole(role) || isCeoRole(role) || isManagerRole(role));
+}
 const employeeMatchesScope = pick(employeeScope, 'employeematchesscope');
 const scopeWhereClause = pick(employeeScope, 'scopewhereclause');
 const normalizeScope = pick(employeeScope, 'normalizescope');
@@ -330,9 +336,18 @@ async function getMyAttendance(req, res) {
       : []
     );
 
-    const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now);
+    const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now, user);
+    const onShift = remoteChallenges.isOnShift(
+      now,
+      user,
+      remoteChallenges.activeShiftDate(now, user, { includeLead: false })
+    );
     const canCheckIn = Boolean(
-      attendanceEnabled && profileComplete && !sundayHoliday && opened?.pub?.can_check_in
+      attendanceEnabled &&
+        profileComplete &&
+        !sundayHoliday &&
+        onShift &&
+        opened?.pub?.can_check_in
     );
     const month = await monthHistory(user, shiftDate.slice(0, 7));
     const todayMeta = (month.days || []).find((d) => d.date === shiftDate) || {};
@@ -394,14 +409,14 @@ async function checkIn(req, res) {
     }
 
     const now = new Date();
-    const shiftDate = remoteChallenges.activeShiftDate(now, user);
+    const shiftDate = remoteChallenges.activeShiftDate(now, user, { includeLead: false });
     if (!shiftDate) {
       return res.status(400).json({
         message: 'There is no open attendance check during your working hours.',
       });
     }
     const challengeRows = await remoteChallenges.ensureChallengesForUser(user, shiftDate);
-    const opened = remoteChallenges.openChallenge(challengeRows, now);
+    const opened = remoteChallenges.openChallenge(challengeRows, now, user);
     if (!opened) {
       return res.status(400).json({
         message: userFlexibleHours(user)
@@ -797,10 +812,9 @@ async function adminOverview(req, res) {
         const flexible = userFlexibleHours(person);
         const profileComplete = !isRemoteProfileIncomplete(person);
         const bounds = personDate ? remoteChallenges.shiftBounds(personDate, person) : null;
+        const liveShift = remoteChallenges.activeShiftDate(now, person, { includeLead: false });
         const inShift = Boolean(
-          bounds &&
-            now.getTime() >= bounds.start.getTime() &&
-            now.getTime() <= bounds.end.getTime()
+          liveShift && liveShift === personDate && remoteChallenges.isOnShift(now, person, liveShift)
         );
         const lastCheckedInAt = personLogs.reduce((best, log) => {
           const t = log.checked_in_at ? new Date(log.checked_in_at).getTime() : 0;
@@ -850,7 +864,12 @@ async function adminOverview(req, res) {
           can_toggle_attendance: employeeMatchesScope(person, editScope),
           can_delete: Boolean(isCeoRole(req.user?.role) || isManagerRole(req.user?.role)),
           can_delete_last: Boolean(
-            (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) && personLogs.length > 0
+            (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
+              (personLogs.length > 0 ||
+                slots.some(
+                  (slot) =>
+                    slot.checked_in_at || slot.state === 'verified' || slot.state === 'late'
+                ))
           ),
           shift_date: personDate,
           row_status: rowStatus,
@@ -988,15 +1007,15 @@ async function adminManualMark(req, res) {
       const [y, mo, d] = today.split('-').map(Number);
       return new Date(Date.UTC(y, mo - 1, d - 1)).toISOString().slice(0, 10);
     })();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay) || stampDay > today) {
-      return res.status(400).json({
-        message: isCeoRole(req.user?.role)
-          ? 'Manual attendance cannot be saved for a future date.'
-          : 'Manual attendance can only be saved for today or yesterday.',
-      });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay)) {
+      return res.status(400).json({ message: 'Manual attendance needs a valid date.' });
     }
-    if (!isCeoRole(req.user?.role) && stampDay < yesterday) {
-      return res.status(400).json({ message: 'Manual attendance can only be saved for today or yesterday.' });
+    if (!hasFullAttendanceDays(req.user?.role)) {
+      if (stampDay > today || stampDay < yesterday) {
+        return res.status(400).json({
+          message: 'Manual attendance can only be saved for today or yesterday.',
+        });
+      }
     }
 
     const target = await loadUser(targetId);
@@ -1008,7 +1027,7 @@ async function adminManualMark(req, res) {
     }
 
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
-    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+    if (!isCeoOrManagerRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({
         message: 'You can only mark attendance for employees in your assigned branch or team.',
       });
@@ -1128,12 +1147,12 @@ async function adminRequestCheckIn(req, res) {
     }
     if (await rejectIfUserAttendanceStopped(res, target)) return;
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
-    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+    if (!isCeoOrManagerRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
 
     const now = new Date();
-    const shiftDate = remoteChallenges.activeShiftDate(now, target);
+    const shiftDate = remoteChallenges.activeShiftDate(now, target, { includeLead: false });
     if (!shiftDate) {
       return res.status(400).json({
         message: 'This employee is not in their working hours right now.',
@@ -1217,7 +1236,7 @@ async function putUserAttendanceEnabled(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
 
-    if (!isCeoRole(req.user?.role)) {
+    if (!isCeoOrManagerRole(req.user?.role)) {
       const empType = normalizeEmploymentType(target.employment_type);
       let editScope;
       if (empType === 'remote') {
@@ -1412,7 +1431,7 @@ async function putUserFlexibleHours(req, res) {
       return res.status(400).json({ message: 'Flexible hours are only for remote employees.' });
     }
 
-    if (!isCeoRole(req.user?.role)) {
+    if (!isCeoOrManagerRole(req.user?.role)) {
       const editScope = await resolveAttendanceScope(req, 'attendance:edit');
       if (!employeeMatchesScope(target, editScope)) {
         return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
@@ -1469,7 +1488,7 @@ async function putUserWorkDays(req, res) {
       return res.status(400).json({ message: 'Work days are only for remote employees.' });
     }
 
-    if (!isCeoRole(req.user?.role)) {
+    if (!isCeoOrManagerRole(req.user?.role)) {
       const editScope = await resolveAttendanceScope(req, 'attendance:edit');
       if (!employeeMatchesScope(target, editScope)) {
         return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
@@ -1529,7 +1548,7 @@ async function adminSetHours(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
-    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+    if (!isCeoOrManagerRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
     await persistUserWorkHours(targetId, hours.start, hours.end);
@@ -1604,7 +1623,7 @@ async function adminUpdateCheckTime(req, res) {
       return res.status(400).json({ message: 'Check times are only for remote employees.' });
     }
     const editScope = await resolveAttendanceScope(req, 'attendance:edit');
-    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
+    if (!isCeoOrManagerRole(req.user?.role) && !employeeMatchesScope(target, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
 
@@ -1632,7 +1651,12 @@ async function adminUpdateCheckTime(req, res) {
     const todayKey = zonedParts().dateKey;
     const yesterdayKey = addDaysKey(todayKey, -1);
     const tomorrowKey = addDaysKey(todayKey, 1);
-    if (shiftDate !== yesterdayKey && shiftDate !== todayKey && shiftDate !== tomorrowKey) {
+    if (
+      !hasFullAttendanceDays(req.user?.role) &&
+      shiftDate !== yesterdayKey &&
+      shiftDate !== todayKey &&
+      shiftDate !== tomorrowKey
+    ) {
       return res.status(400).json({
         message: 'Check times can only be edited for yesterday, today, or tomorrow.',
       });
@@ -1712,12 +1736,15 @@ async function adminEmployeeDays(req, res) {
     const target = await loadUser(targetId);
     if (!target) return res.status(404).json({ message: 'Employee not found.' });
     const viewScope = await resolveAttendanceScope(req, 'attendance:view');
-    if (!isCeoRole(req.user?.role) && !employeeMatchesScope(target, viewScope)) {
+    if (!isCeoOrManagerRole(req.user?.role) && !employeeMatchesScope(target, viewScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance view scope.' });
     }
     const parts = zonedParts();
     const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
-    const history = await monthHistory(target, month);
+    const fullDays = hasFullAttendanceDays(req.user?.role);
+    const history = await monthHistory(target, month, new Date(), {
+      throughDate: fullDays ? null : undefined,
+    });
     const ceoView = isCeoRole(req.user?.role);
     const days = ceoView
       ? await attachDayFaceChecks(target.id, month, history.days || [])
@@ -1764,13 +1791,54 @@ async function getMyHistory(req, res) {
   }
 }
 
+async function remoteLogsForShiftDate(userId, dateKey) {
+  const { rows } = await pool.query(
+    `
+      SELECT l.id, l.hour_key, l.status, l.method, l.checked_in_at
+      FROM attendance_logs l
+      WHERE l.user_id = $1
+        AND (
+          l.hour_key LIKE $2
+          OR l.hour_key IN (
+            SELECT c.hour_key FROM attendance_challenges c
+            WHERE c.user_id = $1 AND c.shift_date = $3
+          )
+          OR l.id IN (
+            SELECT c.attendance_log_id FROM attendance_challenges c
+            WHERE c.user_id = $1
+              AND c.shift_date = $3
+              AND c.attendance_log_id IS NOT NULL
+          )
+        )
+      ORDER BY l.checked_in_at DESC NULLS LAST, l.id DESC
+    `,
+    [userId, `${dateKey}-%`, dateKey]
+  );
+  return rows;
+}
+
+async function reopenRemoteChallenges(userId, dateKey, hourKey = null) {
+  await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET status = 'pending',
+          attendance_log_id = NULL,
+          notified_at = NULL
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND ($3::text IS NULL OR hour_key = $3)
+    `,
+    [userId, dateKey, hourKey]
+  );
+}
+
 /**
  * DELETE /api/admin/attendance/:userId/days/:dateKey/last
- * CEO only — removes the most recent punch on that shift date and reopens that check.
+ * Removes the most recent punch on that shift date and reopens that check.
  */
 async function adminDeleteRemoteLast(req, res) {
   try {
-    if (!isCeoRole(req.user?.role) && !isManagerRole(req.user?.role)) {
+    if (!hasFullAttendanceDays(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();
@@ -1786,34 +1854,36 @@ async function adminDeleteRemoteLast(req, res) {
     const user = await loadUser(userId);
     if (!user) return res.status(404).json({ message: 'Employee not found.' });
 
-    const { rows: lastRows } = await pool.query(
-      `
-        SELECT id, hour_key, status, method, checked_in_at
-        FROM attendance_logs
-        WHERE user_id = $1
-          AND hour_key LIKE $2
-        ORDER BY checked_in_at DESC NULLS LAST, id DESC
-        LIMIT 1
-      `,
-      [userId, `${dateKey}-%`]
-    );
-    const last = lastRows[0];
+    const logs = await remoteLogsForShiftDate(userId, dateKey);
+    const last = logs[0];
     if (!last) {
+      const { rows: openable } = await pool.query(
+        `
+          SELECT hour_key
+          FROM attendance_challenges
+          WHERE user_id = $1
+            AND shift_date = $2
+            AND status IN ('verified', 'late', 'missed')
+          ORDER BY seq DESC
+          LIMIT 1
+        `,
+        [userId, dateKey]
+      );
+      if (openable[0]?.hour_key) {
+        await reopenRemoteChallenges(userId, dateKey, openable[0].hour_key);
+        await remoteChallenges.reopenCheckDuringShift(user, dateKey, openable[0].hour_key, new Date());
+        await refreshAttendanceDay(user, dateKey);
+        return res.json({
+          message: `Reopened the last check (${openable[0].hour_key}).`,
+          hour_key: openable[0].hour_key,
+        });
+      }
       return res.status(404).json({ message: 'No attendance punch found for that date.' });
     }
 
     await pool.query(`DELETE FROM attendance_logs WHERE id = $1`, [last.id]);
-    await pool.query(
-      `
-        UPDATE attendance_challenges
-        SET status = 'pending',
-            attendance_log_id = NULL,
-            notified_at = NULL
-        WHERE user_id = $1
-          AND hour_key = $2
-      `,
-      [userId, last.hour_key]
-    );
+    await reopenRemoteChallenges(userId, dateKey, last.hour_key);
+    await remoteChallenges.reopenCheckDuringShift(user, dateKey, last.hour_key, new Date());
     await pool.query(`UPDATE users SET remote_check_request_at = NULL WHERE id = $1`, [userId]);
     await refreshAttendanceDay(user, dateKey);
 
@@ -1845,11 +1915,11 @@ async function adminDeleteRemoteLast(req, res) {
 
 /**
  * DELETE /api/admin/attendance/:userId/days/:dateKey
- * CEO only — removes remote face/manual logs and the day rollup for that date.
+ * Removes remote face/manual logs for that shift date and reopens every check.
  */
 async function adminDeleteRemoteDay(req, res) {
   try {
-    if (!isCeoRole(req.user?.role) && !isManagerRole(req.user?.role)) {
+    if (!hasFullAttendanceDays(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();
@@ -1865,23 +1935,37 @@ async function adminDeleteRemoteDay(req, res) {
     const user = await loadUser(userId);
     if (!user) return res.status(404).json({ message: 'Employee not found.' });
 
-    const { rowCount: logCount } = await pool.query(
-      `DELETE FROM attendance_logs WHERE user_id = $1 AND hour_key LIKE $2`,
-      [userId, `${dateKey}-%`]
-    );
-    const { rowCount: challengeCount } = await pool.query(
-      `DELETE FROM attendance_challenges WHERE user_id = $1 AND shift_date = $2`,
+    const logs = await remoteLogsForShiftDate(userId, dateKey);
+    const logIds = logs.map((row) => row.id);
+    let logCount = 0;
+    if (logIds.length) {
+      const deleted = await pool.query(`DELETE FROM attendance_logs WHERE id = ANY($1::bigint[])`, [
+        logIds,
+      ]);
+      logCount = deleted.rowCount || 0;
+    }
+    const reset = await pool.query(
+      `
+        UPDATE attendance_challenges
+        SET status = 'pending',
+            attendance_log_id = NULL,
+            notified_at = NULL
+        WHERE user_id = $1
+          AND shift_date = $2
+      `,
       [userId, dateKey]
     );
     const { rowCount: dayCount } = await pool.query(
       `DELETE FROM attendance_days WHERE user_id = $1 AND date_key = $2`,
       [userId, dateKey]
     );
-    if (!logCount && !dayCount && !challengeCount) {
+    if (!logCount && !dayCount && !(reset.rowCount || 0)) {
       return res.status(404).json({ message: 'No attendance found for that date.' });
     }
 
     await pool.query(`UPDATE users SET remote_check_request_at = NULL WHERE id = $1`, [userId]);
+    await remoteChallenges.reopenCheckDuringShift(user, dateKey, null, new Date());
+    await refreshAttendanceDay(user, dateKey);
 
     await writeAuditLog({
       actorId: req.user.id,
@@ -1889,11 +1973,11 @@ async function adminDeleteRemoteDay(req, res) {
       action: 'attendance.delete_day',
       targetTable: 'attendance_logs',
       targetId: userId,
-      reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${challengeCount} check(s), ${dayCount} day row(s))`,
+      reason: `Deleted remote attendance for ${user.name || user.username} (${user.employee_id || user.id}) on ${dateKey} (${logCount} log(s), ${reset.rowCount || 0} check(s) reopened, ${dayCount} day row(s))`,
     });
 
     res.json({
-      message: `Deleted attendance for ${dateKey}.`,
+      message: `Deleted attendance for ${dateKey}. Checks are open again.`,
       logs_deleted: logCount,
       day_deleted: dayCount,
     });

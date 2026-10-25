@@ -14,6 +14,14 @@ function isCeoRole(role) {
   return normalizeRole(role) === 'ceo';
 }
 
+function isManagerRole(role) {
+  return normalizeRole(role) === 'manager';
+}
+
+function isCeoOrManagerRole(role) {
+  return isCeoRole(role) || isManagerRole(role);
+}
+
 function isTeamLeaderRole(role) {
   return normalizeRole(role) === 'team_leader';
 }
@@ -24,7 +32,7 @@ function designationLooksLikeTeamLeader(designation) {
 }
 
 function hasTeamLeaderDashboardAccess({ role, designation, assigned = false } = {}) {
-  if (isCeoRole(role)) return true;
+  if (isCeoOrManagerRole(role)) return true;
   if (isTeamLeaderRole(role)) return true;
   if (designationLooksLikeTeamLeader(designation)) return true;
   return Boolean(assigned);
@@ -33,7 +41,7 @@ function hasTeamLeaderDashboardAccess({ role, designation, assigned = false } = 
 /** Team Leaders see every category (copy-only); assignees only see assigned ones. */
 function canViewAllTlCategories({ role, designation } = {}) {
   return (
-    isCeoRole(role) ||
+    isCeoOrManagerRole(role) ||
     isTeamLeaderRole(role) ||
     designationLooksLikeTeamLeader(designation)
   );
@@ -42,6 +50,8 @@ function canViewAllTlCategories({ role, designation } = {}) {
 module.exports = {
   normalizeRole,
   isCeoRole,
+  isManagerRole,
+  isCeoOrManagerRole,
   isTeamLeaderRole,
   designationLooksLikeTeamLeader,
   hasTeamLeaderDashboardAccess,

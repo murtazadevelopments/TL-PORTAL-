@@ -36,7 +36,7 @@ export function isTeamLeader(role) {
   return normalizeRole(role) === 'team_leader';
 }
 
-/** Admin panel / admin nav — CEO always included. */
+/** Admin panel / admin nav — CEO and manager always included. */
 export function canAccessAdmin(role) {
   const r = normalizeRole(role);
   return r === 'ceo' || r === 'admin' || r === 'manager';
@@ -44,13 +44,15 @@ export function canAccessAdmin(role) {
 
 /**
  * Permission check for UI.
- * CEO always has full access (no catalog keys required).
+ * CEO and manager have full access except sales targets.
  * Admins use keys from /api/users/me.permissions ('*' = all).
  */
 export function hasPermission(permissions, key, role) {
-  if (isCeo(role)) return true;
+  if (isCeo(role) || isManager(role)) {
+    if (!key) return true;
+    return key !== 'sales:targets';
+  }
   if (!key) return false;
-  if (isManager(role) && key !== 'sales:targets') return true;
   if (!Array.isArray(permissions)) return false;
   if (permissions.includes('*') && key !== 'sales:targets') return true;
   if (key === 'sales:targets') return false;
@@ -89,7 +91,7 @@ export function canViewRemoteTeamAttendance(role, permissions) {
 
 /** Onsite team attendance: CEO, HR, assigned attendance, or employee directory access. */
 export function canViewOnsiteTeamAttendance(role, permissions) {
-  if (isCeo(role)) return true;
+  if (isCeoOrManager(role)) return true;
   if (hasPermission(permissions, 'hr:add_employee', role)) return true;
   if (hasCeoAssignedAttendance(permissions, role)) return true;
   return (

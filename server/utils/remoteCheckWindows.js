@@ -86,12 +86,11 @@ function flexibleDayBounds(shiftDate) {
 }
 
 function flexibleStartWindows(shiftDate, user) {
-  const day = flexibleDayBounds(shiftDate);
   const assigned = shiftBounds(shiftDate, user);
   return {
     scheduled_at: assigned.start,
-    late_at: new Date(day.end.getTime() - 60 * 1000),
-    absent_at: day.end,
+    late_at: new Date(Math.max(assigned.start.getTime() + 60 * 1000, assigned.end.getTime() - 60 * 1000)),
+    absent_at: assigned.end,
   };
 }
 
@@ -105,44 +104,71 @@ function flexibleDisplayScheduledAt(user, shiftDate, row) {
   return row.scheduled_at || null;
 }
 
-function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date()) {
-  const { end } = flexibleDayBounds(shiftDate);
-  const at = scheduledAt instanceof Date ? scheduledAt : new Date(scheduledAt);
-  return {
-    scheduled_at: at,
-    late_at: new Date(end.getTime() - 60 * 1000),
-    absent_at: end,
-  };
-}
-
 function skipOffWorkDay(user, dateKey) {
   return Boolean(dateKey) && isAttendanceHoliday(user, dateKey);
 }
 
-function activeShiftDate(now, user) {
+function isOnShift(now, user, shiftDate) {
+  if (!shiftDate) return false;
+  const { start, end } = shiftBounds(shiftDate, user);
+  const t = new Date(now).getTime();
+  return Number.isFinite(t) && t >= start.getTime() && t < end.getTime();
+}
+
+function flexibleCheckoutWindows(shiftDate, scheduledAt = new Date(), userOrHours = null) {
+  const { end } = userOrHours
+    ? shiftBounds(shiftDate, userOrHours)
+    : flexibleDayBounds(shiftDate);
+  const at = scheduledAt instanceof Date ? scheduledAt : new Date(scheduledAt);
+  const endMs = end.getTime();
+  const atMs = Number.isFinite(at.getTime()) ? at.getTime() : Date.now();
+  const lateMs = Math.min(atMs + LATE_AFTER_MINUTES * 60 * 1000, Math.max(endMs, atMs + 60 * 1000));
+  return {
+    scheduled_at: new Date(atMs),
+    late_at: new Date(lateMs),
+    absent_at: end,
+  };
+}
+
+function windowsForImmediateCheck(user, shiftDate, kind, now = new Date()) {
+  const { start, end } = shiftBounds(shiftDate, user);
+  const nowMs = new Date(now).getTime();
+  if (!Number.isFinite(nowMs) || nowMs >= end.getTime()) return null;
+  const openAt = new Date(Math.max(nowMs, start.getTime()));
+  if (kind === 'checkout') {
+    return flexibleCheckoutWindows(shiftDate, openAt, user);
+  }
+  const windows = windowsForScheduled(openAt);
+  const absentMs = Math.min(windows.absent_at.getTime(), end.getTime());
+  const lateMs = Math.min(windows.late_at.getTime(), absentMs);
+  return {
+    scheduled_at: openAt,
+    late_at: new Date(Math.max(lateMs, openAt.getTime() + 60 * 1000)),
+    absent_at: new Date(Math.max(absentMs, openAt.getTime() + 60 * 1000)),
+  };
+}
+
+function activeShiftDate(now, user, options = {}) {
   const today = zonedParts(now).dateKey;
   const hours = workHoursFromUser(user);
   const yesterday = addDaysKey(today, -1);
-  const lead = GENERATE_LEAD_MINUTES * 60 * 1000;
+  const includeLead = options.includeLead !== false;
+  const lead = includeLead ? GENERATE_LEAD_MINUTES * 60 * 1000 : 0;
   const ts = now.getTime();
   let shiftDate = null;
 
   if (hours.overnight) {
     const yBounds = shiftBounds(yesterday, user);
-    const yOpen = userFlexibleHours(user)
-      ? zonedInstant(yesterday, 0, 0).getTime()
-      : yBounds.start.getTime() - lead;
-    if (ts >= yOpen && ts <= yBounds.end.getTime()) shiftDate = yesterday;
+    const yOpen = yBounds.start.getTime() - lead;
+    if (ts >= yOpen && ts < yBounds.end.getTime()) shiftDate = yesterday;
     else {
       const tBounds = shiftBounds(today, user);
-      if (ts >= tBounds.start.getTime() - lead && ts <= tBounds.end.getTime()) shiftDate = today;
+      if (ts >= tBounds.start.getTime() - lead && ts < tBounds.end.getTime()) shiftDate = today;
     }
   } else {
     const tBounds = shiftBounds(today, user);
-    const openFrom = userFlexibleHours(user)
-      ? zonedInstant(today, 0, 0).getTime()
-      : tBounds.start.getTime() - lead;
-    if (ts >= openFrom && ts <= tBounds.end.getTime()) shiftDate = today;
+    const openFrom = tBounds.start.getTime() - lead;
+    if (ts >= openFrom && ts < tBounds.end.getTime()) shiftDate = today;
   }
 
   if (skipOffWorkDay(user, shiftDate)) return null;
@@ -408,6 +434,8 @@ module.exports = {
   flexibleDisplayScheduledAt,
   flexibleCheckoutWindows,
   currentShiftDateKey,
+  isOnShift,
+  windowsForImmediateCheck,
   activeShiftDate,
   windowsForScheduled,
   pickRandomInstants,

@@ -17,7 +17,7 @@ function isSalesRosterPerson(user) {
   const role = String(user?.role || '')
     .trim()
     .toLowerCase();
-  if (role === 'ceo') return false;
+  if (role === 'ceo' || role === 'manager') return false;
   if (role === 'team_leader') return true;
   const designation = normalizeDesignation(user?.designation);
   if (!designation) return false;
@@ -64,7 +64,7 @@ async function employeeHasSalesAgentDashboard(user) {
   const role = String(user?.role || '')
     .trim()
     .toLowerCase();
-  if (role === 'ceo') return false;
+  if (role === 'ceo' || role === 'manager') return false;
   if (!isSalesRosterPerson(user)) return false;
   const teams = await listSupervisedSalesTeams();
   return departmentIsSupervisedTeam(user?.department, teams);

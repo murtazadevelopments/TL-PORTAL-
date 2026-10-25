@@ -16,6 +16,10 @@ function isManagerRole(role) {
   return normalizeRole(role) === 'manager';
 }
 
+function isCeoOrManagerRole(role) {
+  return isCeoRole(role) || isManagerRole(role);
+}
+
 function isStaffAdminRole(role) {
   const r = normalizeRole(role);
   return r === 'admin' || r === 'manager';
@@ -81,8 +85,20 @@ function requireRole(...allowedRoles) {
         return next();
       }
 
+      // Manager matches CEO except CEO-only routes (face check, sales targets).
+      if (isManagerRole(role)) {
+        attachManagerAccess(req);
+        const ceoOnly = allowed.length === 1 && allowed[0] === 'ceo';
+        if (ceoOnly) {
+          return res.status(403).json({
+            error: 'Forbidden: insufficient permissions',
+            message: 'This action is available to the CEO only.',
+          });
+        }
+        return next();
+      }
+
       if (roleIsAllowed(role, allowed)) {
-        if (isManagerRole(role)) attachManagerAccess(req);
         return next();
       }
 
@@ -170,14 +186,6 @@ function requirePermission(...requiredKeys) {
             missing: [SALES_TARGETS_KEY],
           });
         }
-        const missing = needed.filter((key) => !req.user.permissions.includes(key));
-        if (missing.length > 0) {
-          return res.status(403).json({
-            error: 'Forbidden: insufficient permissions',
-            message: `Missing permission: ${missing.join(', ')}`,
-            missing,
-          });
-        }
         return next();
       }
 
@@ -246,14 +254,14 @@ function requireCeoOrAnyPermission(...keys) {
 
       if (isManagerRole(role)) {
         attachManagerAccess(req);
-        if (accepted.some((key) => key !== SALES_TARGETS_KEY && req.user.permissions.includes(key))) {
-          return next();
+        if (accepted.length > 0 && accepted.every((key) => key === SALES_TARGETS_KEY)) {
+          return res.status(403).json({
+            error: 'Forbidden: insufficient permissions',
+            message: 'Sales targets are available to the CEO only.',
+            missing: accepted,
+          });
         }
-        return res.status(403).json({
-          error: 'Forbidden: insufficient permissions',
-          message: `Missing permission: ${accepted.join(' or ')}`,
-          missing: accepted,
-        });
+        return next();
       }
 
       if (role !== 'admin') {
@@ -288,5 +296,6 @@ module.exports = {
   normalizeRole,
   isCeoRole,
   isManagerRole,
+  isCeoOrManagerRole,
   isStaffAdminRole,
 };

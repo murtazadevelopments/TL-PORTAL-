@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
-import { canAccessAdmin, hasPermission, isCeo } from '../../utils/permissions';
+import { canAccessAdmin, hasPermission, isCeoOrManager } from '../../utils/permissions';
 import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
@@ -36,7 +36,7 @@ export default function BranchesPage() {
   const [saving, setSaving] = useState(false);
 
   const canManage = hasPermission(permissions, 'branches:create', role);
-  const canEditIps = isCeo(role);
+  const canEditIps = isCeoOrManager(role);
 
   function canEditBranchIp() {
     return canEditIps;

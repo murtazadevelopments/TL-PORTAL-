@@ -20,6 +20,8 @@ const {
   flexibleStartWindows,
   flexibleDisplayScheduledAt,
   flexibleCheckoutWindows,
+  windowsForImmediateCheck,
+  isOnShift,
   zonedInstant,
   pickRandomInstants,
   seededRandom,
@@ -121,7 +123,7 @@ async function minuteTaken(userId, at) {
 }
 
 function windowsForPlanRow(user, shiftDate, kind, at) {
-  if (kind === 'checkout') return flexibleCheckoutWindows(shiftDate, at);
+  if (kind === 'checkout') return flexibleCheckoutWindows(shiftDate, at, user);
   if (kind === 'start' && userFlexibleHours(user)) return flexibleStartWindows(shiftDate, user);
   return windowsForScheduled(at);
 }
@@ -369,11 +371,23 @@ async function realignRandomSeqs() {
   return undefined;
 }
 
-async function reopenForImmediateCheck(challenge, now = new Date()) {
-  const windows =
-    challenge.kind === 'checkout'
-      ? flexibleCheckoutWindows(challenge.shift_date, now)
-      : windowsForScheduled(now);
+async function loadUserHours(userId) {
+  const { rows } = await pool.query(
+    `
+      SELECT id, work_start_hour, work_end_hour, flexible_hours, remote_check_count, work_days, six_day_week
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+async function reopenForImmediateCheck(challenge, now = new Date(), user = null) {
+  const person = user || (await loadUserHours(challenge.user_id));
+  const windows = windowsForImmediateCheck(person, challenge.shift_date, challenge.kind, now);
+  if (!windows) return null;
   const scheduledAt = windows.scheduled_at || now;
   await pool.query(
     `
@@ -382,7 +396,8 @@ async function reopenForImmediateCheck(challenge, now = new Date()) {
           late_at = $3,
           absent_at = $4,
           notified_at = NULL,
-          status = 'pending'
+          status = 'pending',
+          attendance_log_id = NULL
       WHERE id = $1
         AND status IN ('pending', 'notified')
     `,
@@ -390,6 +405,30 @@ async function reopenForImmediateCheck(challenge, now = new Date()) {
   );
   const rows = await loadChallenges(challenge.user_id, challenge.shift_date);
   return rows.find((row) => Number(row.id) === Number(challenge.id)) || null;
+}
+
+async function reopenCheckDuringShift(user, shiftDate, hourKey = null, now = new Date()) {
+  await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET status = 'pending',
+          attendance_log_id = NULL,
+          notified_at = NULL
+      WHERE user_id = $1
+        AND shift_date = $2
+        AND ($3::text IS NULL OR hour_key = $3)
+    `,
+    [user.id, shiftDate, hourKey]
+  );
+  const liveShift = activeShiftDate(now, user, { includeLead: false });
+  if (liveShift !== shiftDate) return null;
+  const rows = await loadChallenges(user.id, shiftDate);
+  const pending = rows.filter((row) => ['pending', 'notified'].includes(row.status));
+  const chosen = hourKey
+    ? pending.find((row) => row.hour_key === hourKey) || pending[0]
+    : pending.sort((a, b) => Number(a.seq) - Number(b.seq))[0];
+  if (!chosen) return null;
+  return reopenForImmediateCheck(chosen, now, user);
 }
 
 async function updateChallengeSchedule(userId, challengeId, scheduledAt) {
@@ -411,7 +450,7 @@ async function updateChallengeSchedule(userId, challengeId, scheduledAt) {
   ).rows[0];
   let windows = windowsForScheduled(at);
   if (current?.kind === 'checkout') {
-    windows = flexibleCheckoutWindows(current.shift_date, at);
+    windows = flexibleCheckoutWindows(current.shift_date, at, person);
   } else if (current?.kind === 'start' && userFlexibleHours(person)) {
     const day = flexibleDayBounds(current.shift_date);
     windows = {
@@ -455,25 +494,28 @@ function publicChallenge(row, { revealFuture = false, now = new Date(), user = n
   const displayAt = new Date(
     flexibleDisplayScheduledAt(user, row.shift_date, row) || row.scheduled_at
   );
+  const bounds = user && row.shift_date ? shiftBounds(row.shift_date, user) : null;
   const wideWindow =
     Number.isFinite(scheduled.getTime()) &&
     Number.isFinite(absentAt.getTime()) &&
     absentAt.getTime() - scheduled.getTime() > (ABSENT_AFTER_MINUTES + 20) * 60 * 1000;
   const dayOpen =
-    row.shift_date && (row.kind === 'start' || row.kind === 'checkout') && wideWindow
-      ? zonedInstant(row.shift_date, 0, 0)
+    bounds && (row.kind === 'start' || row.kind === 'checkout') && wideWindow
+      ? bounds.start
       : scheduled;
   const opened = now.getTime() >= dayOpen.getTime();
+  const withinHours = bounds ? isOnShift(now, user, row.shift_date) : true;
   const hidden = row.kind === 'random' && !row.notified_at && !opened && !revealFuture;
   let state = row.status;
   if (state === 'pending' || state === 'notified') {
     if (now.getTime() >= absentAt.getTime()) state = 'missed';
-    else if (opened) state = now.getTime() >= lateAt.getTime() ? 'late_window' : 'open';
+    else if (opened && withinHours) state = now.getTime() >= lateAt.getTime() ? 'late_window' : 'open';
     else state = hidden ? 'upcoming' : 'pending';
   }
   const canCheckIn =
     (row.status === 'pending' || row.status === 'notified') &&
     opened &&
+    withinHours &&
     now.getTime() < absentAt.getTime();
   return {
     id: row.id,
@@ -499,8 +541,8 @@ function publicChallenge(row, { revealFuture = false, now = new Date(), user = n
   };
 }
 
-function openChallenge(rows, now = new Date()) {
-  const pubs = rows.map((row) => ({ row, pub: publicChallenge(row, { now }) }));
+function openChallenge(rows, now = new Date(), user = null) {
+  const pubs = rows.map((row) => ({ row, pub: publicChallenge(row, { now, user }) }));
   const open = pubs.filter((item) => item.pub.can_check_in);
   return (
     open.find((item) => item.row.kind === 'random') ||
@@ -606,6 +648,7 @@ module.exports = {
   scheduleFlexibleFollowUps,
   updateChallengeSchedule,
   reopenForImmediateCheck,
+  reopenCheckDuringShift,
   realignRandomSeqs,
   publicChallenge,
   openChallenge,
@@ -616,6 +659,7 @@ module.exports = {
   expiredOpen,
   activeShiftDate,
   currentShiftDateKey,
+  isOnShift,
   shiftBounds,
   workHoursFromUser,
   formatClock,

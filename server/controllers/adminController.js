@@ -137,7 +137,7 @@ function isSalaryMissing(value) {
 
 function canManageLowerStaff(req) {
   const role = String(req.user?.role || '').toLowerCase();
-  if (role === 'ceo') return true;
+  if (role === 'ceo' || role === 'manager') return true;
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
   return perms.includes('hr:add_employee') || perms.includes('*');
 }
@@ -145,7 +145,7 @@ function canManageLowerStaff(req) {
 function directoryAccess(req) {
   const role = String(req.user?.role || '').toLowerCase();
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  const ceo = role === 'ceo' || perms.includes('*');
+  const ceo = role === 'ceo' || role === 'manager' || perms.includes('*');
   return {
     ceo,
     canOnsiteDirectory:
@@ -228,7 +228,7 @@ async function withListUrls(row) {
 
 async function resolvePermissionScopes(req) {
   const role = String(req.user?.role || '').toLowerCase();
-  if (role === 'ceo') return {};
+  if (role === 'ceo' || role === 'manager') return {};
   if (req.user?.permissionScopes && typeof req.user.permissionScopes === 'object') {
     return req.user.permissionScopes;
   }
@@ -1288,7 +1288,7 @@ async function restoreEmployee(req, res) {
 
 /**
  * DELETE /api/admin/employees/:id/purge
- * Hard-delete: permanent removal (CEO only). Body: { reason }
+ * Hard-delete: permanent removal (CEO or manager). Body: { reason }
  */
 async function purgeEmployee(req, res) {
   try {

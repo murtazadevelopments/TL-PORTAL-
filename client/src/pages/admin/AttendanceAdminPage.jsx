@@ -60,9 +60,11 @@ function attendanceDateWindow() {
   };
 }
 
-function canEditCheckTime(dateKey) {
-  const { yesterday, today, tomorrow } = attendanceDateWindow();
+function canEditCheckTime(dateKey, fullDays = false) {
   const key = String(dateKey || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+  if (fullDays) return true;
+  const { yesterday, today, tomorrow } = attendanceDateWindow();
   return key === yesterday || key === today || key === tomorrow;
 }
 
@@ -75,18 +77,18 @@ function clampAttendanceDate(value) {
   return key;
 }
 
-function dateForAdminFilter(value, ceo) {
-  if (ceo) {
+function dateForAdminFilter(value, fullDays) {
+  if (fullDays) {
     const today = karachiDateKey();
     const key = String(value || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return today;
-    return key > today ? today : key;
+    return key;
   }
   return clampAttendanceDate(value);
 }
 
-function datetimeLocalForDay(dateKey, source = new Date(), ceo = false) {
-  const day = dateForAdminFilter(dateKey, ceo);
+function datetimeLocalForDay(dateKey, source = new Date(), fullDays = false) {
+  const day = dateForAdminFilter(dateKey, fullDays);
   if (source instanceof Date && Number.isFinite(source.getTime())) {
     const existingDay = karachiDateKey(source);
     if (existingDay === day) return toDatetimeLocalValue(source);
@@ -389,7 +391,8 @@ function AttendancePhoto({ row, onOpen }) {
 export default function AttendanceAdminPage() {
   const { user, permissions, loading: authLoading } = useAuthUser();
   const ceo = isCeo(user?.role);
-  const canDeleteAttendance = isCeoOrManager(user?.role);
+  const fullDays = isCeoOrManager(user?.role);
+  const canDeleteAttendance = fullDays;
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const canAny = canViewTeamAttendance(user?.role, permissions);
@@ -431,7 +434,7 @@ export default function AttendanceAdminPage() {
   async function load(dateOverride) {
     setLoading(true);
     setError('');
-    const dateKey = dateForAdminFilter(dateOverride || date, ceo);
+    const dateKey = dateForAdminFilter(dateOverride || date, fullDays);
     try {
       const params = { date: dateKey, search, status };
       if (branch && branch !== 'all') params.branch = branch;
@@ -553,7 +556,7 @@ export default function AttendanceAdminPage() {
 
   function openTimeEdit(slot, dateKey) {
     if (!history?.employee?.id) return;
-    if (!canEditCheckTime(dateKey)) return;
+    if (!canEditCheckTime(dateKey, fullDays)) return;
     if (!slot?.id && !slot?.hour_key) return;
     const label =
       slot.seq === 1 || slot.kind === 'start' ? 'Start' : `Check ${slot.seq || slot.label}`;
@@ -621,11 +624,11 @@ export default function AttendanceAdminPage() {
       const { data: payload } = await api.post('/api/admin/onsite-attendance', {
         user_id: onsiteManual.user.id,
         checked_in_at: when.toISOString(),
-        work_date: dateForAdminFilter(String(onsiteManual.checked_in_at).slice(0, 10) || date, ceo),
+        work_date: dateForAdminFilter(String(onsiteManual.checked_in_at).slice(0, 10) || date, fullDays),
         note: onsiteManual.note,
       });
       setOnsiteManual(EMPTY_ONSITE_MANUAL);
-      const savedDate = dateForAdminFilter(payload?.record?.work_date || date, ceo);
+      const savedDate = dateForAdminFilter(payload?.record?.work_date || date, fullDays);
       setDate(savedDate);
       await load(savedDate);
     } catch (err) {
@@ -654,7 +657,7 @@ export default function AttendanceAdminPage() {
   }
 
   async function deleteOnsiteRecord(row) {
-    if (!ceo || !row?.record?.id) return;
+    if (!canDeleteAttendance || !row?.record?.id) return;
     const workDate = row.record.work_date || date;
     const ok = window.confirm(
       `Delete ${row.name}'s attendance for ${workDate}? They will be able to check in again for that date.`
@@ -677,7 +680,7 @@ export default function AttendanceAdminPage() {
   }
 
   async function deleteRemoteLast(row) {
-    if (!ceo || !row?.id) return;
+    if (!canDeleteAttendance || !row?.id) return;
     const shiftDate = remoteShiftDate(row);
     const ok = window.confirm(
       `Delete ${row.name}'s last attendance punch on ${shiftDate}? That check will open again.`
@@ -685,8 +688,12 @@ export default function AttendanceAdminPage() {
     if (!ok) return;
     setDeletingId(`remote-last-${row.id}`);
     setError('');
+    setNotice('');
     try {
-      await api.delete(`/api/admin/attendance/${row.id}/days/${shiftDate}/last`);
+      const { data: payload } = await api.delete(
+        `/api/admin/attendance/${row.id}/days/${shiftDate}/last`
+      );
+      setNotice(payload?.message || `Deleted last attendance for ${row.name}.`);
       await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete last attendance.');
@@ -696,7 +703,7 @@ export default function AttendanceAdminPage() {
   }
 
   async function deleteRemoteDay(row) {
-    if (!ceo || !row?.id) return;
+    if (!canDeleteAttendance || !row?.id) return;
     const shiftDate = remoteShiftDate(row);
     const ok = window.confirm(
       `Delete ${row.name}'s full-day attendance for ${shiftDate}? Face and manual marks for that date will be removed.`
@@ -704,8 +711,12 @@ export default function AttendanceAdminPage() {
     if (!ok) return;
     setDeletingId(`remote-day-${row.id}`);
     setError('');
+    setNotice('');
     try {
-      await api.delete(`/api/admin/attendance/${row.id}/days/${shiftDate}`);
+      const { data: payload } = await api.delete(
+        `/api/admin/attendance/${row.id}/days/${shiftDate}`
+      );
+      setNotice(payload?.message || `Deleted attendance for ${row.name} on ${shiftDate}.`);
       await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete attendance.');
@@ -1003,10 +1014,10 @@ export default function AttendanceAdminPage() {
           Date
           <input
             type="date"
-            min={ceo ? undefined : yesterdayKey}
-            max={todayKey}
+            min={fullDays ? undefined : yesterdayKey}
+            max={fullDays ? undefined : todayKey}
             value={date}
-            onChange={(e) => setDate(dateForAdminFilter(e.target.value, ceo))}
+            onChange={(e) => setDate(dateForAdminFilter(e.target.value, fullDays))}
           />
         </label>
         <label>
@@ -1127,12 +1138,12 @@ export default function AttendanceAdminPage() {
                             user: row,
                             checked_in_at: row.record?.checked_in_at
                               ? toDatetimeLocalValue(new Date(row.record.checked_in_at))
-                              : datetimeLocalForDay(date, undefined, ceo),
+                              : datetimeLocalForDay(date, undefined, fullDays),
                             note: row.record?.note || '',
                           })
                         }
                       >
-                        {row.record && ceo ? 'Update check-in' : 'Add check-in'}
+                        {row.record && fullDays ? 'Update check-in' : 'Add check-in'}
                       </button>
                     )}
                     {row.can_override && (
@@ -1610,7 +1621,7 @@ export default function AttendanceAdminPage() {
                             {slot.scheduled_at ? ` · ${formatKarachiTime(slot.scheduled_at)}` : ''}
                           </span>
                           {day.status !== 'holiday' &&
-                          canEditCheckTime(day.date) &&
+                          canEditCheckTime(day.date, fullDays) &&
                           (slot.hour_key || slot.scheduled_at) ? (
                             <button
                               type="button"
@@ -1758,8 +1769,8 @@ export default function AttendanceAdminPage() {
             <h2>Manual onsite check-in</h2>
             <p className="muted">
               {onsiteManual.user.name} —{' '}
-              {ceo
-                ? 'CEO can add or replace a check-in for any date up to today. Status follows their shift.'
+              {fullDays
+                ? 'Any previous or upcoming date. Status follows their shift.'
                 : 'only today or yesterday. Status follows their shift.'}
             </p>
             {error && <p className="error">{error}</p>}
@@ -1768,12 +1779,12 @@ export default function AttendanceAdminPage() {
               <input
                 type="datetime-local"
                 required
-                min={ceo ? undefined : `${yesterdayKey}T00:00`}
-                max={`${todayKey}T23:59`}
+                min={fullDays ? undefined : `${yesterdayKey}T00:00`}
+                max={fullDays ? undefined : `${todayKey}T23:59`}
                 value={onsiteManual.checked_in_at}
                 onChange={(e) => {
                   const raw = e.target.value;
-                  const day = dateForAdminFilter(raw.slice(0, 10), ceo);
+                  const day = dateForAdminFilter(raw.slice(0, 10), fullDays);
                   const time = raw.includes('T') ? raw.slice(raw.indexOf('T') + 1) : '09:00';
                   setOnsiteManual((m) => ({ ...m, checked_in_at: `${day}T${time}` }));
                 }}

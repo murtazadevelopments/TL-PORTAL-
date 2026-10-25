@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const { BRANCH_OPTIONS } = require('../constants/branches');
 const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchema');
-const { isCeoRole } = require('../middleware/permissions');
+const { isCeoRole, isManagerRole } = require('../middleware/permissions');
 const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
 const { parseCoordinate } = require('../utils/geo');
 
@@ -122,7 +122,7 @@ function normalizeOfficeIpsOrError(raw) {
 }
 
 function canEditBranchIp(req) {
-  return isCeoRole(req.user?.role);
+  return isCeoRole(req.user?.role) || isManagerRole(req.user?.role);
 }
 
 /**
@@ -212,7 +212,7 @@ async function updateBranch(req, res) {
 
     if (!canEditBranchIp(req)) {
       return res.status(403).json({
-        message: 'Only the CEO can view or update office IPs.',
+        message: 'Only the CEO or a manager can view or update office IPs.',
       });
     }
 

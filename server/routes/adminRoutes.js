@@ -351,7 +351,7 @@ router.post(
   sendPhotoAlert
 );
 
-router.delete('/employees/:id/purge', requireRole('ceo'), purgeEmployee);
+router.delete('/employees/:id/purge', requireRole('ceo', 'manager'), purgeEmployee);
 
 router.get(
   '/zkteco-attendance',

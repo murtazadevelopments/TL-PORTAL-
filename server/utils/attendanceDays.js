@@ -335,9 +335,10 @@ function tallyDays(days) {
   return totals;
 }
 
-async function monthHistory(user, monthKey, now = new Date()) {
+async function monthHistory(user, monthKey, now = new Date(), options = {}) {
   const today = zonedParts(now).dateKey;
-  const pastOrToday = monthDateKeys(monthKey, today);
+  const throughDate = options.throughDate === undefined ? today : options.throughDate;
+  const pastOrToday = monthDateKeys(monthKey, throughDate);
   if (!/^\d{4}-\d{2}$/.test(String(monthKey || ''))) {
     return { month: monthKey, days: [], totals: tallyDays([]) };
   }

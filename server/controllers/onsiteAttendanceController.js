@@ -9,7 +9,12 @@ const {
   employeeMatchesScope,
   scopeWhereClause,
 } = require('../utils/employeeScope');
-const { loadAdminPermissionAccess, isCeoRole, isManagerRole } = require('../middleware/permissions');
+const {
+  loadAdminPermissionAccess,
+  isCeoRole,
+  isManagerRole,
+  isCeoOrManagerRole,
+} = require('../middleware/permissions');
 const { getShiftByName, loadShiftCatalog } = require('./shiftsController');
 const { withProfileApiUrl } = require('../utils/storageUrls');
 const { queueCeoBranchManagerNotice } = require('../services/notifications');
@@ -49,11 +54,16 @@ function withSundayHolidays(days, month, untilDateKey) {
   return [...byKey.values()].sort((a, b) => String(b.work_date).localeCompare(String(a.work_date)));
 }
 
-function assertManualWorkDate(dateKey, { allowPast = false } = {}) {
+function assertManualWorkDate(dateKey, { allowPast = false, allowFuture = false } = {}) {
   const today = zonedParts().dateKey;
   const yesterday = addDaysToDateKey(today, -1);
   const key = String(dateKey || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key > today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+    const err = new Error('Manual attendance needs a valid date.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!allowFuture && key > today) {
     const err = new Error(
       allowPast
         ? 'Manual attendance cannot be saved for a future date.'
@@ -197,6 +207,7 @@ async function insertOnsiteRecord({
   upsert = false,
   workDateOverride = null,
   allowAnyPastDate = false,
+  allowAnyDate = false,
 }) {
   const shift = await getShiftByName(user.shift);
   if (!shift) {
@@ -219,7 +230,13 @@ async function insertOnsiteRecord({
   const calc = statusForCheckIn(checkedInAt, shift);
   const override = String(workDateOverride || '').slice(0, 10);
   let workDate = /^\d{4}-\d{2}-\d{2}$/.test(override) ? override : calc.workDate;
-  if (method === 'manual') workDate = assertManualWorkDate(workDate, { allowPast: allowAnyPastDate });
+  if (method === 'manual') {
+    const openCalendar = allowAnyDate || allowAnyPastDate;
+    workDate = assertManualWorkDate(workDate, {
+      allowPast: openCalendar,
+      allowFuture: allowAnyDate,
+    });
+  }
   calc.workDate = workDate;
   const params = [
     user.id,
@@ -586,7 +603,7 @@ async function adminListOnsite(req, res) {
         shift: person.shift,
         profile_picture_url: withProfileApiUrl(person).profile_picture_url,
         row_status: rowStatus,
-        can_manual: Boolean(canEdit && (!rec || isCeoRole(req.user?.role))),
+        can_manual: Boolean(canEdit && (!rec || isCeoOrManagerRole(req.user?.role))),
         can_override: Boolean(canEdit && rec),
         can_delete: Boolean(isCeoRole(req.user?.role) || isManagerRole(req.user?.role)),
         can_toggle_attendance: Boolean(canEdit),
@@ -653,7 +670,11 @@ async function adminGetOnsiteMonth(req, res) {
       const pub = publicRow(row);
       if (pub) days.push(pub);
     }
-    const mergedDays = withSundayHolidays(days, month, parts.dateKey);
+    const mergedDays = withSundayHolidays(
+      days,
+      month,
+      isCeoOrManagerRole(req.user?.role) ? null : parts.dateKey
+    );
     for (const day of mergedDays) {
       if (totals[day.status] != null) totals[day.status] += 1;
     }
@@ -692,7 +713,9 @@ async function adminManualOnsite(req, res) {
       return res.status(400).json({ message: 'Enter a valid check-in time.' });
     }
     const workDateOverride = String(req.body?.work_date || req.body?.workDate || '').slice(0, 10);
-    if (workDateOverride && !isCeoRole(req.user?.role)) assertManualWorkDate(workDateOverride);
+    if (workDateOverride && !isCeoOrManagerRole(req.user?.role)) {
+      assertManualWorkDate(workDateOverride);
+    }
 
     const user = await loadOnsiteEmployee(userId);
     if (!user || user.is_active === false) {
@@ -707,7 +730,7 @@ async function adminManualOnsite(req, res) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
 
-    const ceo = isCeoRole(req.user?.role);
+    const fullDays = isCeoOrManagerRole(req.user?.role);
     try {
       const { row, calc } = await insertOnsiteRecord({
         user,
@@ -715,9 +738,10 @@ async function adminManualOnsite(req, res) {
         method: 'manual',
         markedBy: req.user.id,
         note: String(req.body?.note || '').trim() || null,
-        upsert: ceo,
+        upsert: fullDays,
         workDateOverride,
-        allowAnyPastDate: ceo,
+        allowAnyPastDate: fullDays,
+        allowAnyDate: fullDays,
       });
 
       await writeAuditLog({
