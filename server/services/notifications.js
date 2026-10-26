@@ -619,6 +619,87 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
   return result;
 }
 
+function remoteFaceEvent(challenge = {}) {
+  const kind = String(challenge.kind || '').toLowerCase();
+  const seq = Number(challenge.seq) || 0;
+  if (kind === 'checkout') {
+    return {
+      key: 'sign_out',
+      title: 'Signed out',
+      subjectVerb: 'signed out',
+    };
+  }
+  if (kind === 'start' || seq === 1) {
+    return {
+      key: 'sign_in',
+      title: 'Signed in',
+      subjectVerb: 'signed in',
+    };
+  }
+  return {
+    key: 'random',
+    title: seq ? `Random face check ${seq}` : 'Random face check',
+    subjectVerb: 'completed a random face check',
+  };
+}
+
+async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
+  const employment = String(user?.employment_type || '').trim().toLowerCase();
+  if (employment && employment !== 'remote') return { sent: false, reason: 'not-remote' };
+
+  const to = await getCeoEmails();
+  if (!to.length) {
+    console.warn('[ceo-remote-face] SKIP — no CEO email on file');
+    return { sent: false, reason: 'no-ceo-email' };
+  }
+
+  const who = user?.name || user?.username || `User ${user?.id}`;
+  const event = remoteFaceEvent(challenge);
+  const status = String(challenge.status || 'verified').toLowerCase();
+  const statusLabel = status === 'late' ? 'Late' : status === 'verified' ? 'On time' : status;
+  const when = formatTimestamp(challenge.checkedInAt || new Date());
+  const extra =
+    event.key === 'sign_out' && challenge.durationLabel
+      ? `<li><strong>Today’s duration:</strong> ${escapeHtml(challenge.durationLabel)}</li>`
+      : '';
+
+  const result = await sendEmailSafe({
+    emailType: 'ceo_remote_face_attendance',
+    to,
+    subject: `Remote attendance: ${who} ${event.subjectVerb}`,
+    html: `
+      <p>A remote employee completed face attendance.</p>
+      <ul>
+        <li><strong>Event:</strong> ${escapeHtml(event.title)}</li>
+        <li><strong>Name:</strong> ${escapeHtml(who)}</li>
+        <li><strong>Username:</strong> ${escapeHtml(user?.username || '—')}</li>
+        <li><strong>Employee ID:</strong> ${escapeHtml(user?.employee_id || '—')}</li>
+        <li><strong>Designation:</strong> ${escapeHtml(user?.designation || '—')}</li>
+        <li><strong>Status:</strong> ${escapeHtml(statusLabel)}</li>
+        <li><strong>Time:</strong> ${escapeHtml(when)}</li>
+        ${extra}
+      </ul>
+      <p>Sent to CEO only. This is a face attendance punch, not a portal login.</p>
+    `,
+  });
+
+  await logEmail({
+    emailType: 'ceo_remote_face_attendance',
+    recipient: to.join(','),
+    meta: {
+      userId: user?.id,
+      event: event.key,
+      kind: challenge.kind || null,
+      seq: challenge.seq || null,
+      status,
+      hourKey: challenge.hourKey || null,
+      ok: Boolean(result),
+    },
+  });
+
+  return result;
+}
+
 async function notifyAttendanceFailed(user, hourKey) {
   const emails = await getAdminEmails();
   if (!emails.length) return null;
@@ -730,6 +811,7 @@ module.exports = {
   notifyUserLogin,
   notifyBirthday,
   notifyCeoBirthdayTomorrow,
+  notifyCeoRemoteFaceAttendance,
   notifyAttendanceFailed,
   notifyRemoteAttendanceCheck,
   notifyApp,

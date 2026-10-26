@@ -59,6 +59,8 @@
 html {
   overflow-x: hidden;
   max-width: 100%;
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
 }
 
 body {
@@ -67,6 +69,8 @@ body {
   max-width: 100%;
   overflow-x: hidden;
   min-height: 100vh;
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
   background:
     radial-gradient(ellipse 70% 45% at 10% -5%, var(--glow-purple), transparent 55%),
     radial-gradient(ellipse 60% 40% at 95% 5%, var(--glow-cyan), transparent 50%),

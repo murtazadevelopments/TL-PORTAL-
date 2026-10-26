@@ -68,6 +68,10 @@
   align-items: stretch;
   padding: 1.1rem;
   border-radius: 22px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  touch-action: pan-y;
   background:
     radial-gradient(1200px 420px at 10% -10%, rgba(34, 211, 238, 0.16), transparent 55%),
     radial-gradient(900px 380px at 110% 110%, rgba(59, 130, 246, 0.18), transparent 50%),
@@ -129,10 +133,14 @@
 .faceid-phone {
   display: flex;
   justify-content: center;
+  min-width: 0;
+  width: 100%;
 }
 
 .faceid-phone-screen {
   width: min(360px, 100%);
+  max-width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -199,6 +207,7 @@
   object-fit: cover;
   object-position: center 28%;
   border-radius: 50% / 46%;
+  touch-action: none;
 }
 
 .faceid-idle-art {
@@ -432,6 +441,9 @@
   gap: 0.7rem;
   padding: 1.15rem 1.05rem 1.05rem;
   border-radius: 22px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   background: linear-gradient(180deg, rgba(17, 36, 72, 0.96), rgba(9, 18, 40, 0.96));
   border: 1px solid rgba(125, 211, 252, 0.28);
   color: #e0f2fe;
@@ -733,11 +745,158 @@
 @media (max-width: 900px) {
   .faceid-kiosk {
     grid-template-columns: 1fr;
+    gap: 0.85rem;
+    padding: 0.85rem 0.7rem 1rem;
+    border-radius: 18px;
+  }
+
+  .faceid-phone-screen {
+    width: 100%;
+    padding: 0.9rem 0.75rem 1rem;
+    border-radius: 22px;
+    gap: 0.7rem;
+  }
+
+  .faceid-oval-wrap {
+    width: min(230px, 72vw);
+  }
+
+  .faceid-oval {
+    width: min(210px, 68vw);
+  }
+
+  .faceid-orbit {
+    inset: -8px;
+  }
+
+  .faceid-orbit-2 {
+    inset: -14px;
+  }
+
+  .faceid-copy {
+    max-width: 100%;
+    padding-inline: 0.25rem;
+  }
+
+  .faceid-copy h2 {
+    font-size: 1.15rem;
+  }
+
+  .faceid-copy p {
+    font-size: 0.78rem;
+  }
+
+  .faceid-cta {
+    min-height: 44px;
+    font-size: 0.95rem;
+  }
+
+  .faceid-id-card {
+    padding: 0.95rem 0.8rem 0.9rem;
+    border-radius: 18px;
+    gap: 0.55rem;
+  }
+
+  .faceid-avatar {
+    width: 72px;
+    height: 72px;
+  }
+
+  .faceid-meta {
+    gap: 0.5rem 0.65rem;
+  }
+
+  .faceid-meta dd {
+    font-size: 0.84rem;
+    word-break: break-word;
   }
 
   @keyframes faceid-card-in {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: none; }
+  }
+}
+
+@media (max-width: 640px) {
+  .attendance-page {
+    gap: 0.9rem;
+  }
+
+  .attendance-hero {
+    gap: 0.65rem;
+  }
+
+  .attendance-hero-actions {
+    width: 100%;
+  }
+
+  .attendance-hero-actions .btn {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+
+  .faceid-kiosk {
+    padding: 0.7rem 0.55rem 0.85rem;
+    gap: 0.7rem;
+    border-radius: 16px;
+  }
+
+  .faceid-orb {
+    width: 140px;
+    height: 140px;
+  }
+
+  .faceid-phone-screen {
+    padding: 0.75rem 0.6rem 0.85rem;
+    gap: 0.55rem;
+  }
+
+  .faceid-oval-wrap {
+    width: min(196px, 78vw);
+  }
+
+  .faceid-oval {
+    width: min(178px, 72vw);
+  }
+
+  .faceid-copy h2 {
+    font-size: 1.05rem;
+  }
+
+  .faceid-meter span,
+  .faceid-meter strong {
+    font-size: 0.75rem;
+  }
+
+  .faceid-id-result h3 {
+    font-size: 1rem;
+  }
+
+  .faceid-name {
+    font-size: 0.95rem;
+  }
+
+  .faceid-result-row {
+    padding: 0.5rem 0.6rem;
+  }
+
+  .faceid-bars {
+    height: 28px;
+  }
+}
+
+@media (max-width: 400px) {
+  .faceid-oval-wrap {
+    width: min(168px, 82vw);
+  }
+
+  .faceid-oval {
+    width: min(154px, 76vw);
+  }
+
+  .faceid-hud {
+    width: 14px;
+    height: 14px;
   }
 }
 
@@ -1022,5 +1181,13 @@
 @media (max-width: 640px) {
   .attendance-summary {
     grid-template-columns: 1fr;
+  }
+
+  .attendance-stat {
+    padding: 0.7rem 0.8rem;
+  }
+
+  .attendance-stat strong {
+    font-size: 1.25rem;
   }
 }

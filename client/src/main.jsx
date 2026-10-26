@@ -5,8 +5,10 @@ import App from './App.jsx'
 import { startPwaUpdateWatcher } from './pwaUpdate.js'
 import { startPwaInstallCapture } from './pwaInstall.js'
 import { installInputGuards } from './utils/inputGuards.js'
+import { installMobileViewportLock } from './utils/mobileViewportLock.js'
 
 installInputGuards()
+installMobileViewportLock()
 startPwaInstallCapture()
 startPwaUpdateWatcher()
 

@@ -74,6 +74,8 @@ const TIMEZONE = pick(windows, 'timezone');
 const GRACE_MINUTES = pick(windows, 'graceminutes');
 const notifyAttendanceFailed = pick(notifications, 'notifyattendancefailed');
 const notifyRemoteAttendanceCheck = pick(notifications, 'notifyremoteattendancecheck');
+const notifyCeoRemoteFaceAttendance =
+  pick(notifications, 'notifyceoremotefaceattendance') || notifications.notifyCeoRemoteFaceAttendance;
 const queueCeoBranchManagerNotice = pick(notifications, 'queueceobranchmanagernotice');
 const normalizeWorkHours = pick(workHours, 'normalizeworkhours');
 const hoursBetween = pick(workHours, 'hoursbetween');
@@ -571,6 +573,16 @@ async function checkIn(req, res) {
       ).rows[0];
       durationMinutes = first?.duration_minutes ?? null;
     }
+    void notifyAfterResponse('ceo-remote-face', user.id, () =>
+      notifyCeoRemoteFaceAttendance(user, {
+        kind: challenge.kind,
+        seq: challenge.seq,
+        status,
+        hourKey,
+        checkedInAt: rows[0].checked_in_at,
+        durationLabel: formatDurationMinutes ? formatDurationMinutes(durationMinutes) : '',
+      })
+    );
     return res.status(201).json({
       matched,
       status,
