@@ -393,7 +393,7 @@ export default function AttendancePage() {
   async function grabDescriptor() {
     for (let i = 0; i < 10; i += 1) {
       const shot = await captureFace(videoRef.current);
-      if (shot?.descriptor && shot.descriptor.length >= 64) return shot;
+      if (shot?.descriptor && shot.descriptor.length >= 128) return shot;
       await sleep(70);
     }
     throw new Error('Hold still for a moment so we can capture your face.');

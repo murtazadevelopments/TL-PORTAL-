@@ -64,7 +64,8 @@ const ensureAttendanceTables = pick(attendanceSchema, 'ensureattendancetables');
 const persistUserWorkHours = pick(attendanceSchema, 'persistuserworkhours');
 const persistRemoteCheckCount = pick(attendanceSchema, 'persistremotecheckcount');
 const parseEmbedding = pick(faceMath, 'parseembedding');
-const euclideanDistance = pick(faceMath, 'euclideandistance');
+const embeddingDistance =
+  pick(faceMath, 'embeddingdistance') || faceMath.embeddingDistance || faceMath.euclideanDistance;
 const isFaceMatch = pick(faceMath, 'isfacematch');
 const MATCH_THRESHOLD = pick(faceMath, 'matchthreshold');
 const zonedParts = pick(windows, 'zonedparts');
@@ -469,8 +470,15 @@ async function checkIn(req, res) {
       });
     }
 
-    const distance = euclideanDistance(stored, probe);
+    const distance = embeddingDistance(stored, probe);
     const matched = isFaceMatch(distance);
+    console.log('[face-match]', {
+      userId: req.user.id,
+      distance: Number.isFinite(distance) ? Number(distance.toFixed(4)) : null,
+      threshold: MATCH_THRESHOLD,
+      matched,
+      hourKey,
+    });
     const suspicious = rememberScore(req.user.id, distance);
     const flexible = userFlexibleHours(user);
     const skipLate =

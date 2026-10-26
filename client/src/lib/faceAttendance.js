@@ -5,8 +5,11 @@ const SAMPLE_COUNT = 3;
 const ALIGN_MS = 80;
 const SAMPLE_GAP_MS = 160;
 const LIVENESS_MS = 2800;
-const TRACK_SIZE = 160;
-const CAPTURE_SIZE = 224;
+const TRACK_SIZE = 224;
+const CAPTURE_SIZE = 320;
+const DETECT_SCORE = 0.4;
+const MIN_FACE_RATIO = 0.16;
+const MAX_FACE_RATIO = 0.88;
 
 let modelsReady = false;
 let modelsLoading = null;
@@ -43,7 +46,7 @@ export async function loadFaceModels() {
 }
 
 function detectorOptions(inputSize) {
-  return new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold: 0.12 });
+  return new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold: DETECT_SCORE });
 }
 
 function getScratchCanvas() {
@@ -114,12 +117,18 @@ export async function captureFace(input) {
   if (!modelsReady || !videoReady(input)) return null;
   const frame = drawVideoFrame(input, CAPTURE_SIZE);
   if (!frame) return null;
-  return withTfScope(() =>
+  const shot = await withTfScope(() =>
     faceapi
       .detectSingleFace(frame, detectorOptions(CAPTURE_SIZE))
       .withFaceLandmarks(true)
       .withFaceDescriptor()
   );
+  const score = Number(shot?.detection?.score);
+  if (!shot?.descriptor || shot.descriptor.length < 128) return null;
+  if (!Number.isFinite(score) || score < DETECT_SCORE) return null;
+  const advice = faceHint(shot);
+  if (!advice.ok) return null;
+  return shot;
 }
 
 export async function waitForVideo(video, timeoutMs = 8000) {
@@ -159,18 +168,22 @@ export function faceHint(detection) {
   const box = det.box;
   const w = Number(det.imageWidth) || Number(det._imageDims?.width) || 0;
   const h = Number(det.imageHeight) || Number(det._imageDims?.height) || 0;
+  const score = Number(det.score);
   if (w < 8 || h < 8 || !box) {
-    return { ok: true, hint: 'Perfect', detail: 'Hold still' };
+    return { ok: false, hint: 'Look at the camera', detail: 'We need a clear view of your face' };
+  }
+  if (Number.isFinite(score) && score < DETECT_SCORE) {
+    return { ok: false, hint: 'Hold still', detail: 'Keep your face in the light' };
   }
   const ratio = Math.max(box.width / w, box.height / h);
   const cx = (box.x + box.width / 2) / w;
   const cy = (box.y + box.height / 2) / h;
-  if (ratio < 0.08) return { ok: false, hint: 'Move closer', detail: 'Bring your face into the circle' };
-  if (ratio > 0.92) return { ok: false, hint: 'Move back a little', detail: 'Keep your whole face in view' };
-  if (cx < 0.12) return { ok: false, hint: 'Move left', detail: 'Center yourself in the circle' };
-  if (cx > 0.88) return { ok: false, hint: 'Move right', detail: 'Center yourself in the circle' };
-  if (cy < 0.1) return { ok: false, hint: 'Move down', detail: 'Keep your face in the circle' };
-  if (cy > 0.9) return { ok: false, hint: 'Move up', detail: 'Keep your face in the circle' };
+  if (ratio < MIN_FACE_RATIO) return { ok: false, hint: 'Move closer', detail: 'Bring your face into the circle' };
+  if (ratio > MAX_FACE_RATIO) return { ok: false, hint: 'Move back a little', detail: 'Keep your whole face in view' };
+  if (cx < 0.18) return { ok: false, hint: 'Move left', detail: 'Center yourself in the circle' };
+  if (cx > 0.82) return { ok: false, hint: 'Move right', detail: 'Center yourself in the circle' };
+  if (cy < 0.16) return { ok: false, hint: 'Move down', detail: 'Keep your face in the circle' };
+  if (cy > 0.86) return { ok: false, hint: 'Move up', detail: 'Keep your face in the circle' };
   return { ok: true, hint: 'Perfect', detail: 'Hold still' };
 }
 
@@ -188,11 +201,18 @@ export function livenessPassed(action, current, baseline) {
 export function averageDescriptors(list) {
   if (!list.length) return null;
   const len = list[0].length;
+  if (len < 128) return null;
   const out = new Array(len).fill(0);
   for (const d of list) {
+    if (!d || d.length !== len) return null;
     for (let i = 0; i < len; i += 1) out[i] += Number(d[i]);
   }
-  return out.map((n) => n / list.length);
+  for (let i = 0; i < len; i += 1) out[i] /= list.length;
+  let mag = 0;
+  for (let i = 0; i < len; i += 1) mag += out[i] * out[i];
+  mag = Math.sqrt(mag);
+  if (!Number.isFinite(mag) || mag < 0.2) return null;
+  return out.map((n) => n / mag);
 }
 
 export function pickLivenessAction() {
