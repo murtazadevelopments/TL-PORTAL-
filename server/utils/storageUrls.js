@@ -3,6 +3,8 @@
  * the browser can load with ?token= from the client.
  */
 
+const { resolveDocumentFile } = require('../services/localStorage');
+
 const DOC_FIELD_MAP = [
   ['profile_picture_url', 'profile'],
   ['cnic_front_url', 'cnic_front'],
@@ -18,9 +20,29 @@ function documentApiPath(userId, docType) {
   return `/api/documents/${userId}/${docType}`;
 }
 
+function onFileKey(field) {
+  return String(field || '').replace(/_url$/, '_on_file');
+}
+
+function localFileExists(user, docType, storedPath) {
+  try {
+    return Boolean(
+      resolveDocumentFile({
+        userId: user?.id,
+        docType,
+        storedPath,
+        user,
+      })
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Attach browser-readable document URLs for a user row.
  * Leaves nulls as null. Legacy https URLs are left intact until migration.
+ * Missing on-disk files are not turned into /api/documents URLs (avoids img 404s).
  */
 async function attachReadableUrls(user) {
   if (!user) return null;
@@ -29,16 +51,19 @@ async function attachReadableUrls(user) {
 
   for (const [field, docType] of DOC_FIELD_MAP) {
     const value = result[field];
+    const presence = onFileKey(field);
     if (!value) {
       result[field] = null;
+      result[presence] = false;
       continue;
     }
     if (/^https?:\/\//i.test(String(value))) {
-      // Still a remote signed/public URL (pre-migration) — keep as-is
+      result[presence] = true;
       continue;
     }
-    // Local relative path → authenticated API route
-    result[field] = documentApiPath(id, docType);
+    const exists = localFileExists(result, docType, value);
+    result[presence] = exists;
+    result[field] = exists ? documentApiPath(id, docType) : null;
   }
 
   return result;
@@ -55,9 +80,18 @@ async function resolveStorageUrl(value, _bucket) {
 function withProfileApiUrl(row) {
   if (!row) return null;
   const next = { ...row };
-  if (next.profile_picture_url && !/^https?:\/\//i.test(String(next.profile_picture_url))) {
-    next.profile_picture_url = documentApiPath(next.id, 'profile');
+  const stored = next.profile_picture_url;
+  if (!stored) {
+    next.profile_picture_on_file = false;
+    return next;
   }
+  if (/^https?:\/\//i.test(String(stored))) {
+    next.profile_picture_on_file = true;
+    return next;
+  }
+  const exists = localFileExists(next, 'profile', stored);
+  next.profile_picture_on_file = exists;
+  next.profile_picture_url = exists ? documentApiPath(next.id, 'profile') : null;
   return next;
 }
 

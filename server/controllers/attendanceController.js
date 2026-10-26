@@ -576,6 +576,7 @@ async function checkIn(req, res) {
       status,
       hour_key: hourKey,
       kind: challenge.kind,
+      match_score: rows[0].match_score == null ? null : Number(rows[0].match_score),
       duration_minutes: durationMinutes,
       duration_label: formatDurationMinutes ? formatDurationMinutes(durationMinutes) : '',
       log: {
@@ -583,6 +584,7 @@ async function checkIn(req, res) {
         status: rows[0].status,
         method: rows[0].method,
         checked_in_at: rows[0].checked_in_at,
+        match_score: rows[0].match_score == null ? null : Number(rows[0].match_score),
       },
     });
   } catch (err) {

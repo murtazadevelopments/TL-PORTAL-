@@ -31,7 +31,7 @@ async function requireTPin(req, res, next) {
 
     const ok = await bcrypt.compare(pin, hash);
     if (!ok) {
-      return res.status(401).json({
+      return res.status(403).json({
         message: 'Invalid T-Pin.',
         code: 'TPIN_INVALID',
       });

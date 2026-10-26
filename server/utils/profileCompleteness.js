@@ -41,10 +41,15 @@ function withDocumentPresence(row) {
   if (!row) return row;
   return {
     ...row,
-    profile_picture_on_file: Boolean(row.profile_picture_url),
-    cnic_front_on_file: Boolean(row.cnic_front_url),
-    cnic_back_on_file: Boolean(row.cnic_back_url),
-    cv_on_file: Boolean(row.cv_url),
+    profile_picture_on_file:
+      typeof row.profile_picture_on_file === 'boolean'
+        ? row.profile_picture_on_file
+        : Boolean(row.profile_picture_url),
+    cnic_front_on_file:
+      typeof row.cnic_front_on_file === 'boolean' ? row.cnic_front_on_file : Boolean(row.cnic_front_url),
+    cnic_back_on_file:
+      typeof row.cnic_back_on_file === 'boolean' ? row.cnic_back_on_file : Boolean(row.cnic_back_url),
+    cv_on_file: typeof row.cv_on_file === 'boolean' ? row.cv_on_file : Boolean(row.cv_url),
   };
 }
 

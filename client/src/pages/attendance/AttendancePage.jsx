@@ -21,6 +21,7 @@ import {
   SAMPLE_GAP_MS,
   LIVENESS_MS,
 } from '../../lib/faceAttendance';
+import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import { hoursRangeLabel, pickHourFromPayload } from '../../utils/clockHours';
 import AttendanceGuideModal, {
   hasSeenAttendanceGuide,
@@ -44,22 +45,6 @@ function remainFromCheck(check, nowTick, field) {
   return Math.max(0, end - nowTick);
 }
 
-function formatKarachiDateTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Karachi',
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  }).format(d);
-}
-
 function friendlyDayStatus(status) {
   if (status === 'present' || status === 'verified') return 'Present';
   if (status === 'late') return 'Late';
@@ -68,6 +53,80 @@ function friendlyDayStatus(status) {
   if (status === 'holiday') return 'Holiday';
   if (status === 'pending') return 'Pending';
   return status || '—';
+}
+
+function formatKarachiClock(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Karachi',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d);
+}
+
+function initialsFromName(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return 'ID';
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase();
+}
+
+function confidenceFromDistance(distance, threshold = 0.6) {
+  const d = Number(distance);
+  if (!Number.isFinite(d)) return null;
+  return Math.round(Math.max(0, Math.min(0.99, 1 - d / (threshold * 1.15))) * 100);
+}
+
+function FaceMeshArt() {
+  return (
+    <svg className="faceid-mesh" viewBox="0 0 200 240" aria-hidden="true">
+      <ellipse cx="100" cy="118" rx="64" ry="86" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M100 32 L100 204 M36 118 H164 M58 58 Q100 42 142 58 M52 178 Q100 202 148 178"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        opacity="0.85"
+      />
+      <path
+        d="M70 90 L100 72 L130 90 L122 128 L78 128 Z M86 148 L100 168 L114 148"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.05"
+      />
+      <circle cx="78" cy="108" r="3.2" fill="currentColor" />
+      <circle cx="122" cy="108" r="3.2" fill="currentColor" />
+      <circle cx="100" cy="72" r="2.4" fill="currentColor" />
+      <circle cx="100" cy="168" r="2.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function FaceScanOverlay() {
+  return (
+    <svg className="faceid-scan-grid" viewBox="0 0 200 240" aria-hidden="true">
+      {Array.from({ length: 9 }, (_, i) => (
+        <circle key={`d-${i}`} cx={58 + (i % 3) * 42} cy={70 + Math.floor(i / 3) * 46} r="1.6" fill="currentColor" />
+      ))}
+      <path
+        d="M40 70 L100 42 L160 70 L168 130 L100 198 L32 130 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="0.9"
+        opacity="0.55"
+      />
+      <path d="M70 96 L130 96 M100 52 L100 180" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.7" />
+    </svg>
+  );
 }
 
 function friendlyError(err) {
@@ -117,11 +176,29 @@ export default function AttendancePage() {
   const [lastCheckedInAt, setLastCheckedInAt] = useState(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const [guideOpen, setGuideOpen] = useState(false);
+  const [verify, setVerify] = useState({
+    result: 'idle',
+    confidence: null,
+    time: null,
+    kind: null,
+    status: null,
+  });
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  const settleTimerRef = useRef(null);
 
   const isRemote = user?.employment_type === 'remote';
   const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
   const canSeeAdmin =
     canAccessAdmin(user?.role) && canViewTeamAttendance(user?.role, permissions);
+  const avatarSrc = withAuthDocumentUrl(user?.profile_picture_url, user?.updated_at || user?.id);
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [avatarSrc]);
+  const displayName = user?.name || user?.username || 'Employee';
+  const scanning = phase === 'enroll' || phase === 'checkin';
+  const enterTime = verify.kind === 'checkout' ? lastCheckedInAt : verify.time || lastCheckedInAt;
+  const exitTime = verify.kind === 'checkout' ? verify.time : null;
 
   const load = useCallback(async () => {
     const [{ data: en }, { data: att }] = await Promise.all([
@@ -236,7 +313,10 @@ export default function AttendancePage() {
         setHint('Camera needed');
         setError(msg);
       });
-    return () => stopCamera();
+    return () => {
+      clearTimeout(settleTimerRef.current);
+      stopCamera();
+    };
   }, [load, isRemote, startCamera, stopCamera]);
 
   useEffect(() => {
@@ -319,11 +399,21 @@ export default function AttendancePage() {
     throw new Error('Hold still for a moment so we can capture your face.');
   }
 
+  function settleStage(nextRing = 'idle') {
+    clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      setPhase('idle');
+      setProgress(0);
+      setRing(nextRing);
+    }, 2600);
+  }
+
   async function handleEnroll() {
     if (enrollment?.enrolled) return;
     setError('');
     setStatus('');
     setPhase('enroll');
+    setVerify({ result: 'scanning', confidence: null, time: null, kind: 'enroll', status: null });
     runningRef.current = true;
     try {
       setHint('Starting camera');
@@ -364,13 +454,22 @@ export default function AttendancePage() {
       setHint('Enrolled');
       setDetail('You can check in now');
       setStatus(data.message || 'Face enrollment complete. You can check in this hour.');
+      setVerify({
+        result: 'authenticated',
+        confidence: 98,
+        time: new Date().toISOString(),
+        kind: 'enroll',
+        status: 'enrolled',
+      });
       await load();
+      runningRef.current = false;
+      settleStage('ready');
     } catch (err) {
       const msg = friendlyError(err);
       setRing('fail');
       setHint('Let’s try again');
       setError(msg || 'Enrollment did not finish. Allow the camera, sit in the light, and try again.');
-    } finally {
+      setVerify({ result: 'denied', confidence: null, time: null, kind: 'enroll', status: 'failed' });
       runningRef.current = false;
       setPhase('idle');
       setProgress(0);
@@ -381,6 +480,7 @@ export default function AttendancePage() {
     setError('');
     setStatus('');
     setPhase('checkin');
+    setVerify({ result: 'scanning', confidence: null, time: null, kind: openCheck?.kind || 'start', status: null });
     runningRef.current = true;
     try {
       setHint('Look at the camera');
@@ -447,14 +547,29 @@ export default function AttendancePage() {
             ? 'Checked in late for this availability check.'
             : 'Checked in on time for this availability check.'
       );
+      setVerify({
+        result: 'authenticated',
+        confidence: confidenceFromDistance(data.match_score ?? data.log?.match_score) ?? 97,
+        time: data.log?.checked_in_at || new Date().toISOString(),
+        kind: data.kind,
+        status: data.status,
+      });
       await load();
+      runningRef.current = false;
+      settleStage('ready');
     } catch (err) {
       const msg = friendlyError(err);
       setRing('fail');
       setHint('Not checked in yet');
       if (msg) setError(msg);
+      setVerify({
+        result: 'denied',
+        confidence: null,
+        time: null,
+        kind: openCheck?.kind || 'start',
+        status: 'failed',
+      });
       load().catch(() => {});
-    } finally {
       runningRef.current = false;
       setPhase('idle');
       setProgress(0);
@@ -558,54 +673,213 @@ export default function AttendancePage() {
       {status && <p className="success">{status}</p>}
 
       {isRemote && (
-        <section className="attendance-stage-wrap">
-          <div className={`attendance-ring ${ring}`}>
-            <video ref={videoRef} className="attendance-video" playsInline muted />
-            {!cameraOn && <div className="attendance-video-ph">Starting camera…</div>}
+        <section
+          className={`faceid-kiosk ${ring} ${scanning ? 'is-scanning' : ''}`}
+          aria-label="Face check-in"
+        >
+          <div className="faceid-kiosk-fx" aria-hidden="true">
+            <span className="faceid-grid" />
+            <span className="faceid-orb faceid-orb-a" />
+            <span className="faceid-orb faceid-orb-b" />
           </div>
-          <div className="attendance-prompt">
-            <div className="attendance-prompt-bar" style={{ width: `${progress}%` }} />
-            <p>{hint}</p>
-            {engineHint ? <span>{engineHint}</span> : detail ? <span>{detail}</span> : null}
-          </div>
-          <div className="attendance-actions">
-            {!enrollment?.enrolled ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={phase !== 'idle' || !modelsReady || !profileComplete}
-                onClick={handleEnroll}
-              >
-                {phase === 'enroll' ? 'Capturing…' : 'Enroll face'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={phase !== 'idle' || !canCheckIn || !modelsReady || !profileComplete}
-                onClick={handleCheckIn}
-              >
-                {phase === 'checkin'
-                  ? openCheck?.kind === 'checkout'
-                    ? 'Checking out…'
-                    : 'Checking in…'
-                  : !profileComplete
-                    ? 'Complete profile first'
-                    : !attendanceEnabled
-                    ? 'Attendance off'
-                    : canCheckIn
+          <div className={`faceid-phone ${ring} ${scanning ? 'is-scanning' : ''}`}>
+            <div className="faceid-phone-screen">
+              <div className={`faceid-oval-wrap ${ring} ${scanning ? 'is-scanning' : ''}`}>
+                <span className="faceid-orbit" aria-hidden="true" />
+                <span className="faceid-orbit faceid-orbit-2" aria-hidden="true" />
+                <div className={`faceid-oval ${ring}`}>
+                  <video ref={videoRef} className="attendance-video" playsInline muted />
+                  {!cameraOn && (
+                    <div className="attendance-video-ph faceid-idle-art">
+                      <FaceMeshArt />
+                    </div>
+                  )}
+                  {cameraOn ? <FaceScanOverlay /> : null}
+                  <span className="faceid-scan-glow" />
+                  <span className="faceid-scan-line" />
+                  <span className="faceid-oval-frame" />
+                  <span className="faceid-hud tl" />
+                  <span className="faceid-hud tr" />
+                  <span className="faceid-hud bl" />
+                  <span className="faceid-hud br" />
+                </div>
+              </div>
+
+              {!enrollment?.enrolled && !scanning ? (
+                <div className="faceid-copy">
+                  <h2>FaceID</h2>
+                  <p>FaceID is a facial recognition check. It verifies you in person and records this attendance punch.</p>
+                </div>
+              ) : (
+                <div className="faceid-copy">
+                  <h2>{hint}</h2>
+                  <p>{engineHint || detail}</p>
+                </div>
+              )}
+
+              <div className="faceid-meter">
+                <div className="faceid-meter-track">
+                  <div className="faceid-meter-fill" style={{ width: `${Math.max(scanning ? 8 : 0, progress)}%` }} />
+                </div>
+                <strong>{scanning || progress > 0 ? `${Math.max(progress, 8)}%` : verify.confidence != null ? `${verify.confidence}%` : 'Ready'}</strong>
+                <span>
+                  {scanning
+                    ? 'Scanning…'
+                    : ring === 'success'
+                      ? 'Match confirmed'
+                      : ring === 'fail'
+                        ? 'Try again'
+                        : cameraOn
+                          ? 'Look at the camera'
+                          : 'Allow camera'}
+                </span>
+              </div>
+
+              <div className="attendance-actions faceid-actions">
+                {!enrollment?.enrolled ? (
+                  <button
+                    type="button"
+                    className="faceid-cta"
+                    disabled={phase !== 'idle' || !modelsReady || !profileComplete}
+                    onClick={handleEnroll}
+                  >
+                    <span className="faceid-cta-shine" aria-hidden="true" />
+                    {phase === 'enroll' ? 'Capturing…' : 'Get Started'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="faceid-cta"
+                    disabled={phase !== 'idle' || !canCheckIn || !modelsReady || !profileComplete}
+                    onClick={handleCheckIn}
+                  >
+                    <span className="faceid-cta-shine" aria-hidden="true" />
+                    {phase === 'checkin'
                       ? openCheck?.kind === 'checkout'
-                        ? 'Check out now'
-                        : 'Check in now'
-                      : sundayHoliday
-                        ? 'Day off'
-                        : 'Waiting for next check'}
-              </button>
-            )}
+                        ? 'Checking out…'
+                        : 'Checking in…'
+                      : !profileComplete
+                        ? 'Complete profile first'
+                        : !attendanceEnabled
+                        ? 'Attendance off'
+                        : canCheckIn
+                          ? openCheck?.kind === 'checkout'
+                            ? 'Check out now'
+                            : 'Get Started'
+                          : sundayHoliday
+                            ? 'Day off'
+                            : 'Waiting for next check'}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-          {lastCheckedInAt ? (
-            <p className="muted center">Last check-in {formatKarachiDateTime(lastCheckedInAt)}</p>
-          ) : null}
+
+          <aside className={`faceid-id-card ${verify.result}`}>
+            <div className="faceid-id-result">
+              {verify.result === 'authenticated' ? (
+                <>
+                  <span className="faceid-thumb" aria-hidden="true">
+                    ✓
+                  </span>
+                  <h3>Successful!</h3>
+                  <p>
+                    {verify.kind === 'checkout'
+                      ? 'ID confirmed. You may exit.'
+                      : verify.kind === 'enroll'
+                        ? 'Face enrolled. You may check in.'
+                        : 'ID confirmed. You may enter.'}
+                  </p>
+                </>
+              ) : verify.result === 'denied' ? (
+                <>
+                  <span className="faceid-thumb is-fail" aria-hidden="true">
+                    !
+                  </span>
+                  <h3>Not verified</h3>
+                  <p>Look at the camera in good light and try again.</p>
+                </>
+              ) : verify.result === 'scanning' ? (
+                <>
+                  <span className="faceid-thumb is-scan" aria-hidden="true">
+                    ◌
+                  </span>
+                  <h3>Identity verification</h3>
+                  <p>Hold still while we match your enrolled face.</p>
+                </>
+              ) : (
+                <>
+                  <span className="faceid-thumb is-idle" aria-hidden="true">
+                    ◇
+                  </span>
+                  <h3>Identity verification</h3>
+                  <p>Scan method: facial recognition.</p>
+                </>
+              )}
+            </div>
+
+            <div className="faceid-avatar">
+              {avatarSrc && !avatarBroken ? (
+                <img src={avatarSrc} alt="" onError={() => setAvatarBroken(true)} />
+              ) : (
+                <span>{initialsFromName(displayName)}</span>
+              )}
+            </div>
+            <strong className="faceid-name">{displayName}</strong>
+
+            <dl className="faceid-meta">
+              <div>
+                <dt>Employee ID</dt>
+                <dd>{user?.employee_id || '—'}</dd>
+              </div>
+              <div>
+                <dt>{verify.kind === 'checkout' ? 'Exit' : 'Enter'}</dt>
+                <dd>
+                  {verify.kind === 'checkout'
+                    ? formatKarachiClock(exitTime) || '— —'
+                    : formatKarachiClock(enterTime) || '— —'}
+                </dd>
+              </div>
+              <div>
+                <dt>Designation</dt>
+                <dd>{user?.designation || user?.role || '—'}</dd>
+              </div>
+              <div>
+                <dt>Scan method</dt>
+                <dd>Facial recognition</dd>
+              </div>
+            </dl>
+
+            <div className="faceid-result-row">
+              <span>Result</span>
+              <strong>
+                {verify.result === 'authenticated'
+                  ? 'Authenticated'
+                  : verify.result === 'denied'
+                    ? 'Denied'
+                    : scanning
+                      ? 'Scanning'
+                      : 'Ready'}
+              </strong>
+            </div>
+
+            <div className="faceid-confidence">
+              <span>Match confidence</span>
+              <div className="faceid-bars" aria-hidden="true">
+                {Array.from({ length: 12 }, (_, i) => (
+                  <i
+                    key={i}
+                    style={{
+                      height: `${18 + ((i * 17) % 28)}px`,
+                      opacity:
+                        (verify.confidence ?? (scanning ? progress : 20)) / 100 > i / 12 ? 1 : 0.28,
+                    }}
+                  />
+                ))}
+              </div>
+              <em>{verify.confidence != null ? `${verify.confidence}%` : scanning ? `${Math.max(progress, 8)}%` : '—'}</em>
+            </div>
+          </aside>
         </section>
       )}
 

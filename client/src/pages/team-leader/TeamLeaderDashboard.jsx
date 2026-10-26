@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
@@ -154,6 +154,7 @@ export default function TeamLeaderDashboard() {
   const [checking, setChecking] = useState(true);
   const [canManage, setCanManage] = useState(false);
   const [tPinConfigured, setTPinConfigured] = useState(false);
+  const loadedIdsRef = useRef({ categories: [], items: [] });
   const [section, setSection] = useState('all');
   const [categories, setCategories] = useState([]);
   const [dirty, setDirty] = useState(false);
@@ -190,6 +191,7 @@ export default function TeamLeaderDashboard() {
   const [tPinOtp, setTPinOtp] = useState('');
   const [tPinEmailHint, setTPinEmailHint] = useState('');
   const [setupHint, setSetupHint] = useState('');
+  const canEdit = Boolean(canManage && tPinConfigured);
 
   function resetTPinSetupForm() {
     setSetupForm({
@@ -216,7 +218,8 @@ export default function TeamLeaderDashboard() {
     setSuccess('');
   }, []);
 
-  const loadBoard = useCallback(async () => {
+  const loadBoard = useCallback(async (opts = {}) => {
+    const keepOpen = opts.keepOpen instanceof Set ? opts.keepOpen : null;
     setLoading(true);
     setError('');
     try {
@@ -229,8 +232,17 @@ export default function TeamLeaderDashboard() {
       setEditingCats(new Set());
       setEditingItem(null);
       const next = normalizeCategories(data.categories);
-      // Open first category by default
-      setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
+      loadedIdsRef.current = {
+        categories: next.map((c) => c.id),
+        items: next.flatMap((c) => (c.items || []).map((it) => it.id)),
+      };
+      if (keepOpen) {
+        const ids = new Set(next.map((c) => String(c.id)));
+        const restored = [...keepOpen].filter((id) => ids.has(String(id)));
+        setOpenIds(new Set(restored.length ? restored : next[0] ? [String(next[0].id)] : []));
+      } else {
+        setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load dashboard.');
       setCategories([]);
@@ -275,13 +287,12 @@ export default function TeamLeaderDashboard() {
 
   useEffect(() => {
     if (checking) return;
-    if (canManage && !tPinConfigured) return;
     loadBoard();
-  }, [checking, canManage, tPinConfigured, loadBoard]);
+  }, [checking, loadBoard]);
 
   function switchSection(next) {
     if (next === section) return;
-    if (canManage && dirty) {
+    if (canEdit && dirty) {
       const ok = window.confirm(
         'You have unsaved changes on this tab. Switch anyway and discard them?'
       );
@@ -325,7 +336,7 @@ export default function TeamLeaderDashboard() {
 
   function handleCreateCategory(e) {
     e.preventDefault();
-    if (!canManage) return;
+    if (!canEdit) return;
     const name = newCategoryName.trim();
     if (!name) {
       setError('Enter a category name.');
@@ -341,7 +352,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function handleRenameCategory(cat) {
-    if (!canManage) return;
+    if (!canEdit) return;
     const name = window.prompt('Rename category', cat.name);
     if (name == null) return;
     const trimmed = name.trim();
@@ -353,7 +364,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function handleDeleteCategory(cat) {
-    if (!canManage) return;
+    if (!canEdit) return;
     if (!window.confirm(`Remove category “${cat.name}” from this draft?`)) return;
     setCategories((prev) => prev.filter((c) => c.id !== cat.id));
     setOpenIds((prev) => {
@@ -383,7 +394,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function handleAddLink(cat) {
-    if (!canManage) return;
+    if (!canEdit) return;
     const link = String(linkDrafts[cat.id] || '').trim();
     const label = String(labelDrafts[cat.id] || '').trim();
     if (!link) {
@@ -416,7 +427,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function handleDeleteItem(cat, item) {
-    if (!canManage) return;
+    if (!canEdit) return;
     setCategories((prev) =>
       prev.map((c) =>
         c.id === cat.id
@@ -433,11 +444,11 @@ export default function TeamLeaderDashboard() {
   }
 
   function isEditingCategory(cat) {
-    return canManage && editingCats.has(String(cat.id));
+    return canEdit && editingCats.has(String(cat.id));
   }
 
   function startEditCategory(cat) {
-    if (!canManage) return;
+    if (!canEdit) return;
     setEditingCats((prev) => new Set([...prev, String(cat.id)]));
     setOpenIds((prev) => new Set([...prev, String(cat.id)]));
   }
@@ -454,7 +465,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function startEditItem(cat, item) {
-    if (!canManage) return;
+    if (!canEdit) return;
     setEditingItem({
       catId: cat.id,
       itemId: item.id,
@@ -464,7 +475,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function saveEditItem() {
-    if (!canManage || !editingItem) return;
+    if (!canEdit || !editingItem) return;
     const value = String(editingItem.value || '').trim();
     if (!value) {
       setError('Enter a link.');
@@ -531,7 +542,7 @@ export default function TeamLeaderDashboard() {
   }
 
   function requestSave() {
-    if (!canManage || !tPinConfigured) return;
+    if (!canEdit) return;
     if (!dirty) {
       setSuccess('Nothing to save.');
       return;
@@ -547,6 +558,8 @@ export default function TeamLeaderDashboard() {
       const payload = {
         section,
         t_pin: tPin,
+        expected_category_ids: loadedIdsRef.current.categories,
+        expected_item_ids: loadedIdsRef.current.items,
         categories: categories.map((c) => ({
           id: c.id,
           name: c.name,
@@ -563,10 +576,10 @@ export default function TeamLeaderDashboard() {
           assignee_ids: (c.assignees || []).map((a) => a.id),
         })),
       };
-      await api.post('/api/tl-dashboard/save', payload);
+      await api.post('/api/tl-dashboard/save', payload, { skipSuccessPopup: true });
       setSavePromptOpen(false);
-      setSuccess(`Saved ${sectionLabel} successfully.`);
-      await loadBoard();
+      setSuccess(`Saved ${sectionLabel}. You are still on this tab.`);
+      await loadBoard({ keepOpen: new Set(openIds) });
     } catch (err) {
       const code = err.response?.data?.code;
       const msg = err.response?.data?.message || 'Save failed.';
@@ -588,26 +601,81 @@ export default function TeamLeaderDashboard() {
     );
   }
 
-  if (canManage && !tPinConfigured) {
-    return (
-      <div className="admin-page page-panel tl-page">
-        <div className="admin-toolbar" style={{ marginTop: 0 }}>
-          <div>
-            <h1>Team Leader Dashboard</h1>
-            <p className="muted" style={{ margin: 0 }}>
-              Step 1 — create your T-Pin before managing categories and links.
-            </p>
-          </div>
+  return (
+    <div className="admin-page page-panel tl-page">
+      <div className="admin-toolbar" style={{ marginTop: 0 }}>
+        <div>
+          <h1>Team Leader Dashboard</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {canManage
+              ? 'CEO and manager share this dashboard. Use Edit, then Save with your T-Pin. Team leaders only see copy.'
+              : 'View and copy the links assigned to you.'}
+          </p>
         </div>
+        <div className="tl-toolbar-actions">
+          {canManage && (
+            <>
+              {tPinConfigured ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  resetTPinSetupForm();
+                  setError('');
+                  setSetupOpen(true);
+                }}
+              >
+                Change T-Pin
+              </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loading || dirty}
+                onClick={loadBoard}
+                title={dirty ? 'Save or discard changes first' : 'Reload from server'}
+              >
+                {loading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!canEdit || !dirty || saveBusy}
+                onClick={requestSave}
+              >
+                {dirty ? 'Save' : 'Saved'}
+              </button>
+            </>
+          )}
+          {!canManage && (
+            <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBoard}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          )}
+        </div>
+      </div>
 
+      <div className="status-tabs" role="tablist" aria-label="Dashboard sections">
+        {SECTIONS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={section === tab.id}
+            className={`status-tab${section === tab.id ? ' active' : ''}`}
+            onClick={() => switchSection(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {canManage && !tPinConfigured && (
         <div className="tl-setup-card">
           <h2>Create T-Pin</h2>
           <p className="muted">
-            You will enter this pin once when you click Save after finishing your work.
+            You can already see the shared dashboard. Create a T-Pin to edit and save.
           </p>
-
-          {error && <p className="error">{error}</p>}
-
           <form className="form tl-setup-form" onSubmit={handleSetupTPin}>
             <PasswordInput
               label="Account password"
@@ -653,82 +721,13 @@ export default function TeamLeaderDashboard() {
               maxLength={8}
             />
             <button type="submit" className="btn btn-primary" disabled={setupBusy}>
-              {setupBusy ? 'Saving T-Pin…' : 'Save T-Pin & continue'}
+              {setupBusy ? 'Saving T-Pin…' : 'Save T-Pin'}
             </button>
           </form>
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <div className="admin-page page-panel tl-page">
-      <div className="admin-toolbar" style={{ marginTop: 0 }}>
-        <div>
-          <h1>Team Leader Dashboard</h1>
-          <p className="muted" style={{ margin: 0 }}>
-            {canManage
-              ? 'Use Edit on a category to change it, then Save with your T-Pin. Team leaders only see copy.'
-              : 'View and copy the links assigned to you.'}
-          </p>
-        </div>
-        <div className="tl-toolbar-actions">
-          {canManage && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  resetTPinSetupForm();
-                  setError('');
-                  setSetupOpen(true);
-                }}
-              >
-                Change T-Pin
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={loading || dirty}
-                onClick={loadBoard}
-                title={dirty ? 'Save or discard changes first' : 'Reload from server'}
-              >
-                {loading ? 'Refreshing…' : 'Refresh'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!dirty || saveBusy}
-                onClick={requestSave}
-              >
-                {dirty ? 'Save' : 'Saved'}
-              </button>
-            </>
-          )}
-          {!canManage && (
-            <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBoard}>
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="status-tabs" role="tablist" aria-label="Dashboard sections">
-        {SECTIONS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={section === tab.id}
-            className={`status-tab${section === tab.id ? ' active' : ''}`}
-            onClick={() => switchSection(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {canManage && dirty && (
+      {canEdit && dirty && (
         <div className="tl-unsaved">
           Unsaved changes on <strong>{sectionLabel}</strong>. Click <strong>Save</strong> when
           finished — you will be asked for your T-Pin.
@@ -736,7 +735,7 @@ export default function TeamLeaderDashboard() {
       )}
 
       {error && <p className="error">{error}</p>}
-      {canManage && (
+      {canEdit && (
         <form className="form tl-create-cat" onSubmit={handleCreateCategory}>
           <label>
             New category in {sectionLabel}
@@ -765,7 +764,7 @@ export default function TeamLeaderDashboard() {
       {!loading && categories.length === 0 && !error && (
         <div className="admin-empty">
           {canManage
-            ? `No categories in ${sectionLabel} yet. Add one above, then Save.`
+            ? `No categories in ${sectionLabel} yet.${canEdit ? ' Add one above, then Save.' : ''}`
             : 'Nothing assigned to you in this tab yet.'}
         </div>
       )}
@@ -791,7 +790,7 @@ export default function TeamLeaderDashboard() {
                     {linkCount} link{linkCount === 1 ? '' : 's'}
                   </span>
                 </button>
-                {canManage && (
+                {canEdit && (
                   <div className="tl-category-actions" onClick={(e) => e.stopPropagation()}>
                     {isEditingCategory(cat) ? (
                       <>
@@ -980,7 +979,7 @@ export default function TeamLeaderDashboard() {
         })}
       </div>
 
-      {canManage && dirty && (
+      {canEdit && dirty && (
         <div className="tl-save-bar">
           <span className="muted">When you are done editing this tab:</span>
           <button

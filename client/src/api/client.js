@@ -47,6 +47,15 @@ const SESSION_ENDED_CODES = new Set([
   'ACCOUNT_RESIGNED',
 ]);
 
+const STAY_SIGNED_IN_CODES = new Set([
+  'TPIN_INVALID',
+  'TPIN_REQUIRED',
+  'TPIN_NOT_SET',
+  'SALES_PIN_INVALID',
+  'SALES_PIN_PASSWORD_REQUIRED',
+  'SALES_PIN_OTP_INVALID',
+]);
+
 const SUCCESS_SKIP =
   /\/api\/auth\/(login|signin)|\/api\/users\/me$|unread-count|\/api\/push\//;
 
@@ -87,6 +96,7 @@ api.interceptors.response.use(
     if (
       !isPublicAuth &&
       !isAttendanceCheckIn &&
+      !STAY_SIGNED_IN_CODES.has(code) &&
       (status === 401 || (status === 403 && SESSION_ENDED_CODES.has(code)))
     ) {
       localStorage.removeItem('token');

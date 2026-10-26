@@ -105,7 +105,7 @@ async function listCategories(req, res) {
     }
     req.user.role = row.role;
 
-    const ceo = isCeoOrManagerRole(row.role);
+    const canManage = isCeoOrManagerRole(row.role);
     const viewAll = canViewAllTlCategories(row);
     const assigned = viewAll ? true : await userHasAssignment(req.user.id);
 
@@ -144,7 +144,7 @@ async function listCategories(req, res) {
     }
 
     if (!catRows.length) {
-      return res.json({ section, canManage: ceo, categories: [] });
+      return res.json({ section, canManage, categories: [] });
     }
 
     const ids = catRows.map((c) => c.id);
@@ -159,7 +159,7 @@ async function listCategories(req, res) {
     );
 
     let assignmentMap = {};
-    if (ceo) {
+    if (canManage) {
       const { rows: asg } = await pool.query(
         `
           SELECT a.category_id, a.user_id, u.name, u.username, u.email, u.role
@@ -202,10 +202,10 @@ async function listCategories(req, res) {
       name: c.name,
       sort_order: c.sort_order,
       items: itemsByCat[c.id] || [],
-      assignees: ceo ? assignmentMap[c.id] || [] : undefined,
+      assignees: canManage ? assignmentMap[c.id] || [] : undefined,
     }));
 
-    return res.json({ section, canManage: ceo, categories });
+    return res.json({ section, canManage, categories });
   } catch (err) {
     console.error('tl listCategories error:', err);
     return res.status(500).json({ message: 'Server error loading dashboard.' });
@@ -267,7 +267,10 @@ async function setTPin(req, res) {
     } else if (user.t_pin_hash) {
       const current = String(req.body?.current_t_pin ?? '').trim();
       if (!current || !(await bcrypt.compare(current, user.t_pin_hash))) {
-        return res.status(401).json({ message: 'Current T-Pin is incorrect.' });
+        return res.status(403).json({
+          message: 'Current T-Pin is incorrect.',
+          code: 'TPIN_INVALID',
+        });
       }
     } else {
       const password = String(req.body?.current_password ?? '').trim();
@@ -637,7 +640,7 @@ async function setAssignments(req, res) {
           `SELECT id, role FROM users WHERE id = $1 AND is_active IS DISTINCT FROM FALSE`,
           [uid]
         );
-        if (!u[0] || String(u[0].role).toLowerCase() === 'ceo') continue;
+        if (!u[0] || isCeoOrManagerRole(u[0].role)) continue;
         await client.query(
           `
             INSERT INTO tl_category_assignments (category_id, user_id, assigned_by)
@@ -689,6 +692,19 @@ async function saveSection(req, res) {
     if (!incoming) {
       return res.status(400).json({ message: 'categories array is required.' });
     }
+
+    // Only remove rows this editor actually loaded. CEO and manager share one
+    // board — a stale save must not wipe the other person's new categories.
+    const expectedCatIds = new Set(
+      (Array.isArray(req.body?.expected_category_ids) ? req.body.expected_category_ids : []).map(
+        (id) => String(id)
+      )
+    );
+    const expectedItemIds = new Set(
+      (Array.isArray(req.body?.expected_item_ids) ? req.body.expected_item_ids : []).map((id) =>
+        String(id)
+      )
+    );
 
     await client.query('BEGIN');
 
@@ -789,9 +805,9 @@ async function saveSection(req, res) {
       }
 
       for (const eid of existingItemIds) {
-        if (!keptItemIds.has(eid)) {
-          await client.query('DELETE FROM tl_category_items WHERE id = $1', [Number(eid)]);
-        }
+        if (keptItemIds.has(eid)) continue;
+        if (!expectedItemIds.has(eid)) continue;
+        await client.query('DELETE FROM tl_category_items WHERE id = $1', [Number(eid)]);
       }
 
       const assigneeSource = Array.isArray(cat.assignee_ids)
@@ -817,7 +833,7 @@ async function saveSection(req, res) {
           `,
           [uid]
         );
-        if (!u[0] || String(u[0].role).toLowerCase() === 'ceo') continue;
+        if (!u[0] || isCeoOrManagerRole(u[0].role)) continue;
         await client.query(
           `
             INSERT INTO tl_category_assignments (category_id, user_id, assigned_by)
@@ -829,12 +845,12 @@ async function saveSection(req, res) {
     }
 
     for (const eid of existingIds) {
-      if (!keptIds.has(eid)) {
-        await client.query(
-          'DELETE FROM tl_categories WHERE id = $1 AND section = $2',
-          [Number(eid), section]
-        );
-      }
+      if (keptIds.has(eid)) continue;
+      if (!expectedCatIds.has(eid)) continue;
+      await client.query('DELETE FROM tl_categories WHERE id = $1 AND section = $2', [
+        Number(eid),
+        section,
+      ]);
     }
 
     await client.query('COMMIT');
