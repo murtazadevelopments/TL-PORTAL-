@@ -72,7 +72,7 @@ async function dispatchDueNotifications(now = new Date()) {
     if (!claimed) continue;
     try {
       const result = await notifyRemoteAttendanceCheck(person, row);
-      if (!result && person?.email) {
+      if (!result?.ok) {
         await challenges.clearNotifiedIfUnused(row.id);
         continue;
       }

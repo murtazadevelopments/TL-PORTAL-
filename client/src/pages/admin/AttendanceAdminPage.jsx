@@ -940,7 +940,7 @@ export default function AttendanceAdminPage() {
           <p className="muted">
             {mode === 'onsite'
               ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Remote employees attendance — face checks per shift (shift start plus random pings). Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
+              : 'Remote employees attendance — face checks per shift. Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
           </p>
         </div>
         <div className="attendance-hero-tools">

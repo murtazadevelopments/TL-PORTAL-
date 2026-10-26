@@ -28,11 +28,11 @@ function remoteSteps(checksPerShift, flexibleHours) {
   const timing = flexibleHours
     ? {
         title: `${n} checks, no fixed start time`,
-        body: 'First check-in when you start. Then one random check during assigned hours. Check out when you finish.',
+        body: 'Check in when you start. Then one random check-in during assigned hours. Check out when you finish. After 15 minutes a check is late. After 40 minutes it is absent.',
       }
     : {
         title: `${n} checks each shift`,
-        body: 'The first check is at shift start. The others appear at random during your hours.',
+        body: 'The first check is at shift start. The others appear at random during your hours. After 15 minutes a check is late. After 40 minutes it is absent.',
       };
   const action = flexibleHours
     ? {
@@ -55,8 +55,8 @@ function remoteSteps(checksPerShift, flexibleHours) {
       body: 'You can only check in while a check is open (feasible time). After that window closes, check-in is not possible and the missed check is absent.',
     },
     {
-      title: 'Not on time is absent',
-      body: 'If you do not check in on time, that check is marked absent.',
+      title: '15 minutes late, 40 minutes absent',
+      body: 'From the moment a check opens: within 15 minutes is on time, after 15 minutes is late, and after 40 minutes that check is absent.',
     },
     {
       title: 'Miss a random check and you are absent',

@@ -7,8 +7,7 @@ const {
 } = require('../utils/requestMeta');
 const { describeDevice, hintsFromRequest } = require('../utils/deviceLabel');
 const { recordLoginLog } = require('../controllers/loginLogsController');
-const { notifyUserLogin } = require('./notifications');
-const { sendPushToUserSafe } = require('./pushNotifications');
+const { notifyUserLogin, notifyApp } = require('./notifications');
 
 function formatLoginWhen() {
   try {
@@ -81,7 +80,7 @@ async function recordSuccessfulLogin(req, user) {
       notifyUserLogin(user, loginMeta).catch((err) => {
         console.warn('login email failed:', err.message || err);
       }),
-      sendPushToUserSafe(user.id, {
+      notifyApp(user.id, {
         title: 'New login to your account',
         body: loginPushBody({
           device,

@@ -106,7 +106,7 @@ async function sendPushToUser(userId, payload, opts = {}) {
         body,
         {
           TTL: Number.isFinite(opts.ttl) ? opts.ttl : 60 * 60 * 12,
-          urgency: opts.urgency || 'normal',
+          urgency: opts.urgency || 'high',
         }
       );
       sent += 1;

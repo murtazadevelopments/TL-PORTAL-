@@ -117,7 +117,7 @@ function firstName(fullName) {
 async function notifyApp(userId, payload = {}, opts = {}) {
   if (!userId) return { sent: 0 };
   const { sendPushToUserSafe } = require('./pushNotifications');
-  return sendPushToUserSafe(
+  const result = await sendPushToUserSafe(
     userId,
     {
       title: payload.title || 'Textured Lab Portal',
@@ -131,6 +131,10 @@ async function notifyApp(userId, payload = {}, opts = {}) {
       urgency: opts.urgency || 'high',
     }
   );
+  console.log(
+    `[push] user=${userId} tag=${payload.tag || 'portal-update'} sent=${result?.sent || 0} skipped=${Boolean(result?.skipped)} disabled=${Boolean(result?.disabled)} error=${result?.error || ''}`
+  );
+  return result;
 }
 
 function formatTimestamp(value = new Date()) {
@@ -292,34 +296,35 @@ async function notifyAccountApproved(user) {
   const { frontendBaseUrl } = require('../utils/frontendUrl');
   const loginUrl = `${frontendBaseUrl()}/`;
 
-  let result = null;
-  if (user.email) {
-    result = await sendEmailSafe({
-      emailType: 'account_approved',
-      to: user.email,
-      subject: 'Your Textured Lab Portal account has been approved',
-      text: `Hi ${user.name || ''},\n\nYour Textured Lab Portal account has been approved. You can now sign in:\n${loginUrl}\n\nUsername: ${user.username || ''}\n`,
-      html: `
+  const [result] = await Promise.all([
+    user.email
+      ? sendEmailSafe({
+          emailType: 'account_approved',
+          to: user.email,
+          subject: 'Your Textured Lab Portal account has been approved',
+          text: `Hi ${user.name || ''},\n\nYour Textured Lab Portal account has been approved. You can now sign in:\n${loginUrl}\n\nUsername: ${user.username || ''}\n`,
+          html: `
         <p>Hi ${escapeHtml(user.name || '')},</p>
         <p>Your Textured Lab Portal account has been <strong>approved</strong>. You can now sign in.</p>
         <p>Username: <strong>${escapeHtml(user.username || '')}</strong></p>
         <p><a href="${escapeHtml(loginUrl)}">Sign in to Textured Lab Portal</a></p>
       `,
-    });
-
-    await logEmail({
-      emailType: 'account_approved',
-      recipient: user.email,
-      meta: { userId: user.id, ok: Boolean(result) },
-    });
-  }
-
-  await notifyApp(user.id, {
-    title: 'Account approved',
-    body: 'Your portal account is approved. You can sign in now.',
-    url: '/',
-    tag: 'account-approved',
-  });
+        }).then(async (emailResult) => {
+          await logEmail({
+            emailType: 'account_approved',
+            recipient: user.email,
+            meta: { userId: user.id, ok: Boolean(emailResult) },
+          });
+          return emailResult;
+        })
+      : Promise.resolve(null),
+    notifyApp(user.id, {
+      title: 'Account approved',
+      body: 'Your portal account is approved. You can sign in now.',
+      url: '/',
+      tag: 'account-approved',
+    }),
+  ]);
 
   return result;
 }
@@ -437,25 +442,26 @@ async function notifyEmployeeAdminUpdated(employee, changedFields) {
       ? `<ul>${changedFields.map((c) => `<li>${escapeHtml(c)}</li>`).join('')}</ul>`
       : '<p>Your profile information was updated.</p>';
 
-  if (employee.email) {
-    await sendEmailSafe({
-      to: employee.email,
-      subject: 'Your profile was updated by an administrator',
-      html: `
+  await Promise.all([
+    employee.email
+      ? sendEmailSafe({
+          to: employee.email,
+          subject: 'Your profile was updated by an administrator',
+          html: `
         <p>Hi ${escapeHtml(employee.name || '')},</p>
         <p>An administrator updated your employee profile.</p>
         ${list}
         <p>Sensitive values (passwords, bank account numbers) are never included in emails.</p>
       `,
-    });
-  }
-
-  await notifyApp(employee.id, {
-    title: 'Your profile was updated',
-    body: 'An administrator updated your employee profile. Open the portal to review it.',
-    url: '/account',
-    tag: 'profile-updated',
-  });
+        })
+      : Promise.resolve(null),
+    notifyApp(employee.id, {
+      title: 'Your profile was updated',
+      body: 'An administrator updated your employee profile. Open the portal to review it.',
+      url: '/account',
+      tag: 'profile-updated',
+    }),
+  ]);
 }
 
 async function notifyAdminsEmployeeSelfUpdate() {
@@ -523,26 +529,36 @@ function birthdayEmailWrap(inner) {
  * Employee birthday email — sent at 12:00 AM on the birthday (Asia/Karachi).
  */
 async function notifyBirthday(user) {
-  if (!user?.email) return null;
-  const who = firstName(user.name);
-
-  const result = await sendEmailSafe({
-    to: user.email,
-    subject: `Happy Birthday, ${who}! 🎉`,
-    html: birthdayEmailWrap(`
+  const who = firstName(user?.name);
+  let result = null;
+  if (user?.email) {
+    result = await sendEmailSafe({
+      to: user.email,
+      subject: `Happy Birthday, ${who}! 🎉`,
+      html: birthdayEmailWrap(`
       <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Textured Lab</p>
       <h1 style="margin:0 0 12px;font-size:28px;color:#f4f8ff;">Happy Birthday, ${escapeHtml(who)}!</h1>
       <p style="line-height:1.6;margin:0 0 12px;">The whole Textured Lab family is celebrating you today. Thank you for the care, craft, and energy you bring to the lab.</p>
       <p style="line-height:1.6;margin:0 0 18px;">May this year be kind, bright, and full of work you are proud of. Enjoy your day — you have earned every wish.</p>
       <p style="margin:0;color:#3dff7a;"><strong>— Textured Lab</strong></p>
     `),
-  });
+    });
 
-  await logEmail({
-    emailType: 'birthday',
-    recipient: user.email,
-    meta: { userId: user.id, ok: Boolean(result) },
-  });
+    await logEmail({
+      emailType: 'birthday',
+      recipient: user.email,
+      meta: { userId: user.id, ok: Boolean(result) },
+    });
+  }
+
+  if (user?.id) {
+    await notifyApp(user.id, {
+      title: `Happy Birthday, ${who}!`,
+      body: 'The Textured Lab family is celebrating you today.',
+      url: '/account',
+      tag: 'birthday',
+    });
+  }
 
   return result;
 }
@@ -617,7 +633,7 @@ async function notifyAttendanceFailed(user, hourKey) {
 }
 
 async function notifyRemoteAttendanceCheck(user, challenge) {
-  if (!user?.email && !user?.id) return null;
+  if (!user?.id && !user?.email) return { ok: false };
   const { frontendBaseUrl } = require('../utils/frontendUrl');
   const {
     START_ON_TIME_MINUTES,
@@ -627,15 +643,19 @@ async function notifyRemoteAttendanceCheck(user, challenge) {
     formatClock,
   } = require('../utils/remoteCheckWindows');
   const checkUrl = `${frontendBaseUrl()}/attendance`;
-  const which =
-    Number(challenge.seq) === 1
+  const isCheckout = String(challenge.kind || '') === 'checkout';
+  const which = isCheckout
+    ? 'check-out'
+    : Number(challenge.seq) === 1
       ? 'shift-start check-in'
       : `availability check ${challenge.seq} of 5`;
   const when = formatClock(challenge.scheduled_at);
-  const subject = `Attendance check-in now (${which})`;
+  const subject = isCheckout
+    ? `Attendance check-out now`
+    : `Attendance check-in now (${which})`;
   const html = `
       <p>Hi ${escapeHtml(firstName(user.name))},</p>
-      <p>Please open the portal and complete your face check-in for this <strong>${escapeHtml(which)}</strong>${when ? ` (${escapeHtml(when)})` : ''}.</p>
+      <p>Please open the portal and complete your face ${isCheckout ? 'check-out' : 'check-in'} for this <strong>${escapeHtml(which)}</strong>${when ? ` (${escapeHtml(when)})` : ''}.</p>
       <ul>
         <li>Be on time if you check in within <strong>${START_ON_TIME_MINUTES} minutes</strong>.</li>
         <li>After ${LATE_AFTER_MINUTES} minutes you are marked <strong>late</strong>.</li>
@@ -645,35 +665,36 @@ async function notifyRemoteAttendanceCheck(user, challenge) {
       <p><a href="${escapeHtml(checkUrl)}">Open My Attendance</a></p>
     `;
 
-  let emailResult = null;
-  if (user.email) {
-    emailResult = await sendEmailSafe({
-      emailType: 'remote_attendance_check',
-      to: user.email,
-      subject,
-      html,
-    });
-  }
+  const [emailResult, pushResult] = await Promise.all([
+    user.email
+      ? sendEmailSafe({
+          emailType: 'remote_attendance_check',
+          to: user.email,
+          subject,
+          html,
+        })
+      : Promise.resolve(null),
+    user.id
+      ? notifyApp(
+          user.id,
+          {
+            title: isCheckout ? 'Attendance check-out' : 'Attendance check-in',
+            body: isCheckout
+              ? `Check out now${when ? ` (${when})` : ''}.`
+              : `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
+            url: '/attendance',
+            tag: `attendance-check-${challenge.id}`,
+          },
+          { ttl: 40 * 60, urgency: 'high' }
+        )
+      : Promise.resolve({ sent: 0 }),
+  ]);
 
-  try {
-    const pushResult = await notifyApp(
-      user.id,
-      {
-        title: 'Attendance check-in',
-        body: `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
-        url: '/attendance',
-        tag: `attendance-check-${challenge.id}`,
-      },
-      { ttl: 40 * 60, urgency: 'high' }
-    );
-    console.log(
-      `[attendance-push] user=${user.id} sent=${pushResult?.sent || 0} skipped=${Boolean(pushResult?.skipped)} disabled=${Boolean(pushResult?.disabled)} error=${pushResult?.error || ''}`
-    );
-  } catch (err) {
-    console.warn('attendance push failed:', err.message || err);
-  }
-
-  return emailResult;
+  return {
+    ok: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    email: emailResult,
+    push: pushResult,
+  };
 }
 
 module.exports = {

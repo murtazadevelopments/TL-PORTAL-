@@ -574,7 +574,6 @@ async function dueNotifications(now = new Date()) {
         AND c.status = 'pending'
         AND c.scheduled_at <= $1
         AND c.absent_at > $1
-        AND c.kind <> 'checkout'
         AND u.is_active = true
         AND u.status = 'active'
         AND u.employment_type = 'remote'

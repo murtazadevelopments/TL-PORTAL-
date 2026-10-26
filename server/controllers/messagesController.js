@@ -2,7 +2,7 @@ const fs = require('fs');
 const pool = require('../config/db');
 const { sendEmailSafe } = require('../services/email');
 const { writeAuditLog } = require('../utils/auditLog');
-const { sendPushToUserSafe } = require('../services/pushNotifications');
+const { notifyApp } = require('../services/notifications');
 const { saveMessagePicture, absoluteFromRelative } = require('../services/localStorage');
 const {
   redactMessageSender,
@@ -278,15 +278,16 @@ async function notifyRecipientPush(recipient, subject, messageBody, messageId, e
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
-  return sendPushToUserSafe(
+  const tagBase = extra?.tag || 'message';
+  return notifyApp(
     recipient.id,
     {
       title: extra?.title || subject || 'New portal message',
       body: extra?.body || preview || 'You have a new message in Textured Lab Portal.',
       url: extra?.url || `/account/messages`,
-      tag: extra?.tag || `message-${messageId || recipient.id}`,
+      tag: `${tagBase}-${messageId || recipient.id}`,
     },
-    extra?.pushOpts || { requireEnabled: false, urgency: extra?.urgency || 'high' }
+    extra?.pushOpts || { urgency: extra?.urgency || 'high' }
   );
 }
 

@@ -26,6 +26,7 @@ import AttendanceGuideModal, {
   hasSeenAttendanceGuide,
   markAttendanceGuideSeen,
 } from '../../components/AttendanceGuideModal';
+import RemoteAttendanceRules from '../../components/RemoteAttendanceRules';
 import OnsiteAttendancePage from './OnsiteAttendancePage';
 import './AttendancePage.css';
 
@@ -469,11 +470,7 @@ export default function AttendancePage() {
       <div className="attendance-hero">
         <div>
           <h1>My attendance</h1>
-          <p className="muted">
-            {flexibleHours
-              ? 'Flexible hours: check in when you start, one random ping, then check out.'
-              : 'Face check-in during your shift.'}
-          </p>
+          <p className="muted">Face check-in during your shift.</p>
         </div>
         <div className="attendance-hero-actions">
           <button type="button" className="btn btn-ghost" onClick={() => setGuideOpen(true)}>
@@ -486,6 +483,8 @@ export default function AttendancePage() {
           )}
         </div>
       </div>
+
+      <RemoteAttendanceRules flexibleHours={flexibleHours} />
 
       <AttendanceGuideModal
         open={guideOpen}
