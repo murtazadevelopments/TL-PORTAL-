@@ -7,6 +7,8 @@ const {
   listCategories,
   listAssignableUsers,
   setTPin,
+  requestTPinOtp,
+  verifyTPinOtp,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -24,7 +26,9 @@ router.use(authMiddleware);
 router.get('/access', getAccess);
 router.get('/', listCategories);
 
-// CEO: set / change T-Pin (password or current pin — no requireTPin here)
+// CEO/manager: set / change T-Pin (password, current pin, or email OTP)
+router.post('/t-pin/otp', requireRole('ceo', 'manager'), requestTPinOtp);
+router.post('/t-pin/otp/verify', requireRole('ceo', 'manager'), verifyTPinOtp);
 router.post('/t-pin', requireRole('ceo', 'manager'), setTPin);
 
 router.get('/assignable-users', requireRole('ceo', 'manager'), listAssignableUsers);

@@ -1,5 +1,7 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const { notifyTPinOtp } = require('../services/notifications');
 const {
   isCeoOrManagerRole,
   isTeamLeaderRole,
@@ -9,6 +11,22 @@ const {
 
 const SECTIONS = new Set(['all', 'merchant']);
 const ITEM_TYPES = new Set(['link', 'text', 'bank']);
+
+let tPinOtpColumnsReady = false;
+async function ensureTPinOtpSchema() {
+  if (tPinOtpColumnsReady) return;
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS t_pin_otp_hash TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS t_pin_otp_expires_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS t_pin_change_until TIMESTAMPTZ`);
+  tPinOtpColumnsReady = true;
+}
+
+function maskEmail(email) {
+  const [name, domain] = String(email || '').split('@');
+  if (!domain) return 'your email';
+  const shown = name.length <= 2 ? `${name.slice(0, 1)}*` : `${name[0]}***${name[name.length - 1]}`;
+  return `${shown}@${domain}`;
+}
 
 function normalizeSection(value) {
   const s = String(value || '')
@@ -219,23 +237,34 @@ async function listAssignableUsers(req, res) {
 
 /**
  * POST /api/tl-dashboard/t-pin  { t_pin, current_password? , current_t_pin? }
- * First set: require account password. Change: require current T-Pin.
+ * First set: require account password. Change: require current T-Pin or a verified email OTP.
  */
 async function setTPin(req, res) {
   try {
+    await ensureTPinOtpSchema();
     const newPin = String(req.body?.t_pin ?? req.body?.new_t_pin ?? '').trim();
     if (!/^\d{4,8}$/.test(newPin)) {
       return res.status(400).json({ message: 'T-Pin must be 4–8 digits.' });
     }
 
     const { rows } = await pool.query(
-      'SELECT password, t_pin_hash FROM users WHERE id = $1 LIMIT 1',
+      `
+        SELECT password, t_pin_hash, t_pin_change_until
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
       [req.user.id]
     );
     const user = rows[0];
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    if (user.t_pin_hash) {
+    const otpWindow =
+      user.t_pin_change_until && new Date(user.t_pin_change_until).getTime() > Date.now();
+
+    if (otpWindow) {
+      /* verified email OTP — allowed to set a new T-Pin */
+    } else if (user.t_pin_hash) {
       const current = String(req.body?.current_t_pin ?? '').trim();
       if (!current || !(await bcrypt.compare(current, user.t_pin_hash))) {
         return res.status(401).json({ message: 'Current T-Pin is incorrect.' });
@@ -251,7 +280,15 @@ async function setTPin(req, res) {
 
     const hash = await bcrypt.hash(newPin, 10);
     await pool.query(
-      'UPDATE users SET t_pin_hash = $1, updated_at = NOW() WHERE id = $2',
+      `
+        UPDATE users
+        SET t_pin_hash = $1,
+            t_pin_otp_hash = NULL,
+            t_pin_otp_expires_at = NULL,
+            t_pin_change_until = NULL,
+            updated_at = NOW()
+        WHERE id = $2
+      `,
       [hash, req.user.id]
     );
 
@@ -259,6 +296,127 @@ async function setTPin(req, res) {
   } catch (err) {
     console.error('tl setTPin error:', err);
     return res.status(500).json({ message: 'Server error saving T-Pin.' });
+  }
+}
+
+async function requestTPinOtp(req, res) {
+  try {
+    await ensureTPinOtpSchema();
+    const { rows } = await pool.query(
+      `
+        SELECT id, name, email, t_pin_otp_expires_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    const email = String(user.email || '').trim();
+    if (!email) {
+      return res.status(400).json({
+        message: 'Add an email on your profile before resetting the T-Pin.',
+      });
+    }
+
+    if (
+      user.t_pin_otp_expires_at &&
+      new Date(user.t_pin_otp_expires_at).getTime() > Date.now() + 9 * 60 * 1000
+    ) {
+      return res.status(429).json({
+        message: 'A code was already sent. Wait a minute before requesting another.',
+        email_hint: maskEmail(email),
+      });
+    }
+
+    const otp = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await pool.query(
+      `
+        UPDATE users
+        SET t_pin_otp_hash = $1,
+            t_pin_otp_expires_at = $2,
+            t_pin_change_until = NULL,
+            updated_at = NOW()
+        WHERE id = $3
+      `,
+      [otpHash, expiresAt, user.id]
+    );
+
+    const sent = await notifyTPinOtp(user, otp);
+    if (!sent) {
+      return res.status(500).json({ message: 'Could not send the code. Try again in a minute.' });
+    }
+
+    return res.json({
+      message: 'We sent a 6-digit code to your email. It expires in 10 minutes.',
+      email_hint: maskEmail(email),
+      expires_in: 600,
+    });
+  } catch (err) {
+    console.error('tl requestTPinOtp error:', err);
+    return res.status(500).json({ message: 'Server error sending T-Pin reset code.' });
+  }
+}
+
+async function verifyTPinOtp(req, res) {
+  try {
+    await ensureTPinOtpSchema();
+    const otp = String(req.body?.otp || req.body?.code || '').replace(/\D/g, '');
+    if (!/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ message: 'Enter the 6-digit code from your email.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT t_pin_otp_hash, t_pin_otp_expires_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (
+      !user?.t_pin_otp_hash ||
+      !user.t_pin_otp_expires_at ||
+      new Date(user.t_pin_otp_expires_at).getTime() <= Date.now()
+    ) {
+      return res.status(400).json({
+        message: 'That code is invalid or expired. Request a new one.',
+      });
+    }
+
+    const ok = await bcrypt.compare(otp, user.t_pin_otp_hash);
+    if (!ok) {
+      return res.status(400).json({
+        message: 'That code is invalid or expired. Request a new one.',
+      });
+    }
+
+    const changeUntil = new Date(Date.now() + 10 * 60 * 1000);
+    await pool.query(
+      `
+        UPDATE users
+        SET t_pin_otp_hash = NULL,
+            t_pin_otp_expires_at = NULL,
+            t_pin_change_until = $1,
+            updated_at = NOW()
+        WHERE id = $2
+      `,
+      [changeUntil, req.user.id]
+    );
+
+    return res.json({
+      message: 'Code confirmed. Set a new T-Pin now.',
+      change_until: changeUntil.toISOString(),
+    });
+  } catch (err) {
+    console.error('tl verifyTPinOtp error:', err);
+    return res.status(500).json({ message: 'Server error verifying the code.' });
   }
 }
 
@@ -703,6 +861,8 @@ module.exports = {
   listCategories,
   listAssignableUsers,
   setTPin,
+  requestTPinOtp,
+  verifyTPinOtp,
   createCategory,
   updateCategory,
   deleteCategory,

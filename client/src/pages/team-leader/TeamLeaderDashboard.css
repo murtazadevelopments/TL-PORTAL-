@@ -356,6 +356,47 @@
   margin-top: 0.75rem;
 }
 
+.tl-forgot-link {
+  display: inline-block;
+  margin: 0.15rem 0 0.65rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8ec5ff;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tl-forgot-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.tl-forgot-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tl-otp-input,
+.form .tl-otp-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.85rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+.form .tl-otp-input:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
 .tl-assign-list {
   max-height: min(50vh, 360px);
   overflow: auto;

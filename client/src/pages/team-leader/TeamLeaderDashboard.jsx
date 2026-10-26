@@ -184,6 +184,27 @@ export default function TeamLeaderDashboard() {
     confirm: '',
   });
   const [setupBusy, setSetupBusy] = useState(false);
+  const [tPinForgot, setTPinForgot] = useState(false);
+  const [tPinOtpSent, setTPinOtpSent] = useState(false);
+  const [tPinOtpVerified, setTPinOtpVerified] = useState(false);
+  const [tPinOtp, setTPinOtp] = useState('');
+  const [tPinEmailHint, setTPinEmailHint] = useState('');
+  const [setupHint, setSetupHint] = useState('');
+
+  function resetTPinSetupForm() {
+    setSetupForm({
+      current_password: '',
+      current_t_pin: '',
+      t_pin: '',
+      confirm: '',
+    });
+    setTPinForgot(false);
+    setTPinOtpSent(false);
+    setTPinOtpVerified(false);
+    setTPinOtp('');
+    setTPinEmailHint('');
+    setSetupHint('');
+  }
 
   const sectionLabel = useMemo(
     () => SECTIONS.find((s) => s.id === section)?.label || section,
@@ -285,14 +306,17 @@ export default function TeamLeaderDashboard() {
     setError('');
     try {
       const body = { t_pin: setupForm.t_pin };
-      if (tPinConfigured) body.current_t_pin = setupForm.current_t_pin;
+      if (tPinOtpVerified) {
+        /* email OTP already verified — server uses the reset window */
+      } else if (tPinConfigured) body.current_t_pin = setupForm.current_t_pin;
       else body.current_password = setupForm.current_password;
       await api.post('/api/tl-dashboard/t-pin', body);
       setTPinConfigured(true);
       setSetupOpen(false);
-      setSetupForm({ current_password: '', current_t_pin: '', t_pin: '', confirm: '' });
+      resetTPinSetupForm();
       setSuccess('T-Pin saved. You can manage the dashboard now.');
     } catch (err) {
+      setSetupHint('');
       setError(err.response?.data?.message || 'Failed to save T-Pin.');
     } finally {
       setSetupBusy(false);
@@ -655,12 +679,8 @@ export default function TeamLeaderDashboard() {
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => {
-                  setSetupForm({
-                    current_password: '',
-                    current_t_pin: '',
-                    t_pin: '',
-                    confirm: '',
-                  });
+                  resetTPinSetupForm();
+                  setError('');
                   setSetupOpen(true);
                 }}
               >
@@ -983,7 +1003,13 @@ export default function TeamLeaderDashboard() {
       />
 
       {setupOpen && tPinConfigured && (
-        <div className="tl-modal-backdrop" role="presentation" onClick={() => setSetupOpen(false)}>
+        <div
+          className="tl-modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!setupBusy) setSetupOpen(false);
+          }}
+        >
           <div
             className="tl-modal"
             role="dialog"
@@ -991,64 +1017,232 @@ export default function TeamLeaderDashboard() {
             onClick={(e) => e.stopPropagation()}
           >
             <h2>Change T-Pin</h2>
-            <p className="muted">Enter your current T-Pin, then choose a new 4–8 digit pin.</p>
-            <form className="form" onSubmit={handleSetupTPin}>
-              <PasswordInput
-                label="Current T-Pin"
-                name="current_t_pin"
-                inputMode="numeric"
-                value={setupForm.current_t_pin}
-                onChange={(e) =>
-                  setSetupForm((f) => ({
-                    ...f,
-                    current_t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
-                  }))
-                }
-                required
-                maxLength={8}
-              />
-              <PasswordInput
-                label="New T-Pin"
-                name="new_t_pin"
-                inputMode="numeric"
-                value={setupForm.t_pin}
-                onChange={(e) =>
-                  setSetupForm((f) => ({
-                    ...f,
-                    t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
-                  }))
-                }
-                required
-                maxLength={8}
-              />
-              <PasswordInput
-                label="Confirm T-Pin"
-                name="confirm_t_pin"
-                inputMode="numeric"
-                value={setupForm.confirm}
-                onChange={(e) =>
-                  setSetupForm((f) => ({
-                    ...f,
-                    confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
-                  }))
-                }
-                required
-                maxLength={8}
-              />
-              <div className="tl-modal-actions">
+            <p className="muted">
+              {tPinOtpVerified
+                ? 'Code confirmed. Choose a new 4–8 digit T-Pin.'
+                : tPinForgot
+                  ? tPinOtpSent
+                    ? `Enter the 6-digit code sent to ${tPinEmailHint || 'your email'}.`
+                    : 'We will email a 6-digit code to reset your T-Pin.'
+                  : 'Enter your current T-Pin, then choose a new 4–8 digit pin.'}
+            </p>
+            {setupHint ? <p className="success">{setupHint}</p> : null}
+            {error ? <p className="error">{error}</p> : null}
+
+            {!tPinForgot ? (
+              <form className="form" onSubmit={handleSetupTPin}>
+                <PasswordInput
+                  label="Current T-Pin"
+                  name="current_t_pin"
+                  inputMode="numeric"
+                  value={setupForm.current_t_pin}
+                  onChange={(e) =>
+                    setSetupForm((f) => ({
+                      ...f,
+                      current_t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                    }))
+                  }
+                  required
+                  maxLength={8}
+                />
                 <button
                   type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setSetupOpen(false)}
-                  disabled={setupBusy}
+                  className="tl-forgot-link"
+                  onClick={() => {
+                    setError('');
+                    setSetupHint('');
+                    setTPinForgot(true);
+                  }}
                 >
-                  Cancel
+                  Forgot T-Pin?
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={setupBusy}>
-                  {setupBusy ? 'Saving…' : 'Save T-Pin'}
-                </button>
-              </div>
-            </form>
+                <PasswordInput
+                  label="New T-Pin"
+                  name="new_t_pin"
+                  inputMode="numeric"
+                  value={setupForm.t_pin}
+                  onChange={(e) =>
+                    setSetupForm((f) => ({
+                      ...f,
+                      t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                    }))
+                  }
+                  required
+                  maxLength={8}
+                />
+                <PasswordInput
+                  label="Confirm T-Pin"
+                  name="confirm_t_pin"
+                  inputMode="numeric"
+                  value={setupForm.confirm}
+                  onChange={(e) =>
+                    setSetupForm((f) => ({
+                      ...f,
+                      confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
+                    }))
+                  }
+                  required
+                  maxLength={8}
+                />
+                <div className="tl-modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setSetupOpen(false)}
+                    disabled={setupBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={setupBusy}>
+                    {setupBusy ? 'Saving…' : 'Save T-Pin'}
+                  </button>
+                </div>
+              </form>
+            ) : !tPinOtpVerified ? (
+              <form
+                className="form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setSetupBusy(true);
+                  setError('');
+                  setSetupHint('');
+                  try {
+                    if (!tPinOtpSent) {
+                      const { data } = await api.post('/api/tl-dashboard/t-pin/otp');
+                      setTPinEmailHint(data.email_hint || '');
+                      setTPinOtpSent(true);
+                      setSetupHint(data.message || 'Code sent to your email.');
+                    } else {
+                      const code = tPinOtp.replace(/\D/g, '');
+                      if (!/^\d{6}$/.test(code)) {
+                        setError('Enter the 6-digit code from your email.');
+                        return;
+                      }
+                      const { data } = await api.post('/api/tl-dashboard/t-pin/otp/verify', {
+                        otp: code,
+                      });
+                      setTPinOtpVerified(true);
+                      setSetupHint(data.message || 'Code confirmed. Set a new T-Pin now.');
+                    }
+                  } catch (err) {
+                    setError(err.response?.data?.message || 'Could not complete T-Pin reset.');
+                    if (err.response?.data?.email_hint) {
+                      setTPinEmailHint(err.response.data.email_hint);
+                    }
+                  } finally {
+                    setSetupBusy(false);
+                  }
+                }}
+              >
+                {tPinOtpSent ? (
+                  <label className="field">
+                    Email code
+                    <input
+                      type="text"
+                      className="tl-otp-input"
+                      name="t_pin_otp"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={tPinOtp}
+                      onChange={(e) => setTPinOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      required
+                    />
+                  </label>
+                ) : null}
+                <div className="tl-modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setTPinForgot(false);
+                      setTPinOtpSent(false);
+                      setTPinOtp('');
+                      setSetupHint('');
+                      setError('');
+                    }}
+                    disabled={setupBusy}
+                  >
+                    Back
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={setupBusy}>
+                    {setupBusy
+                      ? tPinOtpSent
+                        ? 'Checking…'
+                        : 'Sending…'
+                      : tPinOtpSent
+                        ? 'Verify code'
+                        : 'Send OTP to email'}
+                  </button>
+                </div>
+                {tPinOtpSent ? (
+                  <button
+                    type="button"
+                    className="tl-forgot-link"
+                    disabled={setupBusy}
+                    onClick={async () => {
+                      setSetupBusy(true);
+                      setError('');
+                      try {
+                        const { data } = await api.post('/api/tl-dashboard/t-pin/otp');
+                        setTPinEmailHint(data.email_hint || tPinEmailHint);
+                        setSetupHint(data.message || 'Code sent to your email.');
+                      } catch (err) {
+                        setError(err.response?.data?.message || 'Could not resend the code.');
+                      } finally {
+                        setSetupBusy(false);
+                      }
+                    }}
+                  >
+                    Resend code
+                  </button>
+                ) : null}
+              </form>
+            ) : (
+              <form className="form" onSubmit={handleSetupTPin}>
+                <PasswordInput
+                  label="New T-Pin"
+                  name="new_t_pin"
+                  inputMode="numeric"
+                  value={setupForm.t_pin}
+                  onChange={(e) =>
+                    setSetupForm((f) => ({
+                      ...f,
+                      t_pin: e.target.value.replace(/\D/g, '').slice(0, 8),
+                    }))
+                  }
+                  required
+                  maxLength={8}
+                />
+                <PasswordInput
+                  label="Confirm T-Pin"
+                  name="confirm_t_pin"
+                  inputMode="numeric"
+                  value={setupForm.confirm}
+                  onChange={(e) =>
+                    setSetupForm((f) => ({
+                      ...f,
+                      confirm: e.target.value.replace(/\D/g, '').slice(0, 8),
+                    }))
+                  }
+                  required
+                  maxLength={8}
+                />
+                <div className="tl-modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setSetupOpen(false)}
+                    disabled={setupBusy}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={setupBusy}>
+                    {setupBusy ? 'Saving…' : 'Save T-Pin'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -386,6 +386,21 @@ async function notifySalesPinOtp(user, otp) {
   });
 }
 
+async function notifyTPinOtp(user, otp) {
+  if (!user?.email) return null;
+  return sendEmailSafe({
+    to: user.email,
+    subject: 'Your T-Pin reset code',
+    emailType: 't_pin_otp',
+    html: `
+      <p>Hi ${escapeHtml(user.name || '')},</p>
+      <p>Use this one-time code to change your Team Leader Dashboard T-Pin. It expires in 10 minutes.</p>
+      <p style="font-size:28px;letter-spacing:0.2em;font-weight:700">${escapeHtml(otp)}</p>
+      <p>If you did not request this, you can ignore this email. Do not share the code.</p>
+    `,
+  });
+}
+
 async function notifyPasswordReset(user, resetUrl) {
   const to = String(user?.email || '')
     .trim()
@@ -709,6 +724,7 @@ module.exports = {
   notifyUsernameReminder,
   notifyPasswordReset,
   notifySalesPinOtp,
+  notifyTPinOtp,
   notifyEmployeeAdminUpdated,
   notifyAdminsEmployeeSelfUpdate,
   notifyUserLogin,
