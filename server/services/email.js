@@ -32,13 +32,14 @@ function htmlToText(html) {
     .trim();
 }
 
-async function sendOne({ to, subject, html, text }) {
+async function sendOne({ to, subject, html, text, attachments }) {
   try {
     return await sendViaSmtp({
       to,
       subject,
       html,
       text: text || htmlToText(html),
+      attachments,
     });
   } catch (error) {
     const err = new Error(error.message || 'Failed to send email');
@@ -69,6 +70,7 @@ async function sendEmail(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
+        attachments: opts.attachments,
         emailType: opts.emailType,
       })
     );
@@ -91,6 +93,7 @@ async function sendEmailSafe(opts) {
         subject: opts.subject,
         html: opts.html,
         text: opts.text,
+        attachments: opts.attachments,
         emailType: opts.emailType,
       });
       lastOk = data;

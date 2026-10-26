@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-D-YnFTwn.js";import{t}from"./AccountRecovery-CdPY5znj.js";var n=e();function r(){return(0,n.jsx)(t,{mode:`password`})}export{r as default};

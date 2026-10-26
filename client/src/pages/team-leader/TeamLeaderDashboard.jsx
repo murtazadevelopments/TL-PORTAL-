@@ -166,6 +166,8 @@ export default function TeamLeaderDashboard() {
   const [linkDrafts, setLinkDrafts] = useState({});
   const [labelDrafts, setLabelDrafts] = useState({});
   const [openIds, setOpenIds] = useState(() => new Set());
+  const [editingCats, setEditingCats] = useState(() => new Set());
+  const [editingItem, setEditingItem] = useState(null);
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [assignTeam, setAssignTeam] = useState('all');
   const [assignCategory, setAssignCategory] = useState(null);
@@ -203,6 +205,8 @@ export default function TeamLeaderDashboard() {
       setDirty(false);
       setLinkDrafts({});
       setLabelDrafts({});
+      setEditingCats(new Set());
+      setEditingItem(null);
       const next = normalizeCategories(data.categories);
       // Open first category by default
       setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
@@ -306,6 +310,7 @@ export default function TeamLeaderDashboard() {
     const id = tempId('cat');
     setCategories((prev) => [...prev, { id, name, items: [], assignees: [] }]);
     setOpenIds((prev) => new Set([...prev, String(id)]));
+    setEditingCats((prev) => new Set([...prev, String(id)]));
     setNewCategoryName('');
     markDirty();
     setError('');
@@ -332,6 +337,14 @@ export default function TeamLeaderDashboard() {
       next.delete(String(cat.id));
       return next;
     });
+    setEditingCats((prev) => {
+      const next = new Set(prev);
+      next.delete(String(cat.id));
+      return next;
+    });
+    setEditingItem((prev) =>
+      prev && String(prev.catId) === String(cat.id) ? null : prev
+    );
     markDirty();
   }
 
@@ -387,7 +400,70 @@ export default function TeamLeaderDashboard() {
           : c
       )
     );
+    setEditingItem((prev) =>
+      prev && String(prev.catId) === String(cat.id) && String(prev.itemId) === String(item.id)
+        ? null
+        : prev
+    );
     markDirty();
+  }
+
+  function isEditingCategory(cat) {
+    return canManage && editingCats.has(String(cat.id));
+  }
+
+  function startEditCategory(cat) {
+    if (!canManage) return;
+    setEditingCats((prev) => new Set([...prev, String(cat.id)]));
+    setOpenIds((prev) => new Set([...prev, String(cat.id)]));
+  }
+
+  function stopEditCategory(cat) {
+    setEditingCats((prev) => {
+      const next = new Set(prev);
+      next.delete(String(cat.id));
+      return next;
+    });
+    setEditingItem((prev) =>
+      prev && String(prev.catId) === String(cat.id) ? null : prev
+    );
+  }
+
+  function startEditItem(cat, item) {
+    if (!canManage) return;
+    setEditingItem({
+      catId: cat.id,
+      itemId: item.id,
+      label: item.label || '',
+      value: item.value || '',
+    });
+  }
+
+  function saveEditItem() {
+    if (!canManage || !editingItem) return;
+    const value = String(editingItem.value || '').trim();
+    if (!value) {
+      setError('Enter a link.');
+      return;
+    }
+    const label = String(editingItem.label || '').trim();
+    setCategories((prev) =>
+      prev.map((c) =>
+        c.id === editingItem.catId
+          ? {
+              ...c,
+              items: c.items.map((it) =>
+                it.id === editingItem.itemId
+                  ? { ...it, value, label: label && label !== value ? label : '' }
+                  : it
+              ),
+            }
+          : c
+      )
+    );
+    setEditingItem(null);
+    markDirty();
+    setError('');
   }
 
   function openAssign(cat) {
@@ -568,7 +644,7 @@ export default function TeamLeaderDashboard() {
           <h1>Team Leader Dashboard</h1>
           <p className="muted" style={{ margin: 0 }}>
             {canManage
-              ? 'Edit freely, then click Save and enter your T-Pin once.'
+              ? 'Use Edit on a category to change it, then Save with your T-Pin. Team leaders only see copy.'
               : 'View and copy the links assigned to you.'}
           </p>
         </div>
@@ -697,30 +773,49 @@ export default function TeamLeaderDashboard() {
                 </button>
                 {canManage && (
                   <div className="tl-category-actions" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" className="btn btn-ghost" onClick={() => openAssign(cat)}>
-                      Assign ({(cat.assignees || []).length})
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => handleRenameCategory(cat)}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => handleDeleteCategory(cat)}
-                    >
-                      Delete
-                    </button>
+                    {isEditingCategory(cat) ? (
+                      <>
+                        <button type="button" className="btn btn-ghost" onClick={() => openAssign(cat)}>
+                          Assign ({(cat.assignees || []).length})
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleRenameCategory(cat)}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleDeleteCategory(cat)}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => stopEditCategory(cat)}
+                        >
+                          Done
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => startEditCategory(cat)}
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
               {isOpen && (
                 <div className="tl-acc-panel">
-                  {canManage && (cat.assignees || []).length > 0 && (
+                  {isEditingCategory(cat) && (cat.assignees || []).length > 0 && (
                     <p className="tl-assignees muted">
                       Visible to:{' '}
                       {(cat.assignees || []).map((u) => u.name || u.username).join(', ')}
@@ -728,8 +823,54 @@ export default function TeamLeaderDashboard() {
                   )}
 
                   <ul className="tl-item-list">
-                    {(cat.items || []).map((item) => (
+                    {(cat.items || []).map((item) => {
+                      const itemEditing =
+                        editingItem &&
+                        String(editingItem.catId) === String(cat.id) &&
+                        String(editingItem.itemId) === String(item.id);
+                      return (
                       <li key={item.id} className="tl-item">
+                        {itemEditing ? (
+                          <div className="tl-item-edit">
+                            <input
+                              type="text"
+                              placeholder="Label (optional)"
+                              value={editingItem.label}
+                              onChange={(e) =>
+                                setEditingItem((prev) =>
+                                  prev ? { ...prev, label: e.target.value } : prev
+                                )
+                              }
+                            />
+                            <input
+                              type="url"
+                              placeholder="https://…"
+                              value={editingItem.value}
+                              onChange={(e) =>
+                                setEditingItem((prev) =>
+                                  prev ? { ...prev, value: e.target.value } : prev
+                                )
+                              }
+                            />
+                            <div className="tl-item-edit-actions">
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={saveEditItem}
+                              >
+                                Update
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => setEditingItem(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
                         {item.label ? (
                           <p className="tl-item-label">{item.label}</p>
                         ) : null}
@@ -742,24 +883,36 @@ export default function TeamLeaderDashboard() {
                             {item.value}
                           </a>
                           <CopyButton value={item.value} label="link" />
-                          {canManage && (
-                            <button
-                              type="button"
-                              className="btn btn-ghost"
-                              onClick={() => handleDeleteItem(cat, item)}
-                            >
-                              Remove
-                            </button>
+                          {isEditingCategory(cat) && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => startEditItem(cat, item)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => handleDeleteItem(cat, item)}
+                              >
+                                Remove
+                              </button>
+                            </>
                           )}
                         </div>
+                          </>
+                        )}
                       </li>
-                    ))}
+                      );
+                    })}
                     {(cat.items || []).length === 0 && (
                       <li className="muted">No links yet.</li>
                     )}
                   </ul>
 
-                  {canManage && (
+                  {isEditingCategory(cat) && (
                     <div className="tl-add-link">
                       <input
                         type="text"

@@ -16,7 +16,7 @@ function fileFilter(req, file, cb) {
     return cb(null, true);
   }
 
-  if (['cnic_front', 'cnic_back', 'profile_picture'].includes(field)) {
+  if (['cnic_front', 'cnic_back', 'profile_picture', 'picture'].includes(field)) {
     if (!IMAGE_TYPES.has(file.mimetype)) {
       return cb(new Error(`${field} must be an image (jpeg, png, webp, or gif).`));
     }
@@ -140,6 +140,15 @@ function employmentFormUpload(req, res, next) {
   });
 }
 
+function messagePictureUpload(req, res, next) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (!contentType.includes('multipart/form-data')) return next();
+  upload.single('picture')(req, res, (err) => {
+    if (!err) return next();
+    return sendUploadError(res, err, 'Picture must be 5MB or smaller.');
+  });
+}
+
 function lowerStaffUpload(req, res, next) {
   const contentType = String(req.headers['content-type'] || '');
   if (!contentType.includes('multipart/form-data')) return next();
@@ -160,6 +169,7 @@ module.exports = {
   profilePictureUpload,
   documentUpload,
   employmentFormUpload,
+  messagePictureUpload,
   lowerStaffUpload,
   extFromFile,
 };

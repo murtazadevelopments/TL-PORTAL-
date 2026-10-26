@@ -159,6 +159,9 @@ async function sendEmail(opts) {
     html: opts.html,
     text: opts.text || htmlToText(opts.html),
   };
+  if (Array.isArray(opts.attachments) && opts.attachments.length) {
+    mail.attachments = opts.attachments;
+  }
   const replyTo = opts.replyTo || getReplyTo();
   if (replyTo) mail.replyTo = replyTo;
 

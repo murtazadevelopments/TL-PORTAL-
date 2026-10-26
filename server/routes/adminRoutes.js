@@ -80,7 +80,11 @@ const {
   sendAdminMessage,
 } = require('../controllers/messagesController');
 const { uploadEmploymentForm } = require('../controllers/employmentFormController');
-const { employmentFormUpload, lowerStaffUpload } = require('../middleware/uploadMiddleware');
+const {
+  employmentFormUpload,
+  lowerStaffUpload,
+  messagePictureUpload,
+} = require('../middleware/uploadMiddleware');
 const {
   adminOverview,
   adminManualMark,
@@ -522,6 +526,7 @@ router.post(
   '/messages',
   requireRole('admin'),
   requirePermission('messages:send'),
+  messagePictureUpload,
   sendAdminMessage
 );
 

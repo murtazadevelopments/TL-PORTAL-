@@ -25,6 +25,41 @@ function snippet(text, max = 110) {
   return `${s.slice(0, max - 1)}…`;
 }
 
+function MessagePicture({ url }) {
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (!url) return undefined;
+    let objectUrl = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get(url, { responseType: 'blob' });
+        if (cancelled) return;
+        const blob = res.data;
+        if (!(blob instanceof Blob) || blob.size < 40 || String(blob.type || '').includes('json')) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      } catch {
+        /* keep empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  if (!src) return null;
+  return (
+    <div className="msg-picture">
+      <img src={src} alt="Attached picture" />
+    </div>
+  );
+}
+
 export default function MessagesInbox({ onUnreadChange }) {
   const navigate = useNavigate();
   const outlet = useOutletContext() || {};
@@ -134,6 +169,9 @@ export default function MessagesInbox({ onUnreadChange }) {
                       {msg.subject || '(No subject)'}
                     </span>
                     <span className="msg-snippet">{snippet(msg.body)}</span>
+                    {msg.has_image || msg.image_url ? (
+                      <span className="msg-has-pic">Picture attached</span>
+                    ) : null}
                   </span>
                 </button>
               </li>
@@ -172,6 +210,9 @@ export default function MessagesInbox({ onUnreadChange }) {
               </button>
             </div>
             <div className="msg-body">{selected.body}</div>
+            {(selected.has_image || selected.image_url) && (
+              <MessagePicture url={selected.image_url} />
+            )}
           </div>
         </div>
       )}

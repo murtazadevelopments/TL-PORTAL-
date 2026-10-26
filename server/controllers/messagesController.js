@@ -1,8 +1,14 @@
+const fs = require('fs');
 const pool = require('../config/db');
 const { sendEmailSafe } = require('../services/email');
 const { writeAuditLog } = require('../utils/auditLog');
 const { sendPushToUserSafe } = require('../services/pushNotifications');
-const { publicSenderLabel, redactMessageSender } = require('../utils/messageSender');
+const { saveMessagePicture, absoluteFromRelative } = require('../services/localStorage');
+const {
+  redactMessageSender,
+  resolveFromStyle,
+  senderDisplayName,
+} = require('../utils/messageSender');
 
 const DELIVERY = new Set(['portal', 'email', 'both']);
 const AUDIENCE = new Set(['user', 'all', 'team', 'branch']);
@@ -11,6 +17,18 @@ const RECIPIENT_BASE_WHERE = `
   is_active IS DISTINCT FROM FALSE
   AND LOWER(TRIM(COALESCE(status, ''))) IN ('active', 'pending', '')
 `;
+
+let messagesSchemaReady = false;
+async function ensureMessagesSchema() {
+  if (messagesSchemaReady) return;
+  await pool.query(`
+    ALTER TABLE messages
+      ADD COLUMN IF NOT EXISTS image_path TEXT,
+      ADD COLUMN IF NOT EXISTS image_mime TEXT,
+      ADD COLUMN IF NOT EXISTS from_style TEXT NOT NULL DEFAULT 'portal'
+  `);
+  messagesSchemaReady = true;
+}
 
 function escapeHtml(value) {
   return String(value || '')
@@ -131,18 +149,36 @@ async function deliverOneMessage({
   emailIfPushUndelivered = false,
   pushPayload = null,
   isAlert = false,
+  fromStyle = 'portal',
+  imagePath = null,
+  imageMime = null,
+  imageBuffer = null,
 }) {
+  await ensureMessagesSchema();
+  const style = fromStyle === 'name' ? 'name' : 'portal';
+  const senderLabel = senderDisplayName(style, sender);
   const { rows } = await pool.query(
     `
       INSERT INTO messages (
-        sender_id, recipient_id, subject, body, delivery_method
+        sender_id, recipient_id, subject, body, delivery_method,
+        from_style, image_path, image_mime
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING
         id, sender_id, recipient_id, subject, body, delivery_method,
+        from_style, image_path, image_mime,
         email_sent_at, read_at, created_at
     `,
-    [sender.id, recipient.id, subject || null, messageBody, deliveryMethod]
+    [
+      sender.id,
+      recipient.id,
+      subject || null,
+      messageBody,
+      deliveryMethod,
+      style,
+      imagePath,
+      imageMime,
+    ]
   );
 
   let message = rows[0];
@@ -167,13 +203,15 @@ async function deliverOneMessage({
     if (!recipient.email) {
       emailError = 'No email on file';
     } else {
-      const senderLabel = publicSenderLabel();
       const intro = isAlert
         ? `You have a new alert from ${senderLabel}:`
         : `You have a new message from ${senderLabel}:`;
       const mailSubject = subject || `Alert from ${senderLabel}`;
       const safeBody = escapeHtml(messageBody).replace(/\n/g, '<br />');
       const greeting = escapeHtml(recipient.name || recipient.username || 'there');
+      const pictureHtml = imageBuffer
+        ? `<p style="margin-top:14px"><img src="cid:message-picture" alt="Attached picture" style="max-width:100%;height:auto;border-radius:8px" /></p>`
+        : '';
       const result = await sendEmailSafe({
         to: recipient.email,
         subject: mailSubject,
@@ -182,6 +220,7 @@ async function deliverOneMessage({
           `${intro}\n\n` +
           (subject ? `${subject}\n\n` : '') +
           `${messageBody}\n\n` +
+          (imageBuffer ? 'A picture is attached.\n\n' : '') +
           'You can also read this in the portal under My Account → Messages.\n',
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
@@ -190,12 +229,23 @@ async function deliverOneMessage({
             ${subject ? `<p><strong>${escapeHtml(subject)}</strong></p>` : ''}
             <div style="padding:12px 14px;border-left:3px solid #3dff7a;background:#f6f8fb">
               ${safeBody}
+              ${pictureHtml}
             </div>
             <p style="margin-top:16px;color:#555;font-size:13px">
               You can also read this in the portal under <em>My Account → Messages</em>.
             </p>
           </div>
         `,
+        attachments: imageBuffer
+          ? [
+              {
+                filename: 'picture.jpg',
+                content: imageBuffer,
+                contentType: imageMime || 'image/jpeg',
+                cid: 'message-picture',
+              },
+            ]
+          : undefined,
         emailType: 'admin_message',
       });
 
@@ -311,23 +361,21 @@ async function listMessageRecipients(req, res) {
 
 /**
  * POST /api/admin/messages
- * Body: {
- *   audienceType: 'user'|'all'|'team'|'branch',
- *   recipientId?, team?, branch?,
- *   subject, body, deliveryMethod
- * }
+ * JSON or multipart: audience, subject, body, deliveryMethod, fromStyle, picture
  */
 async function sendAdminMessage(req, res) {
   try {
+    await ensureMessagesSchema();
     const body = req.body || {};
     const subject = body.subject != null ? String(body.subject).trim() : '';
     const messageBody = String(body.body || '').trim();
     const deliveryMethod = normalizeDelivery(
       body.deliveryMethod ?? body.delivery_method
     );
+    const fromStyle = resolveFromStyle(req.user?.role, body.fromStyle ?? body.from_style);
 
-    if (!messageBody) {
-      return res.status(400).json({ message: 'Message body is required.' });
+    if (!messageBody && !req.file) {
+      return res.status(400).json({ message: 'Message body or a picture is required.' });
     }
     if (!DELIVERY.has(deliveryMethod)) {
       return res.status(400).json({
@@ -364,9 +412,26 @@ async function sendAdminMessage(req, res) {
       role: req.user.role,
     };
 
+    let imagePath = null;
+    let imageMime = null;
+    let imageBuffer = null;
+    if (req.file?.buffer) {
+      const saved = await saveMessagePicture(req.file);
+      imagePath = saved.relativePath;
+      imageMime = saved.contentType;
+      imageBuffer = req.file.buffer;
+      try {
+        const abs = absoluteFromRelative(imagePath);
+        if (abs) imageBuffer = fs.readFileSync(abs);
+      } catch {
+        /* use original buffer */
+      }
+    }
+
     const created = [];
     let emailsSent = 0;
     let emailFailures = 0;
+    const senderLabel = senderDisplayName(fromStyle, sender);
 
     for (const recipient of audience.recipients) {
       // Don't message yourself in bulk "all"
@@ -377,15 +442,19 @@ async function sendAdminMessage(req, res) {
         sender,
         recipient,
         subject,
-        messageBody,
+        messageBody: messageBody || (imagePath ? 'A picture is attached.' : ''),
         deliveryMethod,
+        fromStyle,
+        imagePath,
+        imageMime,
+        imageBuffer,
         emailIfPushUndelivered: deliveryMethod === 'portal',
         pushPayload: {
-          title: subject || 'New portal message',
+          title: subject || `New message from ${senderLabel}`,
           body: String(messageBody || '')
             .replace(/\s+/g, ' ')
             .trim()
-            .slice(0, 120),
+            .slice(0, 120) || 'You have a new message with a picture.',
           url: '/account/messages',
           tag: 'admin-message',
           urgency: 'high',
@@ -452,6 +521,7 @@ async function sendAdminMessage(req, res) {
  */
 async function listMyMessages(req, res) {
   try {
+    await ensureMessagesSchema();
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
@@ -460,6 +530,7 @@ async function listMyMessages(req, res) {
         SELECT
           m.id, m.sender_id, m.recipient_id, m.subject, m.body,
           m.delivery_method, m.email_sent_at, m.read_at, m.created_at,
+          m.from_style, m.image_path, m.image_mime,
           u.name AS sender_name,
           u.username AS sender_username,
           u.role AS sender_role
@@ -560,11 +631,48 @@ async function markMessageRead(req, res) {
   }
 }
 
+async function streamMessageImage(req, res) {
+  try {
+    await ensureMessagesSchema();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid message id.' });
+    }
+    const { rows } = await pool.query(
+      `
+        SELECT id, recipient_id, image_path, image_mime
+        FROM messages
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+    const row = rows[0];
+    if (!row?.image_path) {
+      return res.status(404).json({ message: 'Picture not found.' });
+    }
+    if (String(row.recipient_id) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'You cannot view this picture.' });
+    }
+    const abs = absoluteFromRelative(row.image_path);
+    if (!abs || !fs.existsSync(abs)) {
+      return res.status(404).json({ message: 'Picture file is missing.' });
+    }
+    res.setHeader('Content-Type', row.image_mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    return fs.createReadStream(abs).pipe(res);
+  } catch (err) {
+    console.error('streamMessageImage error:', err);
+    return res.status(500).json({ message: 'Server error reading picture.' });
+  }
+}
+
 module.exports = {
   listMessageRecipients,
   sendAdminMessage,
   listMyMessages,
   unreadCount,
   markMessageRead,
+  streamMessageImage,
   deliverOneMessage,
 };

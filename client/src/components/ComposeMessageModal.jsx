@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import TeamFilterSelect from './TeamFilterSelect';
 import { matchesTeamFilter } from '../utils/teamNames';
+import { useAuthUser } from '../context/AuthUserContext';
+import { isCeoOrManager } from '../utils/permissions';
 import './ComposeMessageModal.css';
 
 const DELIVERY_OPTIONS = [
@@ -48,8 +50,14 @@ export default function ComposeMessageModal({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('portal');
+  const [fromStyle, setFromStyle] = useState('portal');
+  const [picture, setPicture] = useState(null);
+  const [picturePreview, setPicturePreview] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const { user } = useAuthUser();
+  const canChooseFrom = isCeoOrManager(user?.role);
+  const senderName = String(user?.name || user?.username || 'your name').trim();
 
   const lockedRecipient = Boolean(initialRecipient?.id);
 
@@ -91,6 +99,12 @@ export default function ComposeMessageModal({
     setSubject('');
     setBody('');
     setDeliveryMethod('portal');
+    setFromStyle('portal');
+    setPicture(null);
+    setPicturePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return '';
+    });
     setSearch('');
     setFormError('');
     setPersonTeam('all');
@@ -161,10 +175,38 @@ export default function ComposeMessageModal({
     return '';
   }, [lockedRecipient, audienceType, selected, previewCount, team, branch]);
 
+  function handlePictureChange(e) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = '';
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      setFormError('Attachment must be a picture (jpeg, png, webp, or gif).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setFormError('Picture must be 5MB or smaller.');
+      return;
+    }
+    setFormError('');
+    setPicturePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+    setPicture(file);
+  }
+
+  function clearPicture() {
+    setPicture(null);
+    setPicturePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return '';
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!body.trim()) {
-      setFormError('Message body is required.');
+    if (!body.trim() && !picture) {
+      setFormError('Write a message or attach a picture.');
       return;
     }
 
@@ -173,6 +215,7 @@ export default function ComposeMessageModal({
       body: body.trim(),
       deliveryMethod,
       audienceType: lockedRecipient ? 'user' : audienceType,
+      fromStyle: canChooseFrom ? fromStyle : 'portal',
     };
 
     if (payload.audienceType === 'user') {
@@ -205,7 +248,17 @@ export default function ComposeMessageModal({
     setSubmitting(true);
     setFormError('');
     try {
-      const { data } = await api.post('/api/admin/messages', payload);
+      let data;
+      if (picture) {
+        const form = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value != null && value !== '') form.append(key, String(value));
+        });
+        form.append('picture', picture);
+        ({ data } = await api.post('/api/admin/messages', form));
+      } else {
+        ({ data } = await api.post('/api/admin/messages', payload));
+      }
       onSuccess?.(data);
       onClose();
     } catch (err) {
@@ -395,10 +448,61 @@ export default function ComposeMessageModal({
                   onChange={(e) => setBody(e.target.value)}
                   placeholder="Write your message…"
                   rows={6}
-                  required
+                  required={!picture}
                 />
               </label>
+              <div className="compose-picture">
+                <span>Picture attachment <span className="muted">(optional)</span></span>
+                {picturePreview ? (
+                  <div className="compose-picture-preview">
+                    <img src={picturePreview} alt="Attachment preview" />
+                    <button type="button" className="btn btn-ghost" onClick={clearPicture}>
+                      Remove picture
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handlePictureChange}
+                  />
+                )}
+              </div>
             </fieldset>
+
+            {canChooseFrom && (
+              <fieldset className="compose-step">
+                <legend>Shown as</legend>
+                <div className="compose-from" role="radiogroup" aria-label="Message from">
+                  <label
+                    className={`compose-delivery-option${fromStyle === 'name' ? ' is-active' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="fromStyle"
+                      value="name"
+                      checked={fromStyle === 'name'}
+                      onChange={() => setFromStyle('name')}
+                    />
+                    Message received for your name ({senderName})
+                  </label>
+                  <label
+                    className={`compose-delivery-option${
+                      fromStyle === 'portal' ? ' is-active' : ''
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="fromStyle"
+                      value="portal"
+                      checked={fromStyle === 'portal'}
+                      onChange={() => setFromStyle('portal')}
+                    />
+                    Message received from Textured Lab Portal
+                  </label>
+                </div>
+              </fieldset>
+            )}
 
             <fieldset className="compose-step">
               <legend>Delivery</legend>

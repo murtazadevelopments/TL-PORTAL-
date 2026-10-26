@@ -221,6 +221,15 @@ async function saveUserFile(user, docType, file) {
   return relativePath;
 }
 
+async function saveMessagePicture(file) {
+  if (!file?.buffer) throw new Error('Missing picture.');
+  const { randomUUID } = require('crypto');
+  const prepared = await prepareFileBuffer(file, { asImage: true });
+  const relativePath = path.posix.join('messages', `${randomUUID()}${prepared.ext}`);
+  await writeRelativeFile(relativePath, prepared.buffer);
+  return { relativePath, contentType: prepared.contentType };
+}
+
 /**
  * Write a raw buffer (migration) to a relative path.
  */
@@ -392,6 +401,7 @@ module.exports = {
   userFolder,
   legacyUserFolders,
   saveUserFile,
+  saveMessagePicture,
   writeRelativeFile,
   saveRawRelative,
   absoluteFromRelative,
