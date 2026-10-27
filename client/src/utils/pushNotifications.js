@@ -47,14 +47,56 @@ function urlBase64ToUint8Array(base64String) {
   return output;
 }
 
+export function currentNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
+  return Notification.permission || 'denied';
+}
+
+export function notificationBlockedHelp() {
+  if (typeof navigator === 'undefined') {
+    return 'Notifications are blocked. Allow them in this device’s settings, then tap Enable again.';
+  }
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent || '')) {
+    return 'Notifications are blocked on this iPhone. Open Settings → Notifications → TL Portal (or Safari), turn Allow Notifications on, then return here and tap Enable again.';
+  }
+  return 'Notifications are blocked in this browser. Open site settings, allow Notifications, then tap Enable again.';
+}
+
+/**
+ * Ask for notification permission from a user tap.
+ * Safari/iOS: the callback form can report "granted" when the Promise form wrongly says "denied".
+ * Auto-enable must never call this — a prompt without a tap is stored as denied.
+ */
 export async function requestPushPermission() {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'denied';
-  if (Notification.permission !== 'default') return Notification.permission;
-  try {
-    return await Notification.requestPermission();
-  } catch {
-    return Notification.permission;
-  }
+  if (Notification.permission === 'granted') return 'granted';
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (value) => {
+      const next = typeof value === 'string' ? value : Notification.permission;
+      if (next === 'granted') {
+        finished = true;
+        resolve('granted');
+        return;
+      }
+      if (finished) return;
+      window.setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        resolve(Notification.permission === 'granted' ? 'granted' : next || Notification.permission);
+      }, 50);
+    };
+
+    try {
+      const result = Notification.requestPermission(finish);
+      if (result && typeof result.then === 'function') {
+        result.then(finish).catch(() => finish(Notification.permission));
+      }
+    } catch {
+      finish(Notification.permission);
+    }
+  });
 }
 
 /**
@@ -69,9 +111,11 @@ export async function enablePushNotifications(options = {}) {
     throw new Error('Push notifications are not supported in this browser.');
   }
 
-  const permission = await requestPushPermission();
+  const permission = options.silent
+    ? currentNotificationPermission()
+    : await requestPushPermission();
   if (permission !== 'granted') {
-    throw new Error('Notification permission was denied.');
+    throw new Error(notificationBlockedHelp());
   }
 
   const { data: keyData } = await api.get('/api/push/vapid-public-key');
@@ -118,7 +162,7 @@ export async function enablePushNotificationsSafe() {
     try {
       if (hasPushOptOut()) return false;
       if (!localStorage.getItem('token')) return false;
-      if (!('Notification' in window) || Notification.permission === 'denied') return false;
+      if (!('Notification' in window) || Notification.permission !== 'granted') return false;
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
       await enablePushNotifications({ silent: true });
       return true;

@@ -9,8 +9,7 @@ import {
   trackFace,
   captureFace,
   faceHint,
-  poseFromLandmarks,
-  livenessPassed,
+  faceUsable,
   averageDescriptors,
   pickLivenessAction,
   waitForVideo,
@@ -19,7 +18,7 @@ import {
   SAMPLE_COUNT,
   ALIGN_MS,
   SAMPLE_GAP_MS,
-  LIVENESS_MS,
+  VERIFY_MS,
 } from '../../lib/faceAttendance';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import { hoursRangeLabel, pickHourFromPayload } from '../../utils/clockHours';
@@ -277,11 +276,10 @@ export default function AttendancePage() {
     if (!areFaceModelsReady()) {
       setEngineHint('Preparing face check…');
       await loadFaceModels();
-      setModelsReady(true);
       setEngineHint('');
-    } else {
-      setModelsReady(true);
     }
+    setModelsReady(true);
+    captureFace(video).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -367,7 +365,7 @@ export default function AttendancePage() {
     };
   }, [cameraOn, phase, isRemote, modelsReady]);
 
-  async function waitForFace(deadlineMs = 12000) {
+  async function waitForFace(deadlineMs = 1500) {
     const started = Date.now();
     let stableSince = 0;
     while (Date.now() - started < deadlineMs) {
@@ -375,26 +373,27 @@ export default function AttendancePage() {
       const video = videoRef.current;
       const tracked = video?.readyState >= 2 ? await trackFace(video) : null;
       const advice = faceHint(tracked);
-      setHint(advice.hint);
-      setDetail(advice.detail);
-      setRing(advice.ok ? 'ready' : 'capturing');
-      setProgress(Math.min(40, Math.round(((Date.now() - started) / deadlineMs) * 40)));
-      if (advice.ok) {
+      const ready = faceUsable(tracked);
+      setHint(ready ? 'Hold still' : advice.hint);
+      setDetail(ready ? 'Matching your face' : advice.detail);
+      setRing(ready ? 'ready' : 'capturing');
+      setProgress(Math.min(55, 20 + Math.round(((Date.now() - started) / deadlineMs) * 35)));
+      if (ready) {
+        if (!ALIGN_MS) return tracked;
         if (!stableSince) stableSince = Date.now();
         if (Date.now() - stableSince >= ALIGN_MS) return tracked;
       } else {
         stableSince = 0;
       }
-      await sleep(80);
     }
     throw new Error('We still cannot see your face. Sit closer, turn on a light, and try again.');
   }
 
-  async function grabDescriptor() {
-    for (let i = 0; i < 10; i += 1) {
+  async function grabDescriptor(until = Date.now() + 2500) {
+    while (Date.now() < until) {
+      if (!runningRef.current) throw new Error('Cancelled.');
       const shot = await captureFace(videoRef.current);
       if (shot?.descriptor && shot.descriptor.length >= 128) return shot;
-      await sleep(70);
     }
     throw new Error('Hold still for a moment so we can capture your face.');
   }
@@ -427,14 +426,14 @@ export default function AttendancePage() {
         await loadFaceModels();
         setModelsReady(true);
       }
-      await waitForFace(16000);
+      await waitForFace(2500);
 
       const samples = [];
       for (let i = 0; i < SAMPLE_COUNT; i += 1) {
         setHint(`Photo ${i + 1} of ${SAMPLE_COUNT}`);
         setDetail('Hold still');
         setRing('capturing');
-        const shot = await grabDescriptor();
+        const shot = await grabDescriptor(Date.now() + 2000);
         samples.push(Array.from(shot.descriptor));
         setProgress(35 + Math.round(((i + 1) / SAMPLE_COUNT) * 50));
         if (i < SAMPLE_COUNT - 1) await sleep(SAMPLE_GAP_MS);
@@ -483,9 +482,10 @@ export default function AttendancePage() {
     setVerify({ result: 'scanning', confidence: null, time: null, kind: openCheck?.kind || 'start', status: null });
     runningRef.current = true;
     try {
+      const verifyStarted = Date.now();
       setHint('Look at the camera');
-      setDetail('Stay in the circle');
-      setProgress(8);
+      setDetail('Hold still — this takes a few seconds');
+      setProgress(18);
       setRing('capturing');
       await startCamera();
       if (!areFaceModelsReady()) {
@@ -493,42 +493,12 @@ export default function AttendancePage() {
         await loadFaceModels();
         setModelsReady(true);
       }
-      await waitForFace(16000);
-
       const action = pickLivenessAction();
-      setHint(action.label);
-      setDetail('A small blink or turn is enough');
-      const started = Date.now();
-      let baseline = null;
-      let passed = false;
-      while (Date.now() - started < LIVENESS_MS) {
-        if (!runningRef.current) throw new Error('Cancelled.');
-        const tracked = await trackFace(videoRef.current);
-        const advice = faceHint(tracked);
-        if (advice.ok && tracked?.landmarks) {
-          const pose = poseFromLandmarks(tracked.landmarks);
-          if (!baseline) baseline = pose;
-          else if (livenessPassed(action.id, pose, baseline)) {
-            passed = true;
-            break;
-          }
-          setHint(action.label);
-          setDetail('Blink or turn a little — then hold still');
-        } else {
-          setHint(advice.hint);
-          setDetail(advice.detail);
-        }
-        setProgress(45 + Math.min(30, Math.round(((Date.now() - started) / LIVENESS_MS) * 30)));
-        await sleep(140);
-      }
-      if (!passed) {
-        setDetail('Continuing with a still photo');
-      }
-
       setHint('Checking');
       setDetail('Matching your enrolled face');
+      setProgress(55);
       const snapshot = faceCheckCapture ? videoFrameJpeg(videoRef.current) : null;
-      const shot = await grabDescriptor();
+      const shot = await grabDescriptor(verifyStarted + VERIFY_MS);
       const payload = {
         embedding: Array.from(shot.descriptor),
         liveness_passed: true,

@@ -3,10 +3,12 @@ import InstallAppButton from '../components/InstallAppButton';
 import HardRefreshButton from '../components/HardRefreshButton';
 import {
   canUseMobilePushUi,
+  currentNotificationPermission,
   disablePushNotifications,
   enablePushNotifications,
   fetchPushStatus,
   isInstalledPwa,
+  notificationBlockedHelp,
 } from '../utils/pushNotifications';
 
 export default function SettingsPage() {
@@ -15,6 +17,9 @@ export default function SettingsPage() {
   const [pushError, setPushError] = useState('');
   const [pushSuccess, setPushSuccess] = useState('');
   const showPush = canUseMobilePushUi();
+  const [browserPermission, setBrowserPermission] = useState(() =>
+    canUseMobilePushUi() ? currentNotificationPermission() : 'default'
+  );
 
   useEffect(() => {
     if (!showPush) return undefined;
@@ -27,10 +32,36 @@ export default function SettingsPage() {
         if (active) setPushStatus({ configured: false, enabled: false });
       }
     })();
+    function syncPermission() {
+      const next = currentNotificationPermission();
+      setBrowserPermission(next);
+    }
+    syncPermission();
+    window.addEventListener('focus', syncPermission);
+    document.addEventListener('visibilitychange', syncPermission);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', syncPermission);
+      document.removeEventListener('visibilitychange', syncPermission);
+    };
+  }, [showPush]);
+
+  useEffect(() => {
+    if (!showPush || browserPermission !== 'granted' || pushStatus?.enabled) return undefined;
+    let active = true;
+    enablePushNotifications({ silent: true })
+      .then(async () => {
+        if (!active) return;
+        const data = await fetchPushStatus();
+        setPushStatus(data);
+        setPushError('');
+        setPushSuccess('Notifications enabled on this device.');
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
-  }, [showPush]);
+  }, [showPush, browserPermission, pushStatus?.enabled]);
 
   async function handleEnablePush() {
     setPushBusy(true);
@@ -104,7 +135,14 @@ export default function SettingsPage() {
             </p>
           )}
 
-          {pushError && <p className="error">{pushError}</p>}
+          {browserPermission === 'denied' && !pushStatus?.enabled && (
+            <p className="error" style={{ marginTop: '0.75rem' }}>
+              {notificationBlockedHelp()}
+            </p>
+          )}
+          {pushError && pushError !== notificationBlockedHelp() && (
+            <p className="error">{pushError}</p>
+          )}
           {pushSuccess && <p className="success">{pushSuccess}</p>}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.85rem' }}>

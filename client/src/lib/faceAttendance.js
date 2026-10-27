@@ -2,14 +2,15 @@ import * as faceapi from 'face-api.js';
 
 const MODEL_URL = '/models';
 const SAMPLE_COUNT = 3;
-const ALIGN_MS = 80;
-const SAMPLE_GAP_MS = 160;
-const LIVENESS_MS = 2800;
-const TRACK_SIZE = 224;
-const CAPTURE_SIZE = 320;
-const DETECT_SCORE = 0.4;
-const MIN_FACE_RATIO = 0.16;
-const MAX_FACE_RATIO = 0.88;
+const ALIGN_MS = 0;
+const SAMPLE_GAP_MS = 80;
+const LIVENESS_MS = 0;
+const VERIFY_MS = 5000;
+const TRACK_SIZE = 160;
+const CAPTURE_SIZE = 224;
+const DETECT_SCORE = 0.25;
+const MIN_FACE_RATIO = 0.1;
+const MAX_FACE_RATIO = 0.92;
 
 let modelsReady = false;
 let modelsLoading = null;
@@ -84,13 +85,14 @@ function videoReady(input) {
   return Boolean(input && input.readyState >= 2 && input.videoWidth > 16);
 }
 
-export async function trackFace(input) {
+export async function trackFace(input, { landmarks = false } = {}) {
   if (!modelsReady || !videoReady(input)) return null;
   const frame = drawVideoFrame(input, TRACK_SIZE);
   if (!frame) return null;
-  return withTfScope(() =>
-    faceapi.detectSingleFace(frame, detectorOptions(TRACK_SIZE)).withFaceLandmarks(true)
-  );
+  return withTfScope(() => {
+    const detect = faceapi.detectSingleFace(frame, detectorOptions(TRACK_SIZE));
+    return landmarks ? detect.withFaceLandmarks(true) : detect;
+  });
 }
 
 export function videoFrameJpeg(video, maxSide = 480, quality = 0.78) {
@@ -125,9 +127,7 @@ export async function captureFace(input) {
   );
   const score = Number(shot?.detection?.score);
   if (!shot?.descriptor || shot.descriptor.length < 128) return null;
-  if (!Number.isFinite(score) || score < DETECT_SCORE) return null;
-  const advice = faceHint(shot);
-  if (!advice.ok) return null;
+  if (Number.isFinite(score) && score < DETECT_SCORE) return null;
   return shot;
 }
 
@@ -161,30 +161,31 @@ export function poseFromLandmarks(landmarks) {
 }
 
 export function faceHint(detection) {
-  if (!detection?.detection) {
+  const det = detection?.detection || detection;
+  if (!det?.box) {
     return { ok: false, hint: 'Look at the camera', detail: 'Face the light and fill the circle' };
   }
-  const det = detection.detection;
   const box = det.box;
   const w = Number(det.imageWidth) || Number(det._imageDims?.width) || 0;
   const h = Number(det.imageHeight) || Number(det._imageDims?.height) || 0;
-  const score = Number(det.score);
-  if (w < 8 || h < 8 || !box) {
-    return { ok: false, hint: 'Look at the camera', detail: 'We need a clear view of your face' };
-  }
-  if (Number.isFinite(score) && score < DETECT_SCORE) {
-    return { ok: false, hint: 'Hold still', detail: 'Keep your face in the light' };
+  if (w < 8 || h < 8) {
+    return { ok: true, hint: 'Hold still', detail: 'Matching your face' };
   }
   const ratio = Math.max(box.width / w, box.height / h);
   const cx = (box.x + box.width / 2) / w;
   const cy = (box.y + box.height / 2) / h;
   if (ratio < MIN_FACE_RATIO) return { ok: false, hint: 'Move closer', detail: 'Bring your face into the circle' };
   if (ratio > MAX_FACE_RATIO) return { ok: false, hint: 'Move back a little', detail: 'Keep your whole face in view' };
-  if (cx < 0.18) return { ok: false, hint: 'Move left', detail: 'Center yourself in the circle' };
-  if (cx > 0.82) return { ok: false, hint: 'Move right', detail: 'Center yourself in the circle' };
-  if (cy < 0.16) return { ok: false, hint: 'Move down', detail: 'Keep your face in the circle' };
-  if (cy > 0.86) return { ok: false, hint: 'Move up', detail: 'Keep your face in the circle' };
-  return { ok: true, hint: 'Perfect', detail: 'Hold still' };
+  if (cx < 0.12) return { ok: false, hint: 'Move left', detail: 'Center yourself in the circle' };
+  if (cx > 0.88) return { ok: false, hint: 'Move right', detail: 'Center yourself in the circle' };
+  if (cy < 0.1) return { ok: false, hint: 'Move down', detail: 'Keep your face in the circle' };
+  if (cy > 0.9) return { ok: false, hint: 'Move up', detail: 'Keep your face in the circle' };
+  return { ok: true, hint: 'Hold still', detail: 'Matching your face' };
+}
+
+export function faceUsable(detection) {
+  const det = detection?.detection || detection;
+  return Boolean(det?.box);
 }
 
 export function livenessPassed(action, current, baseline) {
@@ -223,4 +224,4 @@ export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export { SAMPLE_COUNT, ALIGN_MS, SAMPLE_GAP_MS, LIVENESS_MS };
+export { SAMPLE_COUNT, ALIGN_MS, SAMPLE_GAP_MS, LIVENESS_MS, VERIFY_MS };
