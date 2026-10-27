@@ -27,6 +27,9 @@ import AttendanceGuideModal, {
   markAttendanceGuideSeen,
 } from '../../components/AttendanceGuideModal';
 import RemoteAttendanceRules from '../../components/RemoteAttendanceRules';
+import RemoteBreakCard from '../../components/RemoteBreakCard';
+import ShiftHoursDetail from '../../components/ShiftHoursDetail';
+import '../../components/ShiftHoursDetail.css';
 import OnsiteAttendancePage from './OnsiteAttendancePage';
 import './AttendancePage.css';
 
@@ -172,6 +175,10 @@ export default function AttendancePage() {
   const [flexibleHours, setFlexibleHours] = useState(false);
   const [faceCheckCapture, setFaceCheckCapture] = useState(false);
   const [durationLabel, setDurationLabel] = useState('');
+  const [shiftHours, setShiftHours] = useState(null);
+  const [onBreak, setOnBreak] = useState(false);
+  const [breaksEnabled, setBreaksEnabled] = useState(false);
+  const [canBreak, setCanBreak] = useState(false);
   const [lastCheckedInAt, setLastCheckedInAt] = useState(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const [guideOpen, setGuideOpen] = useState(false);
@@ -183,7 +190,9 @@ export default function AttendancePage() {
     status: null,
   });
   const [avatarBroken, setAvatarBroken] = useState(false);
+  const [breakVerifyOpen, setBreakVerifyOpen] = useState(false);
   const settleTimerRef = useRef(null);
+  const lastLoadRef = useRef(0);
 
   const isRemote = user?.employment_type === 'remote';
   const isOnsite = String(user?.employment_type || 'onsite').trim().toLowerCase() !== 'remote';
@@ -224,9 +233,21 @@ export default function AttendancePage() {
     );
     setFlexibleHours(Boolean(att.flexible_hours));
     setFaceCheckCapture(Boolean(att.face_check_capture));
-    setDurationLabel(att.duration_label || '');
+    setDurationLabel(att.work_label || att.duration_label || '');
+    setOnBreak(Boolean(att.on_break));
+    setBreaksEnabled(Boolean(att.breaks_enabled));
+    setCanBreak(Boolean(att.can_break));
+    setShiftHours({
+      workLabel: att.work_label || att.duration_label || '',
+      breakLabel: att.break_label || '0m',
+      firstCheckIn: att.first_check_in,
+      checkedOutAt: att.checked_out_at,
+      breaks: att.breaks || [],
+      onBreak: Boolean(att.on_break),
+    });
     setLastCheckedInAt(att.last_checked_in_at || null);
     setChecksPerShift(Number(att.checks_per_shift) > 0 ? Number(att.checks_per_shift) : 5);
+    lastLoadRef.current = Date.now();
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -279,7 +300,6 @@ export default function AttendancePage() {
       setEngineHint('');
     }
     setModelsReady(true);
-    captureFace(video).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -320,10 +340,12 @@ export default function AttendancePage() {
   useEffect(() => {
     if (!isRemote) return undefined;
     function refreshHours() {
+      if (runningRef.current) return;
+      if (Date.now() - lastLoadRef.current < 8000) return;
       load().catch(() => {});
     }
-    const id = setInterval(refreshHours, 15000);
-    const tick = setInterval(() => setNowTick(Date.now()), 1000);
+    const id = setInterval(refreshHours, 30000);
+    const tick = setInterval(() => setNowTick(Date.now()), 5000);
     window.addEventListener('focus', refreshHours);
     document.addEventListener('visibilitychange', refreshHours);
     return () => {
@@ -335,12 +357,15 @@ export default function AttendancePage() {
   }, [isRemote, load]);
 
   useEffect(() => {
-    if (!isRemote || !cameraOn || !modelsReady || phase !== 'idle') return undefined;
+    if (!isRemote || !cameraOn || !modelsReady || phase !== 'idle' || breakVerifyOpen) {
+      return undefined;
+    }
     let active = true;
+    let lastHint = '';
     async function previewLoop() {
       while (active && runningRef.current === false) {
         if (typeof document !== 'undefined' && document.hidden) {
-          await sleep(400);
+          await sleep(1200);
           continue;
         }
         const video = videoRef.current;
@@ -349,21 +374,32 @@ export default function AttendancePage() {
             const tracked = await trackFace(video);
             if (!active) break;
             const advice = faceHint(tracked);
-            setHint(advice.ok ? 'Ready' : advice.hint);
-            setDetail(advice.ok ? 'Tap Enroll face or Check in' : advice.detail);
-            setRing(advice.ok ? 'ready' : 'idle');
+            const nextHint = advice.ok ? 'Ready' : advice.hint;
+            if (nextHint !== lastHint) {
+              lastHint = nextHint;
+              setHint(nextHint);
+              setDetail(advice.ok ? 'Tap Enroll face or Check in' : advice.detail);
+              setRing(advice.ok ? 'ready' : 'idle');
+            }
           } catch {
             /* skip a busy frame */
           }
         }
-        await sleep(400);
+        await sleep(900);
       }
     }
     previewLoop();
     return () => {
       active = false;
     };
-  }, [cameraOn, phase, isRemote, modelsReady]);
+  }, [cameraOn, phase, isRemote, modelsReady, breakVerifyOpen]);
+
+  useEffect(() => {
+    const tracks = streamRef.current?.getTracks?.() || [];
+    tracks.forEach((track) => {
+      if (track.kind === 'video') track.enabled = !breakVerifyOpen;
+    });
+  }, [breakVerifyOpen]);
 
   async function waitForFace(deadlineMs = 1500) {
     const started = Date.now();
@@ -385,6 +421,7 @@ export default function AttendancePage() {
       } else {
         stableSince = 0;
       }
+      await sleep(80);
     }
     throw new Error('We still cannot see your face. Sit closer, turn on a light, and try again.');
   }
@@ -394,6 +431,7 @@ export default function AttendancePage() {
       if (!runningRef.current) throw new Error('Cancelled.');
       const shot = await captureFace(videoRef.current);
       if (shot?.descriptor && shot.descriptor.length >= 128) return shot;
+      await sleep(60);
     }
     throw new Error('Hold still for a moment so we can capture your face.');
   }
@@ -608,7 +646,16 @@ export default function AttendancePage() {
             : `Your working hours: ${workHoursLabel}. Check-in is only open during an active availability check.`}
         </p>
       ) : null}
-      {flexibleHours && durationLabel ? (
+      {breaksEnabled && onBreak ? (
+        <p className="attendance-open-banner">
+          You are on break. Turn Break off and verify your face before you check out or take a random check.
+        </p>
+      ) : null}
+      {shiftHours &&
+      (shiftHours.firstCheckIn || (breaksEnabled && (shiftHours.onBreak || (shiftHours.breaks || []).length > 0))) ? (
+        <ShiftHoursDetail {...shiftHours} showBreak={breaksEnabled} />
+      ) : null}
+      {flexibleHours && durationLabel && !shiftHours?.workLabel ? (
         <p className="success">Today’s duration after check-out: {durationLabel}</p>
       ) : null}
       {!profileComplete ? (
@@ -720,7 +767,13 @@ export default function AttendancePage() {
                   <button
                     type="button"
                     className="faceid-cta"
-                    disabled={phase !== 'idle' || !canCheckIn || !modelsReady || !profileComplete}
+                    disabled={
+                      phase !== 'idle' ||
+                      !canCheckIn ||
+                      !modelsReady ||
+                      !profileComplete ||
+                      (breaksEnabled && onBreak)
+                    }
                     onClick={handleCheckIn}
                   >
                     <span className="faceid-cta-shine" aria-hidden="true" />
@@ -732,6 +785,8 @@ export default function AttendancePage() {
                         ? 'Complete profile first'
                         : !attendanceEnabled
                         ? 'Attendance off'
+                        : breaksEnabled && onBreak
+                          ? 'On break'
                         : canCheckIn
                           ? openCheck?.kind === 'checkout'
                             ? 'Check out now'
@@ -833,6 +888,26 @@ export default function AttendancePage() {
               </strong>
             </div>
 
+            {isRemote && breaksEnabled ? (
+              <RemoteBreakCard
+                variant="faceid"
+                showHours={false}
+                poll={false}
+                att={{
+                  breaks_enabled: breaksEnabled,
+                  can_break: canBreak,
+                  on_break: onBreak,
+                  work_label: shiftHours?.workLabel,
+                  break_label: shiftHours?.breakLabel,
+                  first_check_in: shiftHours?.firstCheckIn,
+                  checked_out_at: shiftHours?.checkedOutAt,
+                  breaks: shiftHours?.breaks,
+                }}
+                onUpdated={load}
+                onVerifyChange={setBreakVerifyOpen}
+              />
+            ) : null}
+
             <div className="faceid-confidence">
               <span>Match confidence</span>
               <div className="faceid-bars" aria-hidden="true">
@@ -881,7 +956,8 @@ export default function AttendancePage() {
               <span className="attendance-day-date">{day.date}</span>
               <span className="attendance-day-status">
                 {friendlyDayStatus(day.status)}
-                {day.duration_label ? ` · ${day.duration_label}` : ''}
+                {day.work_label ? ` · work ${day.work_label}` : day.duration_label ? ` · ${day.duration_label}` : ''}
+                {breaksEnabled && day.break_minutes > 0 ? ` · break ${day.break_label}` : ''}
               </span>
             </li>
           ))}

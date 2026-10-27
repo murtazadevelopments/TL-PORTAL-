@@ -1,0 +1,59 @@
+.shift-hours-detail {
+  margin-top: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(8, 16, 28, 0.45);
+}
+
+.shift-hours-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.shift-hours-totals.is-work-only {
+  grid-template-columns: 1fr;
+}
+
+.shift-hours-totals p {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.shift-hours-totals span,
+.shift-hours-log span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #9aa8bd);
+}
+
+.shift-hours-totals strong,
+.shift-hours-log strong {
+  font-size: 0.95rem;
+}
+
+.shift-hours-log {
+  list-style: none;
+  margin: 0.7rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.shift-hours-log li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.88rem;
+}
+
+.shift-hours-log li.muted {
+  color: var(--muted, #9aa8bd);
+}

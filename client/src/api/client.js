@@ -84,7 +84,7 @@ api.interceptors.response.use(
     const code = error.response?.data?.code;
     const url = String(error.config?.url || '');
     const isPublicAuth = /\/api\/auth\//.test(url);
-    const isAttendanceCheckIn = /\/api\/attendance\/check-in/.test(url);
+    const isAttendanceCheckIn = /\/api\/attendance\/(check-in|break\/)/.test(url);
 
     if (error.response?.data) {
       error.response.data = sanitizePublicPayload(error.response.data);

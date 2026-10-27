@@ -70,15 +70,28 @@ function drawVideoFrame(video, maxSide) {
   return canvas;
 }
 
+let inferLock = Promise.resolve();
+
+function withFaceLock(fn) {
+  const run = inferLock.then(fn, fn);
+  inferLock = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
 async function withTfScope(fn) {
-  const engine = faceapi.tf?.engine?.();
-  if (!engine?.startScope) return fn();
-  engine.startScope();
-  try {
-    return await fn();
-  } finally {
-    engine.endScope();
-  }
+  return withFaceLock(async () => {
+    const engine = faceapi.tf?.engine?.();
+    if (!engine?.startScope) return fn();
+    engine.startScope();
+    try {
+      return await fn();
+    } finally {
+      engine.endScope();
+    }
+  });
 }
 
 function videoReady(input) {
@@ -115,13 +128,14 @@ export function videoFrameJpeg(video, maxSide = 480, quality = 0.78) {
   }
 }
 
-export async function captureFace(input) {
+export async function captureFace(input, { fast = false } = {}) {
   if (!modelsReady || !videoReady(input)) return null;
-  const frame = drawVideoFrame(input, CAPTURE_SIZE);
+  const size = fast ? TRACK_SIZE : CAPTURE_SIZE;
+  const frame = drawVideoFrame(input, size);
   if (!frame) return null;
   const shot = await withTfScope(() =>
     faceapi
-      .detectSingleFace(frame, detectorOptions(CAPTURE_SIZE))
+      .detectSingleFace(frame, detectorOptions(size))
       .withFaceLandmarks(true)
       .withFaceDescriptor()
   );

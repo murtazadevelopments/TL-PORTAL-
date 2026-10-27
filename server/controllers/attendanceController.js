@@ -24,6 +24,19 @@ const {
 } = require('../utils/attendanceEnabled');
 const { userFlexibleHours, setUserFlexibleHours } = require('../utils/flexibleHours');
 const {
+  userBreaksEnabled,
+  setUserBreaksEnabled,
+  summarizeBreaks,
+  loadBreaks,
+  loadBreaksForUsers,
+  attachBreakSummaries,
+  persistShiftDurations,
+  openBreak,
+  closeOpenBreak,
+  findOpenBreak,
+  shiftHasStarted,
+} = require('../utils/breakHours');
+const {
   workDaysFromUser,
   workDaysSummary,
   isAttendanceHoliday,
@@ -120,7 +133,7 @@ async function loadUser(userId) {
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift, designation,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count, flexible_hours, six_day_week, work_days, face_check_capture, staff_kind,
+             remote_check_count, flexible_hours, breaks_enabled, six_day_week, work_days, face_check_capture, staff_kind,
              reference_person, emergency_contact_name, emergency_contact_number,
              bank_name, account_title, iban, account_number,
              cnic_front_url, cnic_back_url, cv_url
@@ -304,6 +317,7 @@ async function getMyAttendance(req, res) {
       if (better) byHour[row.hour_key] = row;
     }
 
+    const onBreakNow = Boolean(await findOpenBreak(req.user.id));
     const revealAdmin = false;
     const timeline = (challengeRows.length
       ? remoteChallenges.sortRemoteChecks(challengeRows).map((row, i) => {
@@ -311,6 +325,7 @@ async function getMyAttendance(req, res) {
             revealFuture: revealAdmin,
             now,
             user,
+            onBreak: onBreakNow,
           });
           const seq = i + 1;
           const log = byHour[row.hour_key];
@@ -339,12 +354,28 @@ async function getMyAttendance(req, res) {
       : []
     );
 
-    const opened = sundayHoliday ? null : remoteChallenges.openChallenge(challengeRows, now, user);
     const onShift = remoteChallenges.isOnShift(
       now,
       user,
       remoteChallenges.activeShiftDate(now, user, { includeLead: false })
     );
+    const month = await monthHistory(user, shiftDate.slice(0, 7));
+    const breaksAllowed = userBreaksEnabled(user);
+    if (breaksAllowed) {
+      month.days = await attachBreakSummaries(user.id, month.days || [], now);
+    }
+    const todayMeta = (month.days || []).find((d) => d.date === shiftDate) || {};
+    const breakRows = breaksAllowed ? await loadBreaks(user.id, shiftDate) : [];
+    const breakSummary = summarizeBreaks(breakRows, {
+      firstCheckIn: todayMeta.first_check_in,
+      checkedOutAt: todayMeta.checked_out_at,
+      now,
+    });
+    const opened = sundayHoliday
+      ? null
+      : remoteChallenges.openChallenge(challengeRows, now, user, {
+          onBreak: Boolean(breaksAllowed && breakSummary.on_break),
+        });
     const canCheckIn = Boolean(
       attendanceEnabled &&
         profileComplete &&
@@ -352,8 +383,6 @@ async function getMyAttendance(req, res) {
         onShift &&
         opened?.pub?.can_check_in
     );
-    const month = await monthHistory(user, shiftDate.slice(0, 7));
-    const todayMeta = (month.days || []).find((d) => d.date === shiftDate) || {};
     const flexible = userFlexibleHours(user);
     return res.json({
       date: shiftDate,
@@ -380,8 +409,25 @@ async function getMyAttendance(req, res) {
       absent_after_minutes: remoteChallenges.ABSENT_AFTER_MINUTES,
       respond_target_minutes: remoteChallenges.RESPOND_TARGET_MINUTES,
       checks_per_shift: remoteChallenges.checkCountFromUser(user),
-      duration_minutes: todayMeta.duration_minutes ?? null,
-      duration_label: todayMeta.duration_label || '',
+      duration_minutes: breakSummary.work_minutes ?? todayMeta.duration_minutes ?? null,
+      duration_label: breakSummary.work_label || todayMeta.duration_label || '',
+      work_minutes: breakSummary.work_minutes,
+      work_label: breakSummary.work_label,
+      break_minutes: breaksAllowed ? breakSummary.break_minutes : 0,
+      break_label: breaksAllowed ? breakSummary.break_label : '',
+      breaks_enabled: breaksAllowed,
+      on_break: Boolean(breaksAllowed && breakSummary.on_break),
+      current_break: breaksAllowed ? breakSummary.current_break : null,
+      breaks: breaksAllowed ? breakSummary.breaks : [],
+      can_break: Boolean(
+        breaksAllowed &&
+          attendanceEnabled &&
+          profileComplete &&
+          !sundayHoliday &&
+          onShift &&
+          (todayMeta.first_check_in || breakSummary.on_break)
+      ),
+      on_shift: onShift,
       checked_out_at: todayMeta.checked_out_at || null,
       first_check_in: todayMeta.first_check_in || null,
       last_checked_in_at: lastPunch.rows[0]?.checked_in_at || null,
@@ -410,6 +456,7 @@ async function checkIn(req, res) {
     if (rateLimited(req.user.id)) {
       return res.status(429).json({ message: 'Too many check-in attempts. Try again later.' });
     }
+    const openBreak = await findOpenBreak(user.id);
 
     const now = new Date();
     const shiftDate = remoteChallenges.activeShiftDate(now, user, { includeLead: false });
@@ -419,15 +466,24 @@ async function checkIn(req, res) {
       });
     }
     const challengeRows = await remoteChallenges.ensureChallengesForUser(user, shiftDate);
-    const opened = remoteChallenges.openChallenge(challengeRows, now, user);
+    const opened = remoteChallenges.openChallenge(challengeRows, now, user, {
+      onBreak: Boolean(openBreak),
+    });
     if (!opened) {
       return res.status(400).json({
-        message: userFlexibleHours(user)
+        message: openBreak
+          ? 'You are on break. Turn break off with face verification before you check out or take a random check.'
+          : userFlexibleHours(user)
           ? 'No attendance check is open right now. Start with first check-in, wait for a random ping, or check out when you finish.'
           : 'No attendance check is open right now. Wait for your shift-start window or a random availability ping.',
       });
     }
     const challenge = opened.row;
+    if (openBreak) {
+      return res.status(400).json({
+        message: 'You are on break. Turn break off with face verification before you check out.',
+      });
+    }
     const hourKey = challenge.hour_key;
 
     const livenessOk = Boolean(pick(req.body || {}, 'livenesspassed'));
@@ -521,6 +577,7 @@ async function checkIn(req, res) {
       }
       if (challenge.kind === 'checkout') {
         await remoteChallenges.cancelPendingFollowUps(user.id, shiftDate);
+        await closeOpenBreak(user.id);
       }
       await refreshAttendanceDay(user, hourKey.slice(0, 10), {
         firstCheckIn: challenge.kind === 'checkout' ? undefined : rows[0].checked_in_at,
@@ -579,7 +636,14 @@ async function checkIn(req, res) {
           [user.id, shiftDate]
         )
       ).rows[0];
-      durationMinutes = first?.duration_minutes ?? null;
+      const closedBreaks = await loadBreaks(user.id, shiftDate);
+      const closedSummary = summarizeBreaks(closedBreaks, {
+        firstCheckIn: first?.first_check_in,
+        checkedOutAt: first?.checked_out_at || rows[0].checked_in_at,
+        now,
+      });
+      await persistShiftDurations(user.id, shiftDate, closedSummary);
+      durationMinutes = closedSummary.work_minutes ?? first?.duration_minutes ?? null;
     }
     void notifyAfterResponse('ceo-remote-face', user.id, () =>
       notifyCeoRemoteFaceAttendance(user, {
@@ -666,7 +730,8 @@ async function adminOverview(req, res) {
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, designation, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours, six_day_week, work_days,
+               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours, breaks_enabled,
+               six_day_week, work_days,
                face_check_capture, staff_kind, reference_person,
                emergency_contact_name, emergency_contact_number,
                bank_name, account_title, iban, account_number,
@@ -717,6 +782,16 @@ async function adminOverview(req, res) {
       challengeRows = loaded.rows;
     }
 
+    const breakRowsAll = ids.length
+      ? await loadBreaksForUsers(ids, [...challengeDates])
+      : [];
+    const breaksByUserDate = new Map();
+    for (const row of breakRowsAll) {
+      const key = `${row.user_id}:${String(row.shift_date).slice(0, 10)}`;
+      if (!breaksByUserDate.has(key)) breaksByUserDate.set(key, []);
+      breaksByUserDate.get(key).push(row);
+    }
+
     const logsByUser = new Map();
     for (const log of logs) {
       const uid = String(log.user_id);
@@ -761,7 +836,15 @@ async function adminOverview(req, res) {
             (challengesByUser.get(String(person.id)) || []).filter((row) => String(row.shift_date).slice(0, 10) === personDate)
           )
           .map((row, i) => {
-          const pub = remoteChallenges.publicChallenge(row, { revealFuture: true, now, user: person });
+          const onBreakNow = (breaksByUserDate.get(`${person.id}:${personDate}`) || []).some(
+            (row) => !row.ended_at
+          );
+          const pub = remoteChallenges.publicChallenge(row, {
+            revealFuture: true,
+            now,
+            user: person,
+            onBreak: onBreakNow,
+          });
           const seq = i + 1;
           const log = personLogs.find((l) => l.hour_key === row.hour_key);
           let state = pub.state;
@@ -854,9 +937,19 @@ async function adminOverview(req, res) {
         const shiftComplete = slots.length > 0 && slots.every((slot) =>
           ['verified', 'late', 'missed', 'leave'].includes(slot.state)
         );
+        const breaksAllowed = userBreaksEnabled(person);
+        const breakSummary = summarizeBreaks(
+          breaksAllowed ? breaksByUserDate.get(`${person.id}:${personDate}`) || [] : [],
+          {
+            firstCheckIn: personDay?.first_check_in,
+            checkedOutAt: personDay?.checked_out_at,
+            now,
+          }
+        );
         let liveStatus = rowStatus;
         if (rowStatus === 'leave') liveStatus = 'leave';
         else if (holiday) liveStatus = 'holiday';
+        else if (breaksAllowed && breakSummary.on_break) liveStatus = 'on_break';
         else if (shiftComplete) liveStatus = 'complete';
         else if (inShift) liveStatus = 'in_shift';
         else if (rowStatus === 'missed' || rowStatus === 'absent' || rowStatus === 'failed') {
@@ -903,14 +996,23 @@ async function adminOverview(req, res) {
           attendance_enabled: userAttendanceEnabled(person),
           profile_complete: profileComplete,
           flexible_hours: flexible,
+          breaks_enabled: breaksAllowed,
+          on_break: Boolean(breaksAllowed && breakSummary.on_break),
+          current_break: breaksAllowed ? breakSummary.current_break : null,
+          breaks: breaksAllowed ? breakSummary.breaks : [],
+          work_minutes: breakSummary.work_minutes,
+          work_label: breakSummary.work_label,
+          break_minutes: breaksAllowed ? breakSummary.break_minutes : 0,
+          break_label: breaksAllowed ? breakSummary.break_label : '',
           work_days: workDaysFromUser(person),
           work_days_label: workDaysSummary(workDaysFromUser(person)),
           face_check_capture: isCeoRole(req.user?.role) ? userFaceCheckCapture(person) : undefined,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
-          duration_minutes: personDay?.duration_minutes ?? null,
-          duration_label: formatDurationMinutes
-            ? formatDurationMinutes(personDay?.duration_minutes)
-            : '',
+          duration_minutes: breakSummary.work_minutes ?? personDay?.duration_minutes ?? null,
+          duration_label: breakSummary.work_label
+            || (formatDurationMinutes
+              ? formatDurationMinutes(personDay?.duration_minutes)
+              : ''),
           checked_out_at: personDay?.checked_out_at || null,
           first_check_in: personDay?.first_check_in || null,
           last_checked_in_at: lastCheckedInAt,
@@ -923,11 +1025,15 @@ async function adminOverview(req, res) {
           next_check_label: nextSlot?.label || null,
           next_check_at: nextSlot?.scheduled_at || null,
           can_check_in_request: Boolean(
-            userAttendanceEnabled(person) && requestGate.allowed
+            userAttendanceEnabled(person) &&
+              requestGate.allowed &&
+              !(breaksAllowed && breakSummary.on_break)
           ),
           check_in_request_reason: !userAttendanceEnabled(person)
             ? 'stopped'
-            : requestGate.reason,
+            : breaksAllowed && breakSummary.on_break
+              ? 'on_break'
+              : requestGate.reason,
           check_in_request_available_at: requestGate.available_at,
         };
       })
@@ -1178,6 +1284,11 @@ async function adminRequestCheckIn(req, res) {
     if (!shiftDate) {
       return res.status(400).json({
         message: 'This employee is not in their working hours right now.',
+      });
+    }
+    if (await findOpenBreak(target.id)) {
+      return res.status(409).json({
+        message: 'This employee is on break. Random check-in requests wait until they are back.',
       });
     }
 
@@ -1495,6 +1606,178 @@ async function putUserFlexibleHours(req, res) {
   }
 }
 
+async function putUserBreaksEnabled(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Breaks are only for remote employees.' });
+    }
+    if (!isCeoOrManagerRole(req.user?.role)) {
+      const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+      }
+    }
+    const raw = req.body?.enabled;
+    const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    await setUserBreaksEnabled(targetId, enabled);
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: enabled ? 'attendance.breaks_on' : 'attendance.breaks_off',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: enabled
+        ? `Allowed breaks during working hours for ${target.name || target.username}`
+        : `Turned breaks off for ${target.name || target.username}`,
+    });
+    return res.json({
+      enabled,
+      message: enabled
+        ? `Breaks are on for ${target.name || target.username}. They can pause during working hours.`
+        : `Breaks are off for ${target.name || target.username}.`,
+    });
+  } catch (err) {
+    console.error('putUserBreaksEnabled error:', err);
+    return res.status(500).json({ message: 'Server error saving breaks.' });
+  }
+}
+
+async function shiftBreakPayload(user, shiftDate, now = new Date()) {
+  const { rows } = await pool.query(
+    `
+      SELECT first_check_in, checked_out_at
+      FROM attendance_days
+      WHERE user_id = $1 AND date_key = $2
+      LIMIT 1
+    `,
+    [user.id, shiftDate]
+  );
+  const summary = summarizeBreaks(await loadBreaks(user.id, shiftDate), {
+    firstCheckIn: rows[0]?.first_check_in,
+    checkedOutAt: rows[0]?.checked_out_at,
+    now,
+  });
+  await persistShiftDurations(user.id, shiftDate, summary);
+  return summary;
+}
+
+async function startBreak(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const user = await loadUser(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (normalizeEmploymentType(user.employment_type) !== 'remote') {
+      return res.status(403).json({ message: 'Breaks are only for remote employees.' });
+    }
+    if (!userBreaksEnabled(user)) {
+      return res.status(403).json({ message: 'Breaks are not allowed for your account yet.' });
+    }
+    if (await rejectIfUserAttendanceStopped(res, user)) return;
+    if (rejectIfRemoteProfileIncomplete(res, user)) return;
+
+    const now = new Date();
+    const shiftDate = remoteChallenges.activeShiftDate(now, user, { includeLead: false });
+    if (!shiftDate || !remoteChallenges.isOnShift(now, user, shiftDate)) {
+      return res.status(400).json({ message: 'Breaks are only during your working hours.' });
+    }
+    if (isAttendanceHoliday(user, shiftDate)) {
+      return res.status(400).json({ message: 'Today is a day off.' });
+    }
+    if (await findOpenBreak(user.id)) {
+      return res.status(409).json({ message: 'You are already on break.' });
+    }
+    if (!(await shiftHasStarted(user.id, shiftDate))) {
+      return res.status(400).json({ message: 'Check in first, then you can take a break.' });
+    }
+
+    try {
+      await openBreak(user.id, shiftDate);
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ message: 'You are already on break.' });
+      }
+      throw err;
+    }
+    const summary = await shiftBreakPayload(user, shiftDate, now);
+    return res.status(201).json({
+      on_break: true,
+      message: 'Break started. Tap Off and verify your face when you are back.',
+      ...summary,
+    });
+  } catch (err) {
+    console.error('startBreak error:', err);
+    return res.status(500).json({ message: 'Server error starting break.' });
+  }
+}
+
+async function endBreak(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const user = await loadUser(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    const open = await findOpenBreak(user.id);
+    if (!open) {
+      return res.status(400).json({ message: 'You are not on break.' });
+    }
+
+    const probe = parseEmbedding(req.body?.embedding);
+    if (!probe) {
+      return res.status(400).json({
+        message: 'Look at the camera so we can confirm it is you.',
+        on_break: true,
+      });
+    }
+    const { rows: enrolled } = await pool.query(
+      `SELECT embedding FROM face_enrollments WHERE user_id = $1 LIMIT 1`,
+      [user.id]
+    );
+    if (!enrolled[0]) {
+      return res.status(400).json({
+        message: 'Enroll your face before ending a break.',
+        on_break: true,
+      });
+    }
+    const stored = parseEmbedding(enrolled[0].embedding);
+    const distance = embeddingDistance(stored, probe);
+    const matched = isFaceMatch(distance);
+    console.log('[face-match-break]', {
+      userId: user.id,
+      distance: Number.isFinite(distance) ? Number(distance.toFixed(4)) : null,
+      matched,
+    });
+    if (!matched) {
+      return res.status(422).json({
+        message: 'Face did not match. You are still on break.',
+        matched: false,
+        on_break: true,
+      });
+    }
+
+    await closeOpenBreak(user.id, distance);
+    await remoteChallenges.deferPendingRandoms(user.id, new Date());
+    const summary = await shiftBreakPayload(user, open.shift_date, new Date());
+    return res.json({
+      on_break: false,
+      matched: true,
+      match_score: distance,
+      message: 'Welcome back. Break is off.',
+      ...summary,
+    });
+  } catch (err) {
+    console.error('endBreak error:', err);
+    return res.status(500).json({ message: 'Server error ending break.' });
+  }
+}
+
 async function putUserWorkDays(req, res) {
   try {
     await ensureAttendanceTables();
@@ -1767,6 +2050,9 @@ async function adminEmployeeDays(req, res) {
     const history = await monthHistory(target, month, new Date(), {
       throughDate: fullDays ? null : undefined,
     });
+    if (userBreaksEnabled(target)) {
+      history.days = await attachBreakSummaries(target.id, history.days || []);
+    }
     const ceoView = isCeoRole(req.user?.role);
     const days = ceoView
       ? await attachDayFaceChecks(target.id, month, history.days || [])
@@ -1776,6 +2062,7 @@ async function adminEmployeeDays(req, res) {
         id: target.id,
         name: target.name,
         employee_id: target.employee_id,
+        breaks_enabled: userBreaksEnabled(target),
         work_start_hour: workHoursFromUser(target).start,
         work_end_hour: workHoursFromUser(target).end,
         ...(ceoView ? { face_check_capture: userFaceCheckCapture(target) } : {}),
@@ -1806,6 +2093,9 @@ async function getMyHistory(req, res) {
     const parts = zonedParts();
     const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
     const history = await monthHistory(user, month);
+    if (userBreaksEnabled(user)) {
+      history.days = await attachBreakSummaries(user.id, history.days || []);
+    }
     return res.json(history);
   } catch (err) {
     console.error('getMyHistory error:', err);
@@ -2036,5 +2326,8 @@ module.exports = {
   listFaceCheckCaptures,
   streamFaceCheckCapture,
   putUserFlexibleHours,
+  putUserBreaksEnabled,
   putUserWorkDays,
+  startBreak,
+  endBreak,
 };

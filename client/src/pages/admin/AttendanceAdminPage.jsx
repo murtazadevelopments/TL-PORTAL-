@@ -14,6 +14,8 @@ import {
   isCeo,
   isCeoOrManager,
 } from '../../utils/permissions';
+import ShiftHoursDetail from '../../components/ShiftHoursDetail';
+import '../../components/ShiftHoursDetail.css';
 import './AttendanceAdminPage.css';
 
 const EMPTY_MANUAL = { user: null, hour_key: '', status: 'verified', note: '' };
@@ -128,12 +130,16 @@ function checkInRequestButton(row) {
   if (row.check_in_request_reason === 'no_shift') {
     return { label: 'Check in Request', title: 'Not in this employee’s working hours right now.' };
   }
+  if (row.check_in_request_reason === 'on_break') {
+    return { label: 'On break', title: 'Check-out and random checks wait until this employee turns break off.' };
+  }
   return { label: 'Check in Request', title: 'Send the next attendance check to this employee.' };
 }
 
 function liveStatusLabel(row) {
   const s = row.live_status || row.row_status;
   if (s === 'in_shift') return 'In shift';
+  if (s === 'on_break') return 'On break';
   if (s === 'off_shift') return 'Off shift';
   if (s === 'complete') return 'Shift done';
   if (s === 'absent' || s === 'missed' || s === 'failed') return 'Absent';
@@ -161,8 +167,15 @@ function shiftTrackLine(row) {
   const done = Number(row.checks_done || 0);
   if (needed > 0) bits.push(`${done} of ${needed} checks`);
   if (row.last_checked_in_at) bits.push(`last in ${formatKarachiClock(row.last_checked_in_at)}`);
-  if (row.next_check_label && row.live_status !== 'complete') bits.push(`next ${row.next_check_label}`);
-  if (row.duration_label) bits.push(row.duration_label);
+  if (row.next_check_label && row.live_status !== 'complete' && !row.on_break) {
+    bits.push(`next ${row.next_check_label}`);
+  }
+  if (row.work_label) bits.push(`work ${row.work_label}`);
+  else if (row.duration_label) bits.push(row.duration_label);
+  if (row.breaks_enabled && row.break_label && (row.break_minutes > 0 || row.on_break)) {
+    bits.push(`break ${row.break_label}`);
+  }
+  if (row.breaks_enabled && row.on_break) bits.push('on break now');
   return bits.join(' · ');
 }
 
@@ -208,6 +221,21 @@ function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
   return (
     <EmployeePowerSwitch
       label="Flexible"
+      name={row.name}
+      on={on}
+      busy={busy}
+      disabled={!canToggle}
+      onToggle={() => onToggle(row)}
+    />
+  );
+}
+
+function EmployeeBreaksSwitch({ row, busy, onToggle }) {
+  const on = row.breaks_enabled === true;
+  const canToggle = row.can_toggle_attendance !== false;
+  return (
+    <EmployeePowerSwitch
+      label="Break"
       name={row.name}
       on={on}
       busy={busy}
@@ -425,6 +453,7 @@ export default function AttendanceAdminPage() {
   const [onsiteMonth, setOnsiteMonth] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
+  const [togglingBreaksId, setTogglingBreaksId] = useState(null);
   const [daysEdit, setDaysEdit] = useState(null);
   const [savingDays, setSavingDays] = useState(false);
   const [togglingPictureId, setTogglingPictureId] = useState(null);
@@ -806,6 +835,47 @@ export default function AttendanceAdminPage() {
     }
   }
 
+  async function toggleEmployeeBreaks(row) {
+    if (!row?.id || row.can_toggle_attendance === false) return;
+    const next = row.breaks_enabled !== true;
+    setTogglingBreaksId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/breaks`, {
+        enabled: next,
+      });
+      const enabled = Boolean(payload.enabled);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              employees: (prev.employees || []).map((item) =>
+                item.id === row.id
+                  ? {
+                      ...item,
+                      breaks_enabled: enabled,
+                      on_break: enabled ? item.on_break : false,
+                      live_status:
+                        !enabled && item.live_status === 'on_break' ? 'in_shift' : item.live_status,
+                    }
+                  : item
+              ),
+            }
+          : prev
+      );
+      setNotice(
+        payload?.message ||
+          (enabled ? `Breaks are on for ${row.name}.` : `Breaks are off for ${row.name}.`)
+      );
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update breaks.');
+    } finally {
+      setTogglingBreaksId(null);
+    }
+  }
+
   function openDaysEditor(row) {
     if (!row?.id || row.can_toggle_attendance === false) return;
     setDaysEdit({ user: row, days: workDaysFromRow(row) });
@@ -996,7 +1066,8 @@ export default function AttendanceAdminPage() {
         ) : (
           <>
             <div className="attendance-stat"><span>People</span><strong>{summary.employees}</strong></div>
-            <div className="attendance-stat"><span>On shift now</span><strong>{(data?.employees || []).filter((row) => row.in_shift).length}</strong></div>
+            <div className="attendance-stat"><span>On shift now</span><strong>{(data?.employees || []).filter((row) => row.in_shift && !row.on_break).length}</strong></div>
+            <div className="attendance-stat"><span>On break</span><strong>{(data?.employees || []).filter((row) => row.breaks_enabled && row.on_break).length}</strong></div>
             <div className="attendance-stat"><span>Waiting on a check</span><strong>{(data?.employees || []).filter((row) => row.in_shift && row.next_check_label).length}</strong></div>
             <div className="attendance-stat"><span>Missed</span><strong>{summary.missed}</strong></div>
           </>
@@ -1191,7 +1262,7 @@ export default function AttendanceAdminPage() {
           return (
             <article
               key={row.id}
-              className={`attendance-admin-card${row.in_shift ? ' is-on-shift' : ''}`}
+              className={`attendance-admin-card${row.in_shift ? ' is-on-shift' : ''}${row.breaks_enabled && row.on_break ? ' is-on-break' : ''}`}
             >
               <header>
                 <AttendancePhoto row={row} onOpen={setPhotoPreview} />
@@ -1215,6 +1286,11 @@ export default function AttendanceAdminPage() {
                       busy={togglingFlexibleId === row.id}
                       onToggle={toggleEmployeeFlexible}
                     />
+                    <EmployeeBreaksSwitch
+                      row={row}
+                      busy={togglingBreaksId === row.id}
+                      onToggle={toggleEmployeeBreaks}
+                    />
                     <button
                       type="button"
                       className="btn btn-ghost attendance-days-btn"
@@ -1237,6 +1313,17 @@ export default function AttendanceAdminPage() {
                 </div>
               </header>
               <p className="attendance-shift-track">{shiftTrackLine(row)}</p>
+              {(row.work_label || row.first_check_in || (row.breaks_enabled && (row.breaks || []).length > 0)) && (
+                <ShiftHoursDetail
+                  workLabel={row.work_label}
+                  breakLabel={row.break_label}
+                  firstCheckIn={row.first_check_in}
+                  checkedOutAt={row.checked_out_at}
+                  breaks={row.breaks_enabled ? row.breaks : []}
+                  onBreak={Boolean(row.breaks_enabled && row.on_break)}
+                  showBreak={row.breaks_enabled === true}
+                />
+              )}
               {row.profile_complete === false ? (
                 <p className="muted">
                   Profile is incomplete. This employee cannot self check-in until they complete it.
@@ -1602,8 +1689,13 @@ export default function AttendanceAdminPage() {
                         )
                       ) : null}
                       <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
-                      {day.duration_label ? (
+                      {day.work_label ? (
+                        <span className="muted"> · work {day.work_label}</span>
+                      ) : day.duration_label ? (
                         <span className="muted"> · {day.duration_label}</span>
+                      ) : null}
+                      {history.employee?.breaks_enabled && day.break_minutes > 0 ? (
+                        <span className="muted"> · break {day.break_label}</span>
                       ) : null}
                     </div>
                     <ul className="attendance-check-list">
@@ -1652,8 +1744,23 @@ export default function AttendanceAdminPage() {
                   <li key={day.date} className={`attendance-day ${day.status}`}>
                     <span className="attendance-day-date">{day.date}</span>
                     <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
-                    {day.duration_label ? (
+                    {day.work_label ? (
+                      <span className="muted"> · work {day.work_label}</span>
+                    ) : day.duration_label ? (
                       <span className="muted"> · {day.duration_label}</span>
+                    ) : null}
+                    {history.employee?.breaks_enabled && day.break_minutes > 0 ? (
+                      <span className="muted"> · break {day.break_label}</span>
+                    ) : null}
+                    {history.employee?.breaks_enabled && (day.breaks || []).length > 0 ? (
+                      <ShiftHoursDetail
+                        workLabel={day.work_label}
+                        breakLabel={day.break_label}
+                        firstCheckIn={day.first_check_in}
+                        checkedOutAt={day.checked_out_at}
+                        breaks={day.breaks}
+                        showBreak
+                      />
                     ) : null}
                   </li>
                 ))}

@@ -38,6 +38,15 @@ const {
   exportAttendance,
 } = require('../controllers/attendanceExportController');
 const {
+  listStaffPayroll,
+  getEmployeePayroll,
+  createAdvance,
+  deleteAdvance,
+  createLoan,
+  deleteLoan,
+  exportStaffPayroll,
+} = require('../controllers/staffPayrollController');
+const {
   getPermissionsCatalog,
   listEmployeesForRoleAssign,
   listRoleHolders,
@@ -98,6 +107,7 @@ const {
   putUserFaceCheckCapture,
   listFaceCheckCaptures,
   putUserFlexibleHours,
+  putUserBreaksEnabled,
   putUserWorkDays,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
@@ -284,6 +294,48 @@ router.post(
   lowerStaffUpload,
   createEmployee
 );
+router.get(
+  '/lower-staff/payroll',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  listStaffPayroll
+);
+router.get(
+  '/lower-staff/payroll/export',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  exportStaffPayroll
+);
+router.get(
+  '/employees/:id/payroll',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  getEmployeePayroll
+);
+router.post(
+  '/employees/:id/advances',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  createAdvance
+);
+router.delete(
+  '/employees/:id/advances/:advanceId',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  deleteAdvance
+);
+router.post(
+  '/employees/:id/loans',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  createLoan
+);
+router.delete(
+  '/employees/:id/loans/:loanId',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  deleteLoan
+);
 router.put(
   '/employees/:id/lower-staff',
   requireRole('admin'),
@@ -414,6 +466,17 @@ router.put(
     'employees:edit'
   ),
   putUserFlexibleHours
+);
+router.put(
+  '/attendance/:userId/breaks',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:edit',
+    'employees:remote',
+    'hr:add_employee',
+    'employees:edit'
+  ),
+  putUserBreaksEnabled
 );
 router.put(
   '/attendance/:userId/work-days',

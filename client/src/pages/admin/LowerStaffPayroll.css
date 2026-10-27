@@ -1,0 +1,307 @@
+.lower-payroll {
+  width: 100%;
+  min-width: 0;
+}
+
+.lower-payroll-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.85rem 1.1rem;
+  margin: 0.4rem 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(126, 203, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(8, 14, 28, 0.55);
+}
+
+.lower-payroll-month {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--cyan-soft);
+}
+
+.lower-payroll-month input {
+  min-width: 11rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+}
+
+.lower-payroll-hint {
+  flex: 1 1 220px;
+  margin: 0;
+  max-width: 28rem;
+}
+
+.lower-payroll-export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.lower-pay-remain {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.lower-pay-remain strong.is-over,
+.lower-pay-preview.is-over,
+.lower-pay-months .is-over {
+  color: #fb7185;
+}
+
+.lower-pay-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.lower-pay-modal {
+  width: min(440px, calc(100vw - 2rem));
+  height: auto !important;
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+}
+
+.lower-pay-modal h2,
+.lower-pay-detail h2 {
+  margin: 0;
+}
+
+.lower-pay-modal label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--cyan-soft);
+}
+
+.lower-pay-modal input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  background: rgba(5, 8, 16, 0.7);
+  color: var(--text-h);
+}
+
+.lower-pay-preview {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(61, 255, 122, 0.25);
+  background: rgba(61, 255, 122, 0.08);
+}
+
+.lower-pay-preview p {
+  margin: 0.2rem 0;
+}
+
+.lower-pay-detail {
+  width: min(640px, calc(100vw - 2rem));
+  height: auto !important;
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  padding: 1.15rem 1.2rem 1.25rem;
+}
+
+.lower-pay-detail h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.92rem;
+}
+
+.lower-pay-months,
+.lower-pay-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.lower-pay-months li,
+.lower-pay-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(126, 203, 255, 0.12);
+  background: rgba(5, 8, 16, 0.45);
+}
+
+.lower-pay-months li div,
+.lower-pay-list li div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.lower-pay-months p,
+.lower-pay-list p {
+  margin: 0;
+}
+
+.lower-staff-cards {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.lower-staff-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.85rem 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(126, 203, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(8, 14, 28, 0.55);
+  cursor: pointer;
+}
+
+.lower-staff-card.is-open {
+  border-color: rgba(61, 255, 122, 0.45);
+}
+
+.lower-staff-edit-btn {
+  flex-shrink: 0;
+  align-self: center;
+  min-width: 5.4rem;
+  margin: 0;
+  padding: 0.55rem 1.15rem;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  color: #04140a;
+}
+
+.lower-staff-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.lower-staff-card-name {
+  font-size: 1rem;
+}
+
+.lower-staff-card-body p {
+  margin: 0;
+}
+
+.lower-staff-card-remain {
+  font-weight: 800;
+}
+
+.lower-staff-card-remain.is-over {
+  color: #fb7185;
+}
+
+.lower-staff-portal.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.lower-staff-hub {
+  width: min(440px, calc(100vw - 2rem));
+  height: auto !important;
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  padding: 1.1rem 1.15rem 1.2rem;
+}
+
+.lower-staff-hub-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.lower-staff-hub-actions .btn {
+  margin: 0;
+  min-width: 0;
+}
+
+.lower-staff-hub-actions .btn-danger {
+  grid-column: 1 / -1;
+}
+
+.lower-staff-hub-meta {
+  margin: 0.85rem 0 0;
+}
+
+.lower-pay-stack {
+  z-index: 92;
+}
+
+.lower-staff-edit-overlay {
+  z-index: 100;
+}
+
+.lower-staff-portal.lower-staff-edit-overlay {
+  z-index: 100;
+}
+
+.lower-staff-edit-modal {
+  width: min(720px, calc(100% - 1.5rem));
+  max-height: min(92vh, 900px);
+  overflow: auto;
+  padding: 0.4rem 0.35rem 1rem;
+}
+
+.lower-staff-edit-modal .lower-staff-form {
+  margin: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 820px) {
+  .lower-payroll-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lower-payroll-month input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lower-payroll-hint {
+    max-width: none;
+  }
+
+  .lower-payroll-export {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .lower-payroll-export .btn {
+    flex: 1;
+  }
+
+  .lower-staff-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .lower-staff-hub-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .lower-staff-hub-actions .btn,
+  .lower-pay-modal .btn,
+  .lower-pay-detail .btn {
+    width: 100%;
+  }
+}

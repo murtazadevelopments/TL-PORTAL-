@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useAuthUser } from '../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../utils/documentUrls';
 import { missingEmployeePortalFields } from '../utils/profileCompleteness';
+import RemoteBreakCard from '../components/RemoteBreakCard';
 
 export default function DashboardHome() {
   const { user, error } = useAuthUser();
@@ -130,6 +131,8 @@ export default function DashboardHome() {
               </p>
             </div>
           </section>
+
+          {user.employment_type === 'remote' ? <RemoteBreakCard /> : null}
 
           <section className="dash-shortcuts-wrap">
             <h2>Quick actions</h2>

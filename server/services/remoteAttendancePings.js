@@ -68,6 +68,10 @@ async function dispatchDueNotifications(now = new Date()) {
   for (const row of due) {
     const person = await loadRemote(row.user_id);
     if (isRemoteProfileIncomplete(person)) continue;
+    if (row.kind === 'random' || row.kind === 'checkout') {
+      const { findOpenBreak } = require('../utils/breakHours');
+      if (await findOpenBreak(row.user_id)) continue;
+    }
     const claimed = await challenges.markNotified(row.id, now);
     if (!claimed) continue;
     try {
@@ -91,6 +95,10 @@ async function markExpiredChallenges(now = new Date()) {
   for (const row of expired) {
     const person = await loadRemote(row.user_id);
     if (isRemoteProfileIncomplete(person)) continue;
+    if (row.kind === 'random' || row.kind === 'checkout') {
+      const { findOpenBreak } = require('../utils/breakHours');
+      if (await findOpenBreak(row.user_id)) continue;
+    }
     const result = await pool.query(
       `
         INSERT INTO attendance_logs (

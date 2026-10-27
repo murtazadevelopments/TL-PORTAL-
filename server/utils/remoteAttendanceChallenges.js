@@ -487,7 +487,7 @@ async function dropOpenChallenges(userId, shiftDate) {
   );
 }
 
-function publicChallenge(row, { revealFuture = false, now = new Date(), user = null } = {}) {
+function publicChallenge(row, { revealFuture = false, now = new Date(), user = null, onBreak = false } = {}) {
   const scheduled = new Date(row.scheduled_at);
   const lateAt = new Date(row.late_at);
   const absentAt = new Date(row.absent_at);
@@ -505,10 +505,14 @@ function publicChallenge(row, { revealFuture = false, now = new Date(), user = n
       : scheduled;
   const opened = now.getTime() >= dayOpen.getTime();
   const withinHours = bounds ? isOnShift(now, user, row.shift_date) : true;
-  const hidden = row.kind === 'random' && !row.notified_at && !opened && !revealFuture;
+  const pausedOnBreak = Boolean(onBreak && (row.kind === 'random' || row.kind === 'checkout'));
+  const hidden =
+    row.kind === 'random' &&
+    ((pausedOnBreak && !revealFuture) || (!row.notified_at && !opened && !revealFuture));
   let state = row.status;
   if (state === 'pending' || state === 'notified') {
-    if (now.getTime() >= absentAt.getTime()) state = 'missed';
+    if (pausedOnBreak) state = hidden ? 'upcoming' : 'pending';
+    else if (now.getTime() >= absentAt.getTime()) state = 'missed';
     else if (opened && withinHours) state = now.getTime() >= lateAt.getTime() ? 'late_window' : 'open';
     else state = hidden ? 'upcoming' : 'pending';
   }
@@ -516,7 +520,8 @@ function publicChallenge(row, { revealFuture = false, now = new Date(), user = n
     (row.status === 'pending' || row.status === 'notified') &&
     opened &&
     withinHours &&
-    now.getTime() < absentAt.getTime();
+    now.getTime() < absentAt.getTime() &&
+    !pausedOnBreak;
   return {
     id: row.id,
     seq: row.seq,
@@ -541,14 +546,35 @@ function publicChallenge(row, { revealFuture = false, now = new Date(), user = n
   };
 }
 
-function openChallenge(rows, now = new Date(), user = null) {
-  const pubs = rows.map((row) => ({ row, pub: publicChallenge(row, { now, user }) }));
+function openChallenge(rows, now = new Date(), user = null, { onBreak = false } = {}) {
+  const pubs = rows.map((row) => ({ row, pub: publicChallenge(row, { now, user, onBreak }) }));
   const open = pubs.filter((item) => item.pub.can_check_in);
+  if (onBreak) return null;
   return (
     open.find((item) => item.row.kind === 'random') ||
     open.find((item) => item.row.kind === 'start') ||
     open.find((item) => item.row.kind === 'checkout') ||
     null
+  );
+}
+
+async function deferPendingRandoms(userId, now = new Date()) {
+  const lateAt = new Date(now.getTime() + LATE_AFTER_MINUTES * 60 * 1000);
+  const absentAt = new Date(now.getTime() + ABSENT_AFTER_MINUTES * 60 * 1000);
+  await pool.query(
+    `
+      UPDATE attendance_challenges
+      SET scheduled_at = $2,
+          late_at = $3,
+          absent_at = $4,
+          notified_at = NULL,
+          status = 'pending'
+      WHERE user_id = $1
+        AND kind IN ('random', 'checkout')
+        AND status IN ('pending', 'notified')
+        AND scheduled_at <= $2
+    `,
+    [userId, now, lateAt, absentAt]
   );
 }
 
@@ -578,6 +604,13 @@ async function dueNotifications(now = new Date()) {
         AND u.status = 'active'
         AND u.employment_type = 'remote'
         AND COALESCE(u.attendance_enabled, true) = true
+        AND NOT (
+          c.kind IN ('random', 'checkout')
+          AND EXISTS (
+            SELECT 1 FROM attendance_breaks b
+            WHERE b.user_id = c.user_id AND b.ended_at IS NULL
+          )
+        )
       ORDER BY c.scheduled_at ASC
       LIMIT 200
     `,
@@ -624,6 +657,13 @@ async function expiredOpen(now = new Date()) {
         AND c.absent_at <= $1
         AND u.employment_type = 'remote'
         AND COALESCE(u.attendance_enabled, true) = true
+        AND NOT (
+          c.kind IN ('random', 'checkout')
+          AND EXISTS (
+            SELECT 1 FROM attendance_breaks b
+            WHERE b.user_id = c.user_id AND b.ended_at IS NULL
+          )
+        )
       ORDER BY c.absent_at ASC
       LIMIT 400
     `,
@@ -651,6 +691,7 @@ module.exports = {
   realignRandomSeqs,
   publicChallenge,
   openChallenge,
+  deferPendingRandoms,
   markChallengeResult,
   dueNotifications,
   markNotified,

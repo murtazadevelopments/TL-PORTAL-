@@ -6,6 +6,8 @@ const {
   getMyAttendance,
   getMyHistory,
   checkIn,
+  startBreak,
+  endBreak,
 } = require('../controllers/attendanceController');
 const {
   onsiteCheckIn,
@@ -21,6 +23,8 @@ router.post('/enrollment', saveEnrollment);
 router.get('/me', getMyAttendance);
 router.get('/history', getMyHistory);
 router.post('/check-in', checkIn);
+router.post('/break/start', startBreak);
+router.post('/break/end', endBreak);
 router.get('/onsite-me', getMyOnsiteAttendance);
 router.post('/onsite-check-in', onsiteCheckIn);
 

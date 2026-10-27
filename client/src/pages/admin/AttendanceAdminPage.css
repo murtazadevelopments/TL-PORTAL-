@@ -336,6 +336,14 @@
   border-color: var(--green);
   background: rgba(61, 255, 122, 0.1);
 }
+.attendance-admin-card .badge.on_break {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.12);
+}
+.attendance-admin-card.is-on-break {
+  border-color: rgba(251, 191, 36, 0.4);
+}
 .attendance-admin-card .badge.off_shift {
   color: var(--muted);
 }

@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
@@ -26,6 +27,7 @@ import ClockHourSelect from '../../components/ClockHourSelect';
 import DesignationField from '../../components/DesignationField';
 import PasswordInput from '../../components/PasswordInput';
 import { hoursRangeLabel } from '../../utils/clockHours';
+import LowerStaffPayroll from './LowerStaffPayroll';
 import './AdminDashboard.css';
 
 const FALLBACK_SHIFT_OPTIONS = ['Evening', 'Night'];
@@ -1872,7 +1874,7 @@ function EmployeesPage() {
   async function handleDeleteLowerStaff(row) {
     const label = fullName(row);
     if (!window.confirm(`Delete ${label} from subordinate staff? This cannot be undone.`)) {
-      return;
+      return false;
     }
     setDeletingLowerId(row.id);
     setLowerError('');
@@ -1880,8 +1882,10 @@ function EmployeesPage() {
       await api.delete(`/api/admin/employees/${row.id}/lower-staff`);
       if (editingLowerId === row.id) cancelEditLowerStaff();
       await loadEmployees();
+      return true;
     } catch (err) {
       setLowerError(err.response?.data?.message || 'Failed to delete subordinate staff.');
+      return false;
     } finally {
       setDeletingLowerId(null);
     }
@@ -2184,6 +2188,26 @@ function EmployeesPage() {
         {saveError && !selectedId && <p className="error">{saveError}</p>}
 
         {statusTab === 'subordinate-staff' && canAddEmployees && (
+          (editingLowerId ? (node) => createPortal(node, document.body) : (node) => node)(
+          <div
+            className={
+              editingLowerId
+                ? 'modal-backdrop modal-backdrop-stack lower-staff-portal lower-staff-edit-overlay'
+                : undefined
+            }
+            onClick={
+              editingLowerId && !addingLower ? () => cancelEditLowerStaff() : undefined
+            }
+          >
+            <div
+              className={
+                editingLowerId ? 'modal-panel modal-panel-center lower-staff-edit-modal' : undefined
+              }
+              onClick={editingLowerId ? (e) => e.stopPropagation() : undefined}
+              role={editingLowerId ? 'dialog' : undefined}
+              aria-modal={editingLowerId ? true : undefined}
+              aria-label={editingLowerId ? 'Edit subordinate staff' : undefined}
+            >
           <form
             key={lowerFormKey}
             className="lower-staff-form"
@@ -2425,6 +2449,9 @@ function EmployeesPage() {
               {lowerError && <p className="error">{lowerError}</p>}
             </div>
           </form>
+            </div>
+          </div>
+          )
         )}
 
         <div className="table-shell">
@@ -2453,81 +2480,6 @@ function EmployeesPage() {
                   ? 'No employees found yet.'
                   : 'No employees match your search or filters.'}
             </div>
-          )}
-
-          {!loading && !listError && filtered.length > 0 && statusTab === 'subordinate-staff' && (
-            <table className="admin-table lower-staff-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Branch</th>
-                  <th>Salary</th>
-                  <th>CNIC</th>
-                  <th>Extra info</th>
-                  <th className="col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const extraBits = [extraSlotSummary(row, 1), extraSlotSummary(row, 2)].filter(
-                    Boolean
-                  );
-                  return (
-                    <tr
-                      key={row.id}
-                      className={editingLowerId === row.id ? 'lower-staff-row-editing' : undefined}
-                    >
-                      <td className="cell-name">{fullName(row)}</td>
-                      <td>{row.branch || '—'}</td>
-                      <td>{formatSalaryAmount(row.salary)}</td>
-                      <td>
-                        {row.cnic_front_url || row.cnic_back_url ? (
-                          <span className="lower-pill-row">
-                            {row.cnic_front_url && <span className="lower-pill">Front</span>}
-                            {row.cnic_back_url && <span className="lower-pill">Back</span>}
-                          </span>
-                        ) : (
-                          <span className="muted-cell">None</span>
-                        )}
-                      </td>
-                      <td>
-                        {extraBits.length ? (
-                          <span className="lower-pill-row">
-                            {extraBits.map((bit, i) => (
-                              <span className="lower-pill lower-pill-cyan" key={`${i}-${bit}`}>
-                                {bit}
-                              </span>
-                            ))}
-                          </span>
-                        ) : (
-                          <span className="muted-cell">None</span>
-                        )}
-                      </td>
-                      <td className="col-actions">
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            disabled={deletingLowerId === row.id}
-                            onClick={() => startEditLowerStaff(row)}
-                          >
-                            {editingLowerId === row.id ? 'Editing' : 'Edit'}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger"
-                            disabled={deletingLowerId === row.id}
-                            onClick={() => handleDeleteLowerStaff(row)}
-                          >
-                            {deletingLowerId === row.id ? 'Deleting…' : 'Delete'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           )}
 
           {!loading && !listError && filtered.length > 0 && statusTab !== 'subordinate-staff' && (
@@ -2864,6 +2816,21 @@ function EmployeesPage() {
             </table>
           )}
         </div>
+
+          {!loading && !listError && filtered.length > 0 && statusTab === 'subordinate-staff' && (
+            <LowerStaffPayroll
+              employees={filtered}
+              canManage={canAddEmployees}
+              extraSlotSummary={extraSlotSummary}
+              fullName={fullName}
+              formatSalaryAmount={formatSalaryAmount}
+              onEdit={startEditLowerStaff}
+              onCancelEdit={cancelEditLowerStaff}
+              onDelete={handleDeleteLowerStaff}
+              editingId={editingLowerId}
+              deletingId={deletingLowerId}
+            />
+          )}
       </div>
 
       {composeToast && <p className="success">{composeToast}</p>}
