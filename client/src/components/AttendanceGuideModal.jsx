@@ -28,7 +28,7 @@ function remoteSteps(checksPerShift, flexibleHours) {
   const timing = flexibleHours
     ? {
         title: `${n} checks, no fixed start time`,
-        body: 'Check in when you start. Then one random check-in during assigned hours. Check out when you finish. After 15 minutes a check is late. After 40 minutes it is absent.',
+        body: 'Open the portal and check in when you start — there is no first check-in email. You only get email for random check-ins during assigned hours. Check out when you finish. After 15 minutes a check is late. After 40 minutes it is absent.',
       }
     : {
         title: `${n} checks each shift`,

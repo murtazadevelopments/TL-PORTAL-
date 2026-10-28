@@ -8,7 +8,7 @@ import {
 } from '../lib/faceAttendance';
 import './FaceVerifyModal.css';
 
-const FAST_VERIFY_MS = 2500;
+const FAST_VERIFY_MS = 2000;
 
 export default function FaceVerifyModal({ open, title, detail, onCancel, onCapture }) {
   const videoRef = useRef(null);
@@ -47,7 +47,7 @@ export default function FaceVerifyModal({ open, title, detail, onCancel, onCaptu
           video.playsInline = true;
           video.setAttribute('playsinline', 'true');
           await video.play().catch(() => {});
-          await waitForVideo(video, 4000);
+          await waitForVideo(video, 2500);
         }
         if (!areFaceModelsReady()) await loadFaceModels();
         if (!active || !runningRef.current) return;
@@ -84,7 +84,7 @@ export default function FaceVerifyModal({ open, title, detail, onCancel, onCaptu
       if (!runningRef.current) throw new Error('Cancelled.');
       const shot = await captureFace(videoRef.current, { fast: true });
       if (shot?.descriptor && shot.descriptor.length >= 128) return shot;
-      await sleep(80);
+      await sleep(40);
     }
     throw new Error('Hold still for a moment so we can capture your face.');
   }
@@ -117,7 +117,7 @@ export default function FaceVerifyModal({ open, title, detail, onCancel, onCaptu
       <div className="face-verify-card">
         <h2>{title || 'Confirm it is you'}</h2>
         <p className="muted">
-          {detail || 'Look at the camera. This takes a few seconds.'}
+          {detail || 'Look at the camera. This takes a moment.'}
         </p>
         <div className="face-verify-oval">
           <video ref={videoRef} playsInline muted autoPlay />

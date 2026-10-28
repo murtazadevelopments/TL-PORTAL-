@@ -1097,7 +1097,10 @@ button.doc-preview:not(:disabled):hover {
     flex: 0 0 auto;
     white-space: nowrap;
     font-size: 0.88rem;
-    padding: 0.4rem 0.75rem;
+    padding: 0.55rem 0.85rem;
+    min-height: 44px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .filters-toolbar {
@@ -1124,12 +1127,20 @@ button.doc-preview:not(:disabled):hover {
 
   .filters-toolbar .btn {
     grid-column: 1 / -1;
+    min-height: 44px;
+    touch-action: manipulation;
   }
 
   .table-shell {
     max-width: 100%;
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-toolbar .btn {
+    min-height: 44px;
+    touch-action: manipulation;
   }
 
   .admin-table {

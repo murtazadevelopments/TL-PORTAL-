@@ -12,8 +12,10 @@
 
 .app-shell-topbar .hard-refresh-btn {
   font-size: 0.8rem;
-  padding: 0.4rem 0.7rem;
-  min-height: 36px;
+  padding: 0.45rem 0.7rem;
+  min-height: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .navbar .hard-refresh-btn {

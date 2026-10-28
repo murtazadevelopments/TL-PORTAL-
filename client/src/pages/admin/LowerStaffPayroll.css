@@ -333,21 +333,66 @@
   }
 
   .lower-payroll-export .btn {
-    flex: 1;
+    flex: 1 1 calc(50% - 0.25rem);
+    min-height: 44px;
+    touch-action: manipulation;
   }
 
-  .lower-staff-card {
+  .lower-staff-card,
+  .lower-staff-card.has-paid-action {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: start;
+    gap: 0.7rem 0.75rem;
+    padding: 0.85rem 0.85rem;
+    overflow: visible;
   }
 
-  .lower-staff-remain-box,
-  .lower-staff-paid-btn {
+  .lower-staff-edit-btn {
+    min-width: 4.75rem;
+    min-height: 44px;
+    padding: 0.55rem 0.9rem;
+    position: relative;
+    z-index: 2;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .lower-staff-card-body {
     grid-column: 2;
+  }
+
+  .lower-staff-remain-box {
+    grid-column: 1 / -1;
     text-align: left;
     min-width: 0;
     max-width: none;
-    justify-self: start;
+    justify-self: stretch;
+  }
+
+  .lower-staff-paid-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+    min-height: 44px;
+    justify-self: stretch;
+    position: relative;
+    z-index: 2;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .lower-staff-hub {
+    width: min(440px, calc(100vw - 1.5rem));
+    max-height: min(88dvh, 640px);
+    padding-bottom: max(1.2rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .lower-staff-portal.modal-backdrop {
+    padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0.75rem
+      max(0.75rem, env(safe-area-inset-bottom, 0px));
+    align-items: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .lower-staff-hub-actions {
@@ -358,5 +403,7 @@
   .lower-pay-modal .btn,
   .lower-pay-detail .btn {
     width: 100%;
+    min-height: 44px;
+    touch-action: manipulation;
   }
 }

@@ -110,6 +110,7 @@ const {
   listFaceCheckCaptures,
   putUserFlexibleHours,
   putUserBreaksEnabled,
+  putUserAutoReminder,
   putUserWorkDays,
 } = require('../controllers/attendanceController');
 const { listZktecoAttendance } = require('../controllers/zktecoAttendanceController');
@@ -491,6 +492,17 @@ router.put(
     'employees:edit'
   ),
   putUserBreaksEnabled
+);
+router.put(
+  '/attendance/:userId/auto-reminder',
+  requireRole('admin'),
+  requireCeoOrAnyPermission(
+    'attendance:edit',
+    'employees:remote',
+    'hr:add_employee',
+    'employees:edit'
+  ),
+  putUserAutoReminder
 );
 router.put(
   '/attendance/:userId/work-days',

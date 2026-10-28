@@ -14,13 +14,17 @@ export default function RemoteAttendanceRules({ flexibleHours = false }) {
       {flexible ? (
         <article className="att-rules-card att-rules-card-flex is-active">
           <p className="att-rules-lead">
-            Check in when you start work, one random check-in during assigned hours, then check out
-            when you finish.
+            Open the portal and check in when you start work (no first check-in email). You only get
+            email for random check-ins during assigned hours, then check out when you finish.
           </p>
           <ul>
             <li>
+              <span>First check-in</span>
+              <strong>No email — start yourself</strong>
+            </li>
+            <li>
               <span>Random check-in</span>
-              <strong>During assigned hours</strong>
+              <strong>Email during assigned hours</strong>
             </li>
             <li>
               <span>Late</span>

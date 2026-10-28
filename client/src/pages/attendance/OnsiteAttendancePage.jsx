@@ -92,7 +92,7 @@ export default function OnsiteAttendancePage() {
             ? 'Checked in — marked late.'
             : 'Checked in — marked absent.'
       );
-      await load();
+      void load();
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Check-in failed.');
     } finally {

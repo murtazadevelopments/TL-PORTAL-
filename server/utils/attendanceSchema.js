@@ -218,6 +218,8 @@ async function runEnsureAttendanceTables() {
   await ensureAttendanceReviewEmailColumn();
   const { ensureBreaksSupport } = require('./breakHours');
   await ensureBreaksSupport();
+  const { ensureAutoReminderColumn } = require('./autoReminder');
+  await ensureAutoReminderColumn();
   await pool.query(`
     ALTER TABLE attendance_days
       ADD COLUMN IF NOT EXISTS checked_out_at TIMESTAMPTZ

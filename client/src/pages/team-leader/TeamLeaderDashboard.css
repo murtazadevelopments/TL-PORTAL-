@@ -246,11 +246,41 @@
   padding-top: 0.45rem;
 }
 
+.tl-item-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .tl-item-label {
   margin: 0 0 0.2rem;
   font-size: 0.88rem;
   font-weight: 700;
   color: var(--text-h);
+}
+
+.tl-field-tag {
+  flex: 0 0 auto;
+  min-width: 4.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tl-item-username-row {
+  margin-top: 0.1rem;
+}
+
+.tl-item-username {
+  flex: 1 1 140px;
+  word-break: break-all;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-h);
+  background: transparent;
 }
 
 .tl-item-value-row {
@@ -417,4 +447,43 @@
 
 .tl-assign-row:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* Cross-device capture deterrence (Mac / Windows / Android / iOS browsers) */
+html.tl-no-capture,
+html.tl-no-capture body,
+.tl-no-capture-body,
+html.tl-no-capture .tl-page,
+html.tl-no-capture .tl-page * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+}
+
+html.tl-no-capture input,
+html.tl-no-capture textarea,
+html.tl-no-capture input *,
+html.tl-no-capture textarea * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
+
+.tl-page {
+  position: relative;
+  isolation: isolate;
+}
+
+@media print {
+  html.tl-no-capture body * {
+    visibility: hidden !important;
+  }
+  html.tl-no-capture body::after {
+    content: 'Printing the Team Leader Dashboard is not allowed.';
+    visibility: visible !important;
+    display: block;
+    padding: 2rem;
+    font-size: 1.1rem;
+  }
 }

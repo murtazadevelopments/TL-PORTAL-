@@ -1,11 +1,11 @@
 import * as faceapi from 'face-api.js';
 
 const MODEL_URL = '/models';
-const SAMPLE_COUNT = 3;
+const SAMPLE_COUNT = 2;
 const ALIGN_MS = 0;
-const SAMPLE_GAP_MS = 80;
+const SAMPLE_GAP_MS = 40;
 const LIVENESS_MS = 0;
-const VERIFY_MS = 5000;
+const VERIFY_MS = 2200;
 const TRACK_SIZE = 160;
 const CAPTURE_SIZE = 224;
 const DETECT_SCORE = 0.25;
@@ -145,11 +145,11 @@ export async function captureFace(input, { fast = false } = {}) {
   return shot;
 }
 
-export async function waitForVideo(video, timeoutMs = 8000) {
+export async function waitForVideo(video, timeoutMs = 4000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     if (video?.readyState >= 2 && video.videoWidth > 16 && video.videoHeight > 16) return;
-    await sleep(40);
+    await sleep(30);
   }
   throw new Error('Camera did not start. Allow camera access and try again.');
 }

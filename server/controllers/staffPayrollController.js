@@ -55,9 +55,13 @@ function parseMonth(value) {
 async function listLowerStaffRows() {
   const { rows } = await pool.query(
     `
-      SELECT id, employee_id, name, branch, shift, designation, salary, staff_kind, is_active
+      SELECT id, employee_id, name, branch, shift, designation, salary, staff_kind, is_active,
+             status, blocked_at, blocked_reason, resigned_at, terminated_at
       FROM users
-      WHERE is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
+      WHERE is_active = true
+        AND COALESCE(staff_kind, 'portal') = 'lower'
+        AND LOWER(TRIM(COALESCE(status, 'active'))) NOT IN ('resigned', 'terminated')
+        AND blocked_at IS NULL
       ORDER BY name ASC NULLS LAST, id DESC
     `
   );

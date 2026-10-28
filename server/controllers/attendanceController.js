@@ -23,6 +23,7 @@ const {
   rejectIfUserAttendanceStopped,
 } = require('../utils/attendanceEnabled');
 const { userFlexibleHours, setUserFlexibleHours } = require('../utils/flexibleHours');
+const { userAutoReminder, setUserAutoReminder } = require('../utils/autoReminder');
 const {
   userBreaksEnabled,
   setUserBreaksEnabled,
@@ -133,7 +134,7 @@ async function loadUser(userId) {
       SELECT id, name, username, email, role, employment_type, branch, department,
              is_active, status, profile_picture_url, employee_id, shift, designation,
              work_start_hour, work_end_hour, remote_check_request_at, attendance_enabled,
-             remote_check_count, flexible_hours, breaks_enabled, six_day_week, work_days, face_check_capture, staff_kind,
+             remote_check_count, flexible_hours, auto_reminder, breaks_enabled, six_day_week, work_days, face_check_capture, staff_kind,
              reference_person, emergency_contact_name, emergency_contact_number,
              bank_name, account_title, iban, account_number,
              cnic_front_url, cnic_back_url, cv_url
@@ -394,6 +395,7 @@ async function getMyAttendance(req, res) {
         ? ''
         : PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
       flexible_hours: flexible,
+      auto_reminder: userAutoReminder(user),
       work_days: workDaysFromUser(user),
       work_days_label: workDaysSummary(workDaysFromUser(user)),
       face_check_capture: userFaceCheckCapture(user),
@@ -456,7 +458,17 @@ async function checkIn(req, res) {
     if (rateLimited(req.user.id)) {
       return res.status(429).json({ message: 'Too many check-in attempts. Try again later.' });
     }
-    const openBreak = await findOpenBreak(user.id);
+
+    const livenessOk = Boolean(pick(req.body || {}, 'livenesspassed'));
+    const livenessAction = String(pick(req.body || {}, 'livenessaction') || '').trim();
+    if (!livenessOk || !livenessAction) {
+      return res.status(400).json({ message: 'Complete the liveness prompt before check-in.' });
+    }
+
+    const probe = parseEmbedding(req.body?.embedding);
+    if (!probe) {
+      return res.status(400).json({ message: 'A valid face embedding is required.' });
+    }
 
     const now = new Date();
     const shiftDate = remoteChallenges.activeShiftDate(now, user, { includeLead: false });
@@ -465,7 +477,12 @@ async function checkIn(req, res) {
         message: 'There is no open attendance check during your working hours.',
       });
     }
-    const challengeRows = await remoteChallenges.ensureChallengesForUser(user, shiftDate);
+
+    const [openBreak, challengeRows, enrolledResult] = await Promise.all([
+      findOpenBreak(user.id),
+      remoteChallenges.ensureChallengesForUser(user, shiftDate),
+      pool.query(`SELECT embedding FROM face_enrollments WHERE user_id = $1 LIMIT 1`, [req.user.id]),
+    ]);
     const opened = remoteChallenges.openChallenge(challengeRows, now, user, {
       onBreak: Boolean(openBreak),
     });
@@ -486,21 +503,7 @@ async function checkIn(req, res) {
     }
     const hourKey = challenge.hour_key;
 
-    const livenessOk = Boolean(pick(req.body || {}, 'livenesspassed'));
-    const livenessAction = String(pick(req.body || {}, 'livenessaction') || '').trim();
-    if (!livenessOk || !livenessAction) {
-      return res.status(400).json({ message: 'Complete the liveness prompt before check-in.' });
-    }
-
-    const probe = parseEmbedding(req.body?.embedding);
-    if (!probe) {
-      return res.status(400).json({ message: 'A valid face embedding is required.' });
-    }
-
-    const { rows: enrolled } = await pool.query(
-      `SELECT embedding FROM face_enrollments WHERE user_id = $1 LIMIT 1`,
-      [req.user.id]
-    );
+    const enrolled = enrolledResult.rows;
     if (!enrolled[0]) {
       return res.status(400).json({ message: 'Enroll your face before checking in.' });
     }
@@ -722,15 +725,17 @@ async function adminOverview(req, res) {
     const branchFilter = String(req.query.branch || '').trim().toLowerCase();
     const teamFilter = String(req.query.team || req.query.department || '').trim().toLowerCase();
 
-    const viewScope = await resolveAttendanceScope(req, 'attendance:view');
-    const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+    const [viewScope, editScope] = await Promise.all([
+      resolveAttendanceScope(req, 'attendance:view'),
+      resolveAttendanceScope(req, 'attendance:edit'),
+    ]);
     const filter = scopeWhereClause(viewScope, 1);
 
     const { rows: people } = await pool.query(
       `
         SELECT id, employee_id, name, username, branch, department, employment_type,
                profile_picture_url, shift, designation, is_active, status, work_start_hour, work_end_hour,
-               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours, breaks_enabled,
+               remote_check_request_at, attendance_enabled, remote_check_count, flexible_hours, auto_reminder, breaks_enabled,
                six_day_week, work_days,
                face_check_capture, staff_kind, reference_person,
                emergency_contact_name, emergency_contact_number,
@@ -755,36 +760,45 @@ async function adminOverview(req, res) {
     }
     let logs = [];
     let challengeRows = [];
+    let breakRowsAll = [];
+    let dayRows = [];
     if (ids.length) {
-      const logPatterns = [...challengeDates].map((d) => `${d}-%`);
-      const { rows } = await pool.query(
-        `
-          SELECT DISTINCT ON (user_id, hour_key)
-            id, user_id, hour_key AS hour_key, status, method, match_score, checked_in_at, note, marked_by
-          FROM attendance_logs
-          WHERE user_id = ANY($1::int[])
-            AND hour_key LIKE ANY($2::text[])
-          ORDER BY user_id, hour_key, created_at DESC
-        `,
-        [ids, logPatterns]
-      );
-      logs = rows;
-      const loaded = await pool.query(
-        `
-          SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
-          FROM attendance_challenges
-          WHERE user_id = ANY($1::int[])
-            AND shift_date = ANY($2::text[])
-          ORDER BY seq ASC
-        `,
-        [ids, [...challengeDates]]
-      );
-      challengeRows = loaded.rows;
+      const dateList = [...challengeDates];
+      const logPatterns = dateList.map((d) => `${d}-%`);
+      const [logsResult, challengesResult, breaksResult, daysResult] = await Promise.all([
+        pool.query(
+          `
+            SELECT DISTINCT ON (user_id, hour_key)
+              id, user_id, hour_key AS hour_key, status, method, match_score, checked_in_at, note, marked_by
+            FROM attendance_logs
+            WHERE user_id = ANY($1::int[])
+              AND hour_key LIKE ANY($2::text[])
+            ORDER BY user_id, hour_key, created_at DESC
+          `,
+          [ids, logPatterns]
+        ),
+        pool.query(
+          `
+            SELECT user_id, shift_date, seq, kind, hour_key, scheduled_at, late_at, absent_at, notified_at, status
+            FROM attendance_challenges
+            WHERE user_id = ANY($1::int[])
+              AND shift_date = ANY($2::text[])
+            ORDER BY seq ASC
+          `,
+          [ids, dateList]
+        ),
+        loadBreaksForUsers(ids, dateList),
+        pool.query(
+          `SELECT user_id, date_key, status, first_check_in, checked_out_at, duration_minutes FROM attendance_days WHERE date_key = ANY($1::text[]) AND user_id = ANY($2::int[])`,
+          [dateList, ids]
+        ),
+      ]);
+      logs = logsResult.rows;
+      challengeRows = challengesResult.rows;
+      breakRowsAll = breaksResult;
+      dayRows = daysResult.rows;
     }
 
-    const breakRowsAll = ids.length
-      ? await loadBreaksForUsers(ids, [...challengeDates])
-      : [];
     const breaksByUserDate = new Map();
     for (const row of breakRowsAll) {
       const key = `${row.user_id}:${String(row.shift_date).slice(0, 10)}`;
@@ -804,13 +818,6 @@ async function adminOverview(req, res) {
       if (!challengesByUser.has(uid)) challengesByUser.set(uid, []);
       challengesByUser.get(uid).push(row);
     }
-
-    const { rows: dayRows } = ids.length
-      ? await pool.query(
-          `SELECT user_id, date_key, status, first_check_in, checked_out_at, duration_minutes FROM attendance_days WHERE date_key = ANY($1::text[]) AND user_id = ANY($2::int[])`,
-          [[...challengeDates], ids]
-        )
-      : { rows: [] };
     const dayRowsByUser = new Map();
     for (const day of dayRows) {
       const uid = String(day.user_id);
@@ -996,6 +1003,7 @@ async function adminOverview(req, res) {
           attendance_enabled: userAttendanceEnabled(person),
           profile_complete: profileComplete,
           flexible_hours: flexible,
+          auto_reminder: userAutoReminder(person),
           breaks_enabled: breaksAllowed,
           on_break: Boolean(breaksAllowed && breakSummary.on_break),
           current_break: breaksAllowed ? breakSummary.current_break : null,
@@ -1395,6 +1403,42 @@ async function putUserAttendanceEnabled(req, res) {
     const raw = req.body?.enabled;
     const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
     const updated = await setUserAttendanceEnabled(targetId, enabled);
+    let flexibleOff = false;
+    let breaksOff = false;
+    let reminderOff = false;
+    if (!enabled) {
+      // Attendance off: turn related remote controls off automatically.
+      const sideEffects = [];
+      if (userFlexibleHours(target)) {
+        sideEffects.push(
+          setUserFlexibleHours(targetId, false).then(() => {
+            flexibleOff = true;
+          })
+        );
+      }
+      if (userBreaksEnabled(target)) {
+        sideEffects.push(
+          Promise.all([setUserBreaksEnabled(targetId, false), closeOpenBreak(targetId)]).then(() => {
+            breaksOff = true;
+          })
+        );
+      }
+      if (userAutoReminder(target)) {
+        sideEffects.push(
+          setUserAutoReminder(targetId, false).then(() => {
+            reminderOff = true;
+          })
+        );
+      }
+      const now = new Date();
+      const shiftDate =
+        remoteChallenges.activeShiftDate(now, target) ||
+        remoteChallenges.currentShiftDateKey(now, target);
+      if (shiftDate) {
+        sideEffects.push(remoteChallenges.dropOpenChallenges(targetId, shiftDate));
+      }
+      if (sideEffects.length) await Promise.all(sideEffects);
+    }
     await writeAuditLog({
       actorId: req.user.id,
       actorUsername: req.user.username,
@@ -1407,9 +1451,13 @@ async function putUserAttendanceEnabled(req, res) {
     });
     return res.json({
       enabled: updated?.attendance_enabled !== false,
+      flexible_hours: enabled ? userFlexibleHours(target) : false,
+      breaks_enabled: enabled ? userBreaksEnabled(target) : false,
+      auto_reminder: enabled ? userAutoReminder(target) : false,
+      cleared: { flexible: flexibleOff, breaks: breaksOff, auto_reminder: reminderOff },
       message: enabled
         ? `Attendance is on for ${target.name || target.username}.`
-        : `Attendance is off for ${target.name || target.username}. They cannot check in. Manual mark still works.`,
+        : `Attendance is off for ${target.name || target.username}. Flexible, break, and auto reminder were turned off. They cannot check in.`,
     });
   } catch (err) {
     console.error('putUserAttendanceEnabled error:', err);
@@ -1573,6 +1621,11 @@ async function putUserFlexibleHours(req, res) {
 
     const raw = req.body?.enabled;
     const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    if (enabled && !userAttendanceEnabled(target)) {
+      return res.status(400).json({
+        message: 'Turn attendance on before enabling flexible hours.',
+      });
+    }
     await setUserFlexibleHours(targetId, enabled);
     const updated = await loadUser(targetId);
     const now = new Date();
@@ -1597,7 +1650,7 @@ async function putUserFlexibleHours(req, res) {
       enabled: userFlexibleHours(updated),
       checks_per_shift: remoteChallenges.checkCountFromUser(updated),
       message: enabled
-        ? `Flexible hours are on for ${target.name || target.username}. They get 3 checks: first check-in, one random, then check-out.`
+        ? `Flexible hours are on for ${target.name || target.username}. They get 3 checks: first check-in (no email), random check-in emails only, then check-out.`
         : `Flexible hours are off for ${target.name || target.username}. Fixed shift times apply again.`,
     });
   } catch (err) {
@@ -1628,6 +1681,11 @@ async function putUserBreaksEnabled(req, res) {
     }
     const raw = req.body?.enabled;
     const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    if (enabled && !userAttendanceEnabled(target)) {
+      return res.status(400).json({
+        message: 'Turn attendance on before enabling breaks.',
+      });
+    }
     await setUserBreaksEnabled(targetId, enabled);
     await writeAuditLog({
       actorId: req.user.id,
@@ -1648,6 +1706,56 @@ async function putUserBreaksEnabled(req, res) {
   } catch (err) {
     console.error('putUserBreaksEnabled error:', err);
     return res.status(500).json({ message: 'Server error saving breaks.' });
+  }
+}
+
+async function putUserAutoReminder(req, res) {
+  try {
+    await ensureAttendanceTables();
+    const targetId = Number(req.params.userId);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      return res.status(400).json({ message: 'Invalid employee.' });
+    }
+    const target = await loadUser(targetId);
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (normalizeEmploymentType(target.employment_type) !== 'remote') {
+      return res.status(400).json({ message: 'Auto reminder is only for remote employees.' });
+    }
+    if (!isCeoOrManagerRole(req.user?.role)) {
+      const editScope = await resolveAttendanceScope(req, 'attendance:edit');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
+      }
+    }
+    const raw = req.body?.enabled;
+    const enabled = raw !== false && raw !== 0 && raw !== '0' && raw !== 'false' && raw !== 'off';
+    if (enabled && !userAttendanceEnabled(target)) {
+      return res.status(400).json({
+        message: 'Turn attendance on before enabling auto reminder.',
+      });
+    }
+    await setUserAutoReminder(targetId, enabled);
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: enabled ? 'attendance.auto_reminder_on' : 'attendance.auto_reminder_off',
+      targetTable: 'users',
+      targetId: targetId,
+      reason: enabled
+        ? `Turned auto reminder on for ${target.name || target.username}`
+        : `Turned auto reminder off for ${target.name || target.username}`,
+    });
+    return res.json({
+      enabled,
+      message: enabled
+        ? `Auto reminder is on for ${target.name || target.username}. They get random check-in emails.`
+        : `Auto reminder is off for ${target.name || target.username}. They will not get random check-in emails.`,
+    });
+  } catch (err) {
+    console.error('putUserAutoReminder error:', err);
+    return res.status(500).json({ message: 'Server error saving auto reminder.' });
   }
 }
 
@@ -2327,6 +2435,7 @@ module.exports = {
   streamFaceCheckCapture,
   putUserFlexibleHours,
   putUserBreaksEnabled,
+  putUserAutoReminder,
   putUserWorkDays,
   startBreak,
   endBreak,

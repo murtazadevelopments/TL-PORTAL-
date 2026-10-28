@@ -1141,10 +1141,15 @@ function EmployeesPage() {
     }
   }
 
+  function canExitEmployee(row) {
+    if (isLowerStaffRow(row)) return canAddEmployees || canDeactivateEmployees || canEditEmployees;
+    return canDeactivateEmployees || canEditEmployees;
+  }
+
   function openExit(row, kind, event) {
     event?.stopPropagation?.();
     if (!row?.id) return;
-    if (!(canDeactivateEmployees || canEditEmployees)) {
+    if (!canExitEmployee(row)) {
       setSaveError(
         kind === 'terminate'
           ? 'You do not have permission to terminate an employee.'
@@ -1169,7 +1174,7 @@ function EmployeesPage() {
   }
 
   async function submitExit() {
-    if (!exitModal.row?.id || !(canDeactivateEmployees || canEditEmployees)) return;
+    if (!exitModal.row?.id || !canExitEmployee(exitModal.row)) return;
     const lastDay = officeDateValue(exitModal.lastDay);
     if (!lastDay) {
       setExitModal((prev) => ({ ...prev, error: 'Last day in office is required.' }));
@@ -1204,6 +1209,9 @@ function EmployeesPage() {
       });
       setEditForm((prev) => ({ ...prev, status }));
       setExitModal(EMPTY_EXIT);
+      if (isLowerStaffRow(exitModal.row)) {
+        await loadEmployees();
+      }
       setSaveSuccess(
         data?.message ||
           (isTerminate
@@ -1226,7 +1234,11 @@ function EmployeesPage() {
     [employees]
   );
   const lowerStaff = useMemo(
-    () => employees.filter((e) => isLowerStaffRow(e)),
+    () => employees.filter((e) => isLowerStaffRow(e) && !isClosedAccount(e)),
+    [employees]
+  );
+  const closedLowerStaff = useMemo(
+    () => employees.filter((e) => isLowerStaffRow(e) && isClosedAccount(e)),
     [employees]
   );
 
@@ -1297,8 +1309,12 @@ function EmployeesPage() {
     const locked = portalEmployees.filter(
       (e) => isSignInDisabled(e) && !isClosedAccount(e)
     ).length;
-    const resigned = portalEmployees.filter((e) => isResignedAccount(e)).length;
-    const terminated = portalEmployees.filter((e) => isTerminatedAccount(e)).length;
+    const resigned =
+      portalEmployees.filter((e) => isResignedAccount(e)).length +
+      closedLowerStaff.filter((e) => isResignedAccount(e)).length;
+    const terminated =
+      portalEmployees.filter((e) => isTerminatedAccount(e)).length +
+      closedLowerStaff.filter((e) => isTerminatedAccount(e)).length;
     const incomplete = portalEmployees.filter((e) => isIncompleteProfile(e)).length;
     const complete = portalEmployees.filter((e) => isCompleteProfile(e)).length;
     return {
@@ -1311,7 +1327,7 @@ function EmployeesPage() {
       incomplete,
       lower: lowerStaff.length,
     };
-  }, [portalEmployees, lowerStaff]);
+  }, [portalEmployees, lowerStaff, closedLowerStaff]);
 
   const bulkAlertEligibleCount = useMemo(
     () =>
@@ -1325,7 +1341,12 @@ function EmployeesPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const source = statusTab === 'subordinate-staff' ? lowerStaff : portalEmployees;
+    const source =
+      statusTab === 'subordinate-staff'
+        ? lowerStaff
+        : statusTab === 'resigned' || statusTab === 'terminated'
+          ? [...portalEmployees, ...closedLowerStaff]
+          : portalEmployees;
 
     return source.filter((e) => {
       if (statusTab === 'subordinate-staff') {
@@ -1383,7 +1404,7 @@ function EmployeesPage() {
       const empId = String(e.employee_id || '').toLowerCase();
       return name.includes(q) || username.includes(q) || empId.includes(q);
     });
-  }, [portalEmployees, lowerStaff, search, filters, statusTab]);
+  }, [portalEmployees, lowerStaff, closedLowerStaff, search, filters, statusTab]);
 
   const selectedListRow = useMemo(
     () => employees.find((e) => String(e.id) === String(selectedId)) || null,
@@ -2491,7 +2512,15 @@ function EmployeesPage() {
           )
         )}
 
-        <div className="table-shell">
+        <div
+          className="table-shell"
+          hidden={
+            !loading &&
+            !listError &&
+            statusTab === 'subordinate-staff' &&
+            filtered.length > 0
+          }
+        >
           {loading && (
             <div className="admin-loading">
               <div className="spinner" />
@@ -2858,12 +2887,14 @@ function EmployeesPage() {
             <LowerStaffPayroll
               employees={filtered}
               canManage={canAddEmployees}
+              canExit={canAddEmployees || canDeactivateEmployees || canEditEmployees}
               extraSlotSummary={extraSlotSummary}
               fullName={fullName}
               formatSalaryAmount={formatSalaryAmount}
               onEdit={startEditLowerStaff}
               onCancelEdit={cancelEditLowerStaff}
               onDelete={handleDeleteLowerStaff}
+              onExit={openExit}
               editingId={editingLowerId}
               deletingId={deletingLowerId}
             />

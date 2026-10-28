@@ -401,6 +401,21 @@ async function notifyTPinOtp(user, otp) {
   });
 }
 
+async function notifyTlViewPinOtp(user, otp) {
+  if (!user?.email) return null;
+  return sendEmailSafe({
+    to: user.email,
+    subject: 'Your viewer PIN reset code',
+    emailType: 'tl_view_pin_otp',
+    html: `
+      <p>Hi ${escapeHtml(user.name || '')},</p>
+      <p>Use this one-time code to change your Team Leader Dashboard viewer PIN. It expires in 10 minutes.</p>
+      <p style="font-size:28px;letter-spacing:0.2em;font-weight:700">${escapeHtml(otp)}</p>
+      <p>If you did not request this, you can ignore this email. Do not share the code.</p>
+    `,
+  });
+}
+
 async function notifyPasswordReset(user, resetUrl) {
   const to = String(user?.email || '')
     .trim()
@@ -806,6 +821,7 @@ module.exports = {
   notifyPasswordReset,
   notifySalesPinOtp,
   notifyTPinOtp,
+  notifyTlViewPinOtp,
   notifyEmployeeAdminUpdated,
   notifyAdminsEmployeeSelfUpdate,
   notifyUserLogin,

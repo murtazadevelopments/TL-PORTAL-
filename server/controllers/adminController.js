@@ -1703,7 +1703,7 @@ async function markEmployeeExit(req, res, kind) {
 
     const { rows: existingRows } = await pool.query(
       `
-        SELECT id, username, name, role, branch, department, is_active,
+        SELECT id, username, name, role, branch, department, is_active, staff_kind,
                blocked_at, blocked_reason, resigned_at, terminated_at, last_day_in_office, status
         FROM users
         WHERE id = $1
@@ -1726,14 +1726,22 @@ async function markEmployeeExit(req, res, kind) {
       });
     }
 
-    const scopes = await resolvePermissionScopes(req);
-    const editScope = scopes['employees:edit']
-      ? scopeForPermission(scopes, 'employees:edit')
-      : scopeForPermission(scopes, 'employees:view');
-    if (!employeeMatchesScope(target, editScope)) {
-      return res.status(403).json({
-        message: 'This employee is outside your assigned scope.',
-      });
+    if (isLowerStaff(target)) {
+      if (!canManageLowerStaff(req)) {
+        return res.status(403).json({
+          message: 'Only HR can resign or terminate subordinate staff.',
+        });
+      }
+    } else {
+      const scopes = await resolvePermissionScopes(req);
+      const editScope = scopes['employees:edit']
+        ? scopeForPermission(scopes, 'employees:edit')
+        : scopeForPermission(scopes, 'employees:view');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({
+          message: 'This employee is outside your assigned scope.',
+        });
+      }
     }
 
     const { rows } = await pool.query(

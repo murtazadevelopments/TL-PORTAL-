@@ -111,12 +111,14 @@ function PortalModal({ children }) {
 export default function LowerStaffPayroll({
   employees,
   canManage,
+  canExit = false,
   extraSlotSummary,
   fullName,
   formatSalaryAmount,
   onEdit,
   onCancelEdit,
   onDelete,
+  onExit,
   editingId,
   deletingId,
 }) {
@@ -146,8 +148,8 @@ export default function LowerStaffPayroll({
   const [payingId, setPayingId] = useState('');
   useFlashSuccess(success);
 
-  const loadPayroll = useCallback(async (monthKey) => {
-    setLoadingPay(true);
+  const loadPayroll = useCallback(async (monthKey, { silent = false } = {}) => {
+    if (!silent) setLoadingPay(true);
     setError('');
     try {
       const { data } = await api.get('/api/admin/lower-staff/payroll', {
@@ -158,7 +160,7 @@ export default function LowerStaffPayroll({
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load salary details.');
     } finally {
-      setLoadingPay(false);
+      if (!silent) setLoadingPay(false);
     }
   }, []);
 
@@ -242,9 +244,10 @@ export default function LowerStaffPayroll({
         remarks: advanceForm.remarks.trim(),
       });
       setSuccess(data.message || 'Advance saved.');
+      const detailId = advanceFor.id;
       setAdvanceFor(null);
-      await loadPayroll(month);
-      if (detailFor?.id === advanceFor.id) await openDetail(advanceFor);
+      await loadPayroll(month, { silent: true });
+      if (detailFor?.id === detailId) void openDetail(advanceFor);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save advance.');
     } finally {
@@ -265,9 +268,10 @@ export default function LowerStaffPayroll({
         remarks: loanForm.remarks.trim(),
       });
       setSuccess(data.message || 'Loan saved.');
+      const detailId = loanFor.id;
       setLoanFor(null);
-      await loadPayroll(month);
-      if (detailFor?.id === loanFor.id) await openDetail(loanFor);
+      await loadPayroll(month, { silent: true });
+      if (detailFor?.id === detailId) void openDetail(loanFor);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save loan.');
     } finally {
@@ -294,7 +298,7 @@ export default function LowerStaffPayroll({
       });
       setSuccess(data.message || 'Salary marked paid.');
       setPaySalaryFor(null);
-      await loadPayroll(month);
+      void loadPayroll(month, { silent: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Could not mark salary paid.');
     } finally {
@@ -313,7 +317,7 @@ export default function LowerStaffPayroll({
       try {
         await api.delete(`/api/admin/employees/${row.id}/salary-payments/${encodeURIComponent(month)}`);
         setSuccess('Salary paid mark removed.');
-        await loadPayroll(month);
+        void loadPayroll(month, { silent: true });
       } catch (err) {
         setError(err.response?.data?.message || 'Could not remove salary paid mark.');
       } finally {
@@ -329,7 +333,7 @@ export default function LowerStaffPayroll({
         paid_on: today,
       });
       setSuccess(data.message || 'Salary marked paid.');
-      await loadPayroll(month);
+      void loadPayroll(month, { silent: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Could not mark salary paid.');
     } finally {
@@ -342,8 +346,8 @@ export default function LowerStaffPayroll({
     try {
       await api.delete(`/api/admin/employees/${row.id}/advances/${advanceId}`);
       setSuccess('Advance removed.');
-      await loadPayroll(month);
-      await openDetail(row);
+      await loadPayroll(month, { silent: true });
+      void openDetail(row);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not remove advance.');
     }
@@ -354,8 +358,8 @@ export default function LowerStaffPayroll({
     try {
       await api.delete(`/api/admin/employees/${row.id}/loans/${loanId}`);
       setSuccess('Loan removed.');
-      await loadPayroll(month);
-      await openDetail(row);
+      await loadPayroll(month, { silent: true });
+      void openDetail(row);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not remove loan.');
     }
@@ -555,6 +559,34 @@ export default function LowerStaffPayroll({
               >
                 Edit details
               </button>
+              {canExit ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={deletingId === hubFor.id}
+                    onClick={() => {
+                      const row = hubFor;
+                      closeHub();
+                      onExit?.(row, 'resign');
+                    }}
+                  >
+                    Resign
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={deletingId === hubFor.id}
+                    onClick={() => {
+                      const row = hubFor;
+                      closeHub();
+                      onExit?.(row, 'terminate');
+                    }}
+                  >
+                    Terminate
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-danger"

@@ -2,6 +2,7 @@ const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const { requireRole } = require('../middleware/permissions');
 const { requireTPin } = require('../middleware/tPin');
+const { requireTlViewPin } = require('../middleware/tlViewPin');
 const {
   getAccess,
   listCategories,
@@ -9,6 +10,9 @@ const {
   setTPin,
   requestTPinOtp,
   verifyTPinOtp,
+  setViewPin,
+  requestViewPinOtp,
+  verifyViewPinOtp,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -24,7 +28,12 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get('/access', getAccess);
-router.get('/', listCategories);
+router.get('/', requireTlViewPin(), listCategories);
+
+// Viewers (team leaders / assignees): set / change viewer PIN to open the board
+router.post('/view-pin/otp', requestViewPinOtp);
+router.post('/view-pin/otp/verify', verifyViewPinOtp);
+router.post('/view-pin', setViewPin);
 
 // CEO/manager: set / change T-Pin (password, current pin, or email OTP)
 router.post('/t-pin/otp', requireRole('ceo', 'manager'), requestTPinOtp);

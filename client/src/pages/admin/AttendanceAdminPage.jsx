@@ -215,8 +215,9 @@ function EmployeeAttendanceSwitch({ row, busy, onToggle }) {
 }
 
 function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
-  const on = row.flexible_hours === true;
-  const canToggle = row.can_toggle_attendance !== false;
+  const attendanceOn = row.attendance_enabled !== false;
+  const on = attendanceOn && row.flexible_hours === true;
+  const canToggle = row.can_toggle_attendance !== false && attendanceOn;
   return (
     <EmployeePowerSwitch
       label="Flexible"
@@ -224,14 +225,16 @@ function EmployeeFlexibleSwitch({ row, busy, onToggle }) {
       on={on}
       busy={busy}
       disabled={!canToggle}
+      title={!attendanceOn ? 'Turn attendance on first' : undefined}
       onToggle={() => onToggle(row)}
     />
   );
 }
 
 function EmployeeBreaksSwitch({ row, busy, onToggle }) {
-  const on = row.breaks_enabled === true;
-  const canToggle = row.can_toggle_attendance !== false;
+  const attendanceOn = row.attendance_enabled !== false;
+  const on = attendanceOn && row.breaks_enabled === true;
+  const canToggle = row.can_toggle_attendance !== false && attendanceOn;
   return (
     <EmployeePowerSwitch
       label="Break"
@@ -239,6 +242,30 @@ function EmployeeBreaksSwitch({ row, busy, onToggle }) {
       on={on}
       busy={busy}
       disabled={!canToggle}
+      title={!attendanceOn ? 'Turn attendance on first' : undefined}
+      onToggle={() => onToggle(row)}
+    />
+  );
+}
+
+function EmployeeAutoReminderSwitch({ row, busy, onToggle }) {
+  const attendanceOn = row.attendance_enabled !== false;
+  const on = attendanceOn && row.auto_reminder !== false;
+  const canToggle = row.can_toggle_attendance !== false && attendanceOn;
+  return (
+    <EmployeePowerSwitch
+      label="Auto reminder"
+      name={row.name}
+      on={on}
+      busy={busy}
+      disabled={!canToggle}
+      title={
+        !attendanceOn
+          ? 'Turn attendance on first'
+          : on
+            ? 'Random check-in emails are on'
+            : 'Random check-in emails are off'
+      }
       onToggle={() => onToggle(row)}
     />
   );
@@ -453,14 +480,15 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const [togglingId, setTogglingId] = useState(null);
   const [togglingFlexibleId, setTogglingFlexibleId] = useState(null);
   const [togglingBreaksId, setTogglingBreaksId] = useState(null);
+  const [togglingReminderId, setTogglingReminderId] = useState(null);
   const [daysEdit, setDaysEdit] = useState(null);
   const [savingDays, setSavingDays] = useState(false);
   const [togglingPictureId, setTogglingPictureId] = useState(null);
   const [dayFaceChecks, setDayFaceChecks] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
-  async function load(dateOverride) {
-    setLoading(true);
+  async function load(dateOverride, { silent = false } = {}) {
+    if (!silent) setLoading(true);
     setError('');
     const dateKey = dateForAdminFilter(dateOverride || date, fullDays);
     try {
@@ -487,8 +515,12 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load attendance.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
+  }
+
+  function refreshQuiet(dateOverride) {
+    return load(dateOverride, { silent: true });
   }
 
   useEffect(() => {
@@ -514,7 +546,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         note: manual.note,
       });
       setManual(EMPTY_MANUAL);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save manual attendance.');
     } finally {
@@ -538,7 +570,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         remote_check_count: Number(hoursEdit.remote_check_count) || 5,
       });
       setHoursEdit(EMPTY_HOURS);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save working hours.');
     } finally {
@@ -620,7 +652,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         params: { month: date.slice(0, 7) },
       });
       setHistory(next);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save check time.');
     } finally {
@@ -648,7 +680,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
       setOnsiteManual(EMPTY_ONSITE_MANUAL);
       const savedDate = dateForAdminFilter(payload?.record?.work_date || date, fullDays);
       setDate(savedDate);
-      await load(savedDate);
+      void refreshQuiet(savedDate);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save onsite attendance.');
     } finally {
@@ -666,7 +698,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         status: overrideStatus,
       });
       setOverrideRow(null);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not update status.');
     } finally {
@@ -685,7 +717,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
     setError('');
     try {
       await api.delete(`/api/admin/onsite-attendance/${row.record.id}`);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete attendance.');
     } finally {
@@ -712,7 +744,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         `/api/admin/attendance/${row.id}/days/${shiftDate}/last`
       );
       setNotice(payload?.message || `Deleted last attendance for ${row.name}.`);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete last attendance.');
     } finally {
@@ -735,7 +767,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         `/api/admin/attendance/${row.id}/days/${shiftDate}`
       );
       setNotice(payload?.message || `Deleted attendance for ${row.name} on ${shiftDate}.`);
-      await load();
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not delete attendance.');
     } finally {
@@ -760,6 +792,10 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
             ? {
                 ...item,
                 attendance_enabled: enabled,
+                flexible_hours: enabled ? item.flexible_hours : false,
+                breaks_enabled: enabled ? item.breaks_enabled : false,
+                auto_reminder: enabled ? Boolean(payload.auto_reminder) : false,
+                on_break: enabled ? item.on_break : false,
                 can_check_in_request: enabled
                   ? !['complete', 'cooldown', 'holiday', 'no_shift'].includes(item.check_in_request_reason)
                   : false,
@@ -786,6 +822,10 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
 
   async function toggleEmployeeFlexible(row) {
     if (!row?.id || row.can_toggle_attendance === false) return;
+    if (row.attendance_enabled === false) {
+      setError('Turn attendance on before Flexible, Break, or Auto reminder.');
+      return;
+    }
     const next = row.flexible_hours !== true;
     setTogglingFlexibleId(row.id);
     setError('');
@@ -816,7 +856,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         payload?.message ||
           (enabled ? `Flexible hours are on for ${row.name}.` : `Flexible hours are off for ${row.name}.`)
       );
-      await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not update flexible hours.');
     } finally {
@@ -826,6 +865,10 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
 
   async function toggleEmployeeBreaks(row) {
     if (!row?.id || row.can_toggle_attendance === false) return;
+    if (row.attendance_enabled === false) {
+      setError('Turn attendance on before Flexible, Break, or Auto reminder.');
+      return;
+    }
     const next = row.breaks_enabled !== true;
     setTogglingBreaksId(row.id);
     setError('');
@@ -857,11 +900,48 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         payload?.message ||
           (enabled ? `Breaks are on for ${row.name}.` : `Breaks are off for ${row.name}.`)
       );
-      await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not update breaks.');
     } finally {
       setTogglingBreaksId(null);
+    }
+  }
+
+  async function toggleEmployeeAutoReminder(row) {
+    if (!row?.id || row.can_toggle_attendance === false) return;
+    if (row.attendance_enabled === false) {
+      setError('Turn attendance on before Flexible, Break, or Auto reminder.');
+      return;
+    }
+    const next = row.auto_reminder === false;
+    setTogglingReminderId(row.id);
+    setError('');
+    setNotice('');
+    try {
+      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/auto-reminder`, {
+        enabled: next,
+      });
+      const enabled = Boolean(payload.enabled);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              employees: (prev.employees || []).map((item) =>
+                item.id === row.id ? { ...item, auto_reminder: enabled } : item
+              ),
+            }
+          : prev
+      );
+      setNotice(
+        payload?.message ||
+          (enabled
+            ? `Auto reminder is on for ${row.name}.`
+            : `Auto reminder is off for ${row.name}.`)
+      );
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not update auto reminder.');
+    } finally {
+      setTogglingReminderId(null);
     }
   }
 
@@ -903,7 +983,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
           : prev
       );
       setNotice(payload?.message || `Work days saved for ${daysEdit.user.name}.`);
-      await load();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not save work days.');
     } finally {
@@ -965,8 +1044,8 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
     setNotice('');
     try {
       const { data: payload } = await api.post(`/api/admin/attendance/${row.id}/check-in-request`);
-      await load();
       setNotice(payload?.message || `Check-in request sent to ${row.name}.`);
+      void refreshQuiet();
     } catch (err) {
       setError(err.response?.data?.message || 'Could not send check-in request.');
     } finally {
@@ -1249,6 +1328,11 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                       busy={togglingBreaksId === row.id}
                       onToggle={toggleEmployeeBreaks}
                     />
+                    <EmployeeAutoReminderSwitch
+                      row={row}
+                      busy={togglingReminderId === row.id}
+                      onToggle={toggleEmployeeAutoReminder}
+                    />
                     <button
                       type="button"
                       className="btn btn-ghost attendance-days-btn"
@@ -1517,7 +1601,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
             </label>
             <p className="muted">
               {hoursEdit.flexible_hours
-                ? 'Flexible default is 3 (first check-in + 1 random + check-out). Allowed range: 2–8.'
+                ? 'Flexible default is 3 (first check-in with no email + 1 random email + check-out). Allowed range: 2–8.'
                 : 'Includes the shift-start check. Default is 5 (1 start + 4 random). Allowed range: 1–8.'}
             </p>
             <div className="modal-actions">

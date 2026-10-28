@@ -5,6 +5,8 @@ import { useFlashSuccess } from '../../utils/successPopup';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { matchesTeamFilter } from '../../utils/teamNames';
 import PasswordInput from '../../components/PasswordInput';
+import { storeTlViewPin } from './tlViewPinStorage';
+import { useTlScreenGuard } from './useTlScreenGuard';
 import '../admin/AdminDashboard.css';
 import './TeamLeaderDashboard.css';
 
@@ -136,12 +138,14 @@ function normalizeCategories(list) {
     id: c.id,
     name: c.name || '',
     items: (c.items || []).map((it) => {
-      const value = it.value || it.label || '';
+      const value = String(it.value || it.label || '').trim();
       const label = String(it.label || '').trim();
+      const username = String(it.username || '').trim();
       return {
         id: it.id,
         value,
         label: label && label !== value ? label : '',
+        username,
         item_type: 'link',
       };
     }),
@@ -149,11 +153,267 @@ function normalizeCategories(list) {
   }));
 }
 
+function ViewerPinGate({ configured, busy, error, onSetPin, onUnlock, onForgot }) {
+  const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    setPassword('');
+    setPin('');
+    setConfirm('');
+    setLocalError('');
+  }, [configured]);
+
+  function submit(e) {
+    e.preventDefault();
+    setLocalError('');
+    if (!/^\d{4,8}$/.test(pin)) {
+      setLocalError('PIN must be 4–8 digits.');
+      return;
+    }
+    if (!configured) {
+      if (pin !== confirm) {
+        setLocalError('PIN and confirmation do not match.');
+        return;
+      }
+      if (!password) {
+        setLocalError('Enter your account password to create this PIN.');
+        return;
+      }
+      onSetPin({ password, pin });
+      return;
+    }
+    onUnlock(pin);
+  }
+
+  return (
+    <div className="tl-setup-card sales-pin-card">
+      <h2>{configured ? 'Enter dashboard PIN' : 'Create your dashboard PIN'}</h2>
+      <p className="muted">
+        {configured
+          ? 'Unlock to open the Team Leader Dashboard.'
+          : 'Create a 4–8 digit PIN. You will need it each time you open this dashboard.'}
+      </p>
+      <form className="form tl-setup-form" onSubmit={submit}>
+        {!configured && (
+          <PasswordInput
+            label="Account password"
+            name="account_password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+          />
+        )}
+        <PasswordInput
+          label="Dashboard PIN"
+          name="tl_view_pin"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={pin}
+          onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+          disabled={busy}
+          autoFocus
+          maxLength={8}
+        />
+        {!configured && (
+          <PasswordInput
+            label="Confirm PIN"
+            name="confirm_view_pin"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            maxLength={8}
+          />
+        )}
+        {(localError || error) && <p className="error">{localError || error}</p>}
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {busy ? 'Please wait…' : configured ? 'Unlock dashboard' : 'Save PIN and continue'}
+        </button>
+        {configured && (
+          <button type="button" className="btn btn-ghost" onClick={onForgot} disabled={busy}>
+            Forgot or change PIN?
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function RecoverViewerPinPanel({ busy, error, onBusy, onError, onCancel, onDone }) {
+  const [step, setStep] = useState('request');
+  const [otp, setOtp] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [hint, setHint] = useState('');
+  const [localError, setLocalError] = useState('');
+
+  async function sendCode() {
+    onBusy(true);
+    onError('');
+    setLocalError('');
+    try {
+      const { data } = await api.post('/api/tl-dashboard/view-pin/otp');
+      setHint(data?.email_hint || 'your email');
+      setStep('otp');
+    } catch (err) {
+      setLocalError(err.response?.data?.message || 'Could not send the code.');
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  async function verifyCode(e) {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(otp)) {
+      setLocalError('Enter the 6-digit code from your email.');
+      return;
+    }
+    onBusy(true);
+    onError('');
+    setLocalError('');
+    try {
+      await api.post('/api/tl-dashboard/view-pin/otp/verify', { otp });
+      setStep('pin');
+    } catch (err) {
+      setLocalError(err.response?.data?.message || 'That code is invalid or expired.');
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  async function savePin(e) {
+    e.preventDefault();
+    if (!/^\d{4,8}$/.test(pin)) {
+      setLocalError('New PIN must be 4–8 digits.');
+      return;
+    }
+    if (pin !== confirm) {
+      setLocalError('PIN and confirmation do not match.');
+      return;
+    }
+    onBusy(true);
+    onError('');
+    setLocalError('');
+    try {
+      await api.post('/api/tl-dashboard/view-pin', { tl_view_pin: pin });
+      onDone(pin);
+    } catch (err) {
+      setLocalError(err.response?.data?.message || 'Could not save the new PIN.');
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  return (
+    <div className="tl-setup-card sales-pin-card">
+      <h2>
+        {step === 'request' && 'Forgot or change dashboard PIN'}
+        {step === 'otp' && 'Enter email code'}
+        {step === 'pin' && 'Set a new dashboard PIN'}
+      </h2>
+      <p className="muted">
+        {step === 'request' &&
+          'We’ll email a 6-digit one-time code to the address on your profile. It is valid for 10 minutes.'}
+        {step === 'otp' && `Enter the code sent to ${hint}. It expires in 10 minutes.`}
+        {step === 'pin' && 'Code confirmed. Choose a new 4–8 digit dashboard PIN.'}
+      </p>
+      {step === 'request' && (
+        <div className="form tl-setup-form">
+          {(localError || error) && <p className="error">{localError || error}</p>}
+          <div className="tl-modal-actions" style={{ marginTop: 0, justifyContent: 'flex-start' }}>
+            <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
+              Back
+            </button>
+            <button type="button" className="btn btn-primary" onClick={sendCode} disabled={busy}>
+              {busy ? 'Sending…' : 'Email my code'}
+            </button>
+          </div>
+        </div>
+      )}
+      {step === 'otp' && (
+        <form className="form tl-setup-form" onSubmit={verifyCode}>
+          <label>
+            One-time code
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              disabled={busy}
+              autoFocus
+            />
+          </label>
+          {(localError || error) && <p className="error">{localError || error}</p>}
+          <div className="tl-modal-actions" style={{ marginTop: 0, justifyContent: 'flex-start' }}>
+            <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={sendCode} disabled={busy}>
+              Resend
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Checking…' : 'Verify code'}
+            </button>
+          </div>
+        </form>
+      )}
+      {step === 'pin' && (
+        <form className="form tl-setup-form" onSubmit={savePin}>
+          <PasswordInput
+            label="New dashboard PIN"
+            name="new_tl_view_pin"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            autoFocus
+            maxLength={8}
+          />
+          <PasswordInput
+            label="Confirm new PIN"
+            name="confirm_tl_view_pin"
+            inputMode="numeric"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            disabled={busy}
+            maxLength={8}
+          />
+          {(localError || error) && <p className="error">{localError || error}</p>}
+          <div className="tl-modal-actions" style={{ marginTop: 0, justifyContent: 'flex-start' }}>
+            <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={busy}>
+              {busy ? 'Saving…' : 'Save new PIN'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export default function TeamLeaderDashboard() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [canManage, setCanManage] = useState(false);
   const [tPinConfigured, setTPinConfigured] = useState(false);
+  const [viewPinConfigured, setViewPinConfigured] = useState(false);
+  // Never restore a prior unlock — PIN is required every time this page opens.
+  const [unlockedViewPin, setUnlockedViewPin] = useState('');
+  const [viewPinBusy, setViewPinBusy] = useState(false);
+  const [viewPinError, setViewPinError] = useState('');
+  const [viewPinRecover, setViewPinRecover] = useState(false);
+
+  useTlScreenGuard({ enabled: true });
   const loadedIdsRef = useRef({ categories: [], items: [] });
   const [section, setSection] = useState('all');
   const [categories, setCategories] = useState([]);
@@ -166,6 +426,7 @@ export default function TeamLeaderDashboard() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [linkDrafts, setLinkDrafts] = useState({});
   const [labelDrafts, setLabelDrafts] = useState({});
+  const [usernameDrafts, setUsernameDrafts] = useState({});
   const [openIds, setOpenIds] = useState(() => new Set());
   const [editingCats, setEditingCats] = useState(() => new Set());
   const [editingItem, setEditingItem] = useState(null);
@@ -218,38 +479,72 @@ export default function TeamLeaderDashboard() {
     setSuccess('');
   }, []);
 
-  const loadBoard = useCallback(async (opts = {}) => {
-    const keepOpen = opts.keepOpen instanceof Set ? opts.keepOpen : null;
-    setLoading(true);
-    setError('');
-    try {
-      const { data } = await api.get('/api/tl-dashboard', { params: { section } });
-      setCategories(normalizeCategories(data.categories));
-      setCanManage(Boolean(data.canManage));
-      setDirty(false);
-      setLinkDrafts({});
-      setLabelDrafts({});
-      setEditingCats(new Set());
-      setEditingItem(null);
-      const next = normalizeCategories(data.categories);
-      loadedIdsRef.current = {
-        categories: next.map((c) => c.id),
-        items: next.flatMap((c) => (c.items || []).map((it) => it.id)),
-      };
-      if (keepOpen) {
-        const ids = new Set(next.map((c) => String(c.id)));
-        const restored = [...keepOpen].filter((id) => ids.has(String(id)));
-        setOpenIds(new Set(restored.length ? restored : next[0] ? [String(next[0].id)] : []));
-      } else {
-        setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
+  const viewUnlocked = Boolean(unlockedViewPin);
+
+  const loadBoard = useCallback(
+    async (opts = {}) => {
+      const keepOpen = opts.keepOpen instanceof Set ? opts.keepOpen : null;
+      const pin = String(opts.pin ?? unlockedViewPin ?? '').trim();
+      if (!pin) {
+        setCategories([]);
+        return false;
       }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load dashboard.');
-      setCategories([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [section]);
+      setLoading(true);
+      setError('');
+      try {
+        const { data } = await api.get('/api/tl-dashboard', {
+          params: { section },
+          headers: { 'X-Tl-View-Pin': pin },
+        });
+        setCategories(normalizeCategories(data.categories));
+        setCanManage(Boolean(data.canManage));
+        setDirty(false);
+        setLinkDrafts({});
+        setLabelDrafts({});
+        setUsernameDrafts({});
+        setEditingCats(new Set());
+        setEditingItem(null);
+        const next = normalizeCategories(data.categories);
+        loadedIdsRef.current = {
+          categories: next.map((c) => c.id),
+          items: next.flatMap((c) => (c.items || []).map((it) => it.id)),
+        };
+        if (keepOpen) {
+          const ids = new Set(next.map((c) => String(c.id)));
+          const restored = [...keepOpen].filter((id) => ids.has(String(id)));
+          setOpenIds(new Set(restored.length ? restored : next[0] ? [String(next[0].id)] : []));
+        } else {
+          setOpenIds(next.length ? new Set([String(next[0].id)]) : new Set());
+        }
+        return true;
+      } catch (err) {
+        const code = err.response?.data?.code;
+        if (
+          code === 'TL_VIEW_PIN_INVALID' ||
+          code === 'TL_VIEW_PIN_REQUIRED' ||
+          code === 'TL_VIEW_PIN_NOT_SET'
+        ) {
+          storeTlViewPin('');
+          setUnlockedViewPin('');
+          if (code === 'TL_VIEW_PIN_NOT_SET') setViewPinConfigured(false);
+          setViewPinError(err.response?.data?.message || 'Enter your dashboard PIN.');
+        } else {
+          setError(err.response?.data?.message || 'Failed to load dashboard.');
+        }
+        setCategories([]);
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [section, unlockedViewPin]
+  );
+
+  useEffect(() => {
+    // Always start locked when opening this page (do not restore a prior unlock).
+    storeTlViewPin('');
+    setUnlockedViewPin('');
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -263,6 +558,7 @@ export default function TeamLeaderDashboard() {
         }
         setCanManage(Boolean(data.canManage));
         setTPinConfigured(Boolean(data.tPinConfigured));
+        setViewPinConfigured(Boolean(data.viewPinConfigured));
         if (data.canManage) {
           try {
             const users = await api.get('/api/tl-dashboard/assignable-users');
@@ -282,13 +578,55 @@ export default function TeamLeaderDashboard() {
     boot();
     return () => {
       active = false;
+      storeTlViewPin('');
     };
   }, [navigate]);
 
   useEffect(() => {
     if (checking) return;
+    if (!unlockedViewPin) return;
     loadBoard();
-  }, [checking, loadBoard]);
+  }, [checking, unlockedViewPin, loadBoard]);
+
+  async function handleSetViewPin({ password, pin }) {
+    setViewPinBusy(true);
+    setViewPinError('');
+    try {
+      await api.post('/api/tl-dashboard/view-pin', {
+        tl_view_pin: pin,
+        current_password: password,
+      });
+      setViewPinConfigured(true);
+      storeTlViewPin(pin);
+      setUnlockedViewPin(pin);
+      setSuccess('Dashboard PIN saved. Unlocked.');
+    } catch (err) {
+      setViewPinError(err.response?.data?.message || 'Could not save dashboard PIN.');
+    } finally {
+      setViewPinBusy(false);
+    }
+  }
+
+  async function handleUnlockViewPin(pin) {
+    setViewPinBusy(true);
+    setViewPinError('');
+    try {
+      const ok = await loadBoard({ pin });
+      if (!ok) return;
+      storeTlViewPin(pin);
+      setUnlockedViewPin(pin);
+    } finally {
+      setViewPinBusy(false);
+    }
+  }
+
+  function lockViewerDashboard() {
+    storeTlViewPin('');
+    setUnlockedViewPin('');
+    setCategories([]);
+    setViewPinError('');
+    setViewPinRecover(false);
+  }
 
   function switchSection(next) {
     if (next === section) return;
@@ -397,6 +735,7 @@ export default function TeamLeaderDashboard() {
     if (!canEdit) return;
     const link = String(linkDrafts[cat.id] || '').trim();
     const label = String(labelDrafts[cat.id] || '').trim();
+    const username = String(usernameDrafts[cat.id] || '').trim();
     if (!link) {
       setError('Enter a link.');
       return;
@@ -412,6 +751,7 @@ export default function TeamLeaderDashboard() {
                   id: tempId('item'),
                   value: link,
                   label,
+                  username,
                   item_type: 'link',
                 },
               ],
@@ -421,6 +761,7 @@ export default function TeamLeaderDashboard() {
     );
     setLinkDrafts((prev) => ({ ...prev, [cat.id]: '' }));
     setLabelDrafts((prev) => ({ ...prev, [cat.id]: '' }));
+    setUsernameDrafts((prev) => ({ ...prev, [cat.id]: '' }));
     setOpenIds((prev) => new Set([...prev, String(cat.id)]));
     markDirty();
     setError('');
@@ -471,6 +812,7 @@ export default function TeamLeaderDashboard() {
       itemId: item.id,
       label: item.label || '',
       value: item.value || '',
+      username: item.username || '',
     });
   }
 
@@ -482,15 +824,14 @@ export default function TeamLeaderDashboard() {
       return;
     }
     const label = String(editingItem.label || '').trim();
+    const username = String(editingItem.username || '').trim();
     setCategories((prev) =>
       prev.map((c) =>
         c.id === editingItem.catId
           ? {
               ...c,
               items: c.items.map((it) =>
-                it.id === editingItem.itemId
-                  ? { ...it, value, label: label && label !== value ? label : '' }
-                  : it
+                it.id === editingItem.itemId ? { ...it, value, label, username } : it
               ),
             }
           : c
@@ -566,10 +907,12 @@ export default function TeamLeaderDashboard() {
           items: (c.items || []).map((it) => {
             const link = String(it.value || '').trim();
             const label = String(it.label || '').trim();
+            const username = String(it.username || '').trim();
             return {
               id: it.id,
               label: label || link,
               value: link,
+              username,
               item_type: 'link',
             };
           }),
@@ -592,11 +935,58 @@ export default function TeamLeaderDashboard() {
 
   if (checking) {
     return (
-      <div className="admin-page page-panel">
+      <div className="admin-page page-panel tl-page">
         <div className="admin-loading">
           <div className="spinner" />
           Checking access…
         </div>
+      </div>
+    );
+  }
+
+  if (!viewUnlocked) {
+    return (
+      <div className="admin-page page-panel tl-page">
+        <div className="admin-toolbar" style={{ marginTop: 0 }}>
+          <div>
+            <h1>Team Leader Dashboard</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              Enter your dashboard PIN to open this page.
+            </p>
+          </div>
+        </div>
+        {viewPinRecover ? (
+          <RecoverViewerPinPanel
+            busy={viewPinBusy}
+            error={viewPinError}
+            onBusy={setViewPinBusy}
+            onError={setViewPinError}
+            onCancel={() => {
+              setViewPinRecover(false);
+              setViewPinError('');
+            }}
+            onDone={(pin) => {
+              setViewPinConfigured(true);
+              storeTlViewPin(pin);
+              setUnlockedViewPin(pin);
+              setViewPinRecover(false);
+              setViewPinError('');
+              setSuccess('Dashboard PIN updated. Unlocked.');
+            }}
+          />
+        ) : (
+          <ViewerPinGate
+            configured={viewPinConfigured}
+            busy={viewPinBusy}
+            error={viewPinError}
+            onSetPin={handleSetViewPin}
+            onUnlock={handleUnlockViewPin}
+            onForgot={() => {
+              setViewPinError('');
+              setViewPinRecover(true);
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -608,8 +998,8 @@ export default function TeamLeaderDashboard() {
           <h1>Team Leader Dashboard</h1>
           <p className="muted" style={{ margin: 0 }}>
             {canManage
-              ? 'CEO and manager share this dashboard. Use Edit, then Save with your T-Pin. Team leaders only see copy.'
-              : 'View and copy the links assigned to you.'}
+              ? 'Unlock with your dashboard PIN. Use Edit, then Save with your T-Pin.'
+              : 'View and copy the links assigned to you. Lock when you step away.'}
           </p>
         </div>
         <div className="tl-toolbar-actions">
@@ -632,7 +1022,7 @@ export default function TeamLeaderDashboard() {
                 type="button"
                 className="btn btn-ghost"
                 disabled={loading || dirty}
-                onClick={loadBoard}
+                onClick={() => loadBoard()}
                 title={dirty ? 'Save or discard changes first' : 'Reload from server'}
               >
                 {loading ? 'Refreshing…' : 'Refresh'}
@@ -645,12 +1035,31 @@ export default function TeamLeaderDashboard() {
               >
                 {dirty ? 'Save' : 'Saved'}
               </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={lockViewerDashboard}
+                disabled={dirty}
+                title={dirty ? 'Save or discard changes before locking' : 'Lock dashboard'}
+              >
+                Lock
+              </button>
             </>
           )}
           {!canManage && (
-            <button type="button" className="btn btn-ghost" disabled={loading} onClick={loadBoard}>
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loading}
+                onClick={() => loadBoard()}
+              >
+                {loading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={lockViewerDashboard}>
+                Lock
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -674,7 +1083,7 @@ export default function TeamLeaderDashboard() {
         <div className="tl-setup-card">
           <h2>Create T-Pin</h2>
           <p className="muted">
-            You can already see the shared dashboard. Create a T-Pin to edit and save.
+            Create a T-Pin to edit and save. This is separate from your dashboard unlock PIN.
           </p>
           <form className="form tl-setup-form" onSubmit={handleSetupTPin}>
             <PasswordInput
@@ -863,11 +1272,21 @@ export default function TeamLeaderDashboard() {
                             />
                             <input
                               type="url"
-                              placeholder="https://…"
+                              placeholder="Paste link (https://…)"
                               value={editingItem.value}
                               onChange={(e) =>
                                 setEditingItem((prev) =>
                                   prev ? { ...prev, value: e.target.value } : prev
+                                )
+                              }
+                            />
+                            <input
+                              type="text"
+                              placeholder="Username (optional)"
+                              value={editingItem.username}
+                              onChange={(e) =>
+                                setEditingItem((prev) =>
+                                  prev ? { ...prev, username: e.target.value } : prev
                                 )
                               }
                             />
@@ -889,39 +1308,46 @@ export default function TeamLeaderDashboard() {
                             </div>
                           </div>
                         ) : (
-                          <>
-                        {item.label ? (
-                          <p className="tl-item-label">{item.label}</p>
-                        ) : null}
-                        <div className="tl-item-value-row">
-                          <a
-                            href={linkHref(item.value)}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {item.value}
-                          </a>
-                          <CopyButton value={item.value} label="link" />
-                          {isEditingCategory(cat) && (
-                            <>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => startEditItem(cat, item)}
+                          <div className="tl-item-fields">
+                            {item.label ? (
+                              <p className="tl-item-label">{item.label}</p>
+                            ) : null}
+                            <div className="tl-item-value-row">
+                              <a
+                                href={linkHref(item.value)}
+                                target="_blank"
+                                rel="noreferrer"
                               >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => handleDeleteItem(cat, item)}
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </div>
-                          </>
+                                {item.value}
+                              </a>
+                              <CopyButton value={item.value} label="link" />
+                              {isEditingCategory(cat) && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost"
+                                    onClick={() => startEditItem(cat, item)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost"
+                                    onClick={() => handleDeleteItem(cat, item)}
+                                  >
+                                    Remove
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {item.username ? (
+                              <div className="tl-item-value-row tl-item-username-row">
+                                <span className="tl-field-tag">Username</span>
+                                <code className="tl-item-username">{item.username}</code>
+                                <CopyButton value={item.username} label="username" />
+                              </div>
+                            ) : null}
+                          </div>
                         )}
                       </li>
                       );
@@ -970,6 +1396,20 @@ export default function TeamLeaderDashboard() {
                           Add link
                         </button>
                       </div>
+                      <input
+                        type="text"
+                        placeholder="Username (optional)"
+                        value={usernameDrafts[cat.id] || ''}
+                        onChange={(e) =>
+                          setUsernameDrafts((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddLink(cat);
+                          }
+                        }}
+                      />
                     </div>
                   )}
                 </div>

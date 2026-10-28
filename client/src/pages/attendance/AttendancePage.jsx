@@ -262,6 +262,10 @@ export default function AttendancePage() {
     const video = videoRef.current;
     if (!video) throw new Error('Camera view is not ready. Refresh the page.');
 
+    const modelsPromise = areFaceModelsReady()
+      ? Promise.resolve()
+      : (setEngineHint('Preparing face check…'), loadFaceModels());
+
     if (!streamRef.current) {
       streamRef.current = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -292,13 +296,8 @@ export default function AttendancePage() {
     }
 
     setCameraOn(true);
-    await waitForVideo(video);
-
-    if (!areFaceModelsReady()) {
-      setEngineHint('Preparing face check…');
-      await loadFaceModels();
-      setEngineHint('');
-    }
+    await Promise.all([waitForVideo(video, 3500), modelsPromise]);
+    setEngineHint('');
     setModelsReady(true);
   }, []);
 
@@ -426,12 +425,12 @@ export default function AttendancePage() {
     throw new Error('We still cannot see your face. Sit closer, turn on a light, and try again.');
   }
 
-  async function grabDescriptor(until = Date.now() + 2500) {
+  async function grabDescriptor(until = Date.now() + VERIFY_MS) {
     while (Date.now() < until) {
       if (!runningRef.current) throw new Error('Cancelled.');
-      const shot = await captureFace(videoRef.current);
+      const shot = await captureFace(videoRef.current, { fast: true });
       if (shot?.descriptor && shot.descriptor.length >= 128) return shot;
-      await sleep(60);
+      await sleep(40);
     }
     throw new Error('Hold still for a moment so we can capture your face.');
   }
@@ -442,7 +441,7 @@ export default function AttendancePage() {
       setPhase('idle');
       setProgress(0);
       setRing(nextRing);
-    }, 2600);
+    }, 900);
   }
 
   async function handleEnroll() {
@@ -464,14 +463,14 @@ export default function AttendancePage() {
         await loadFaceModels();
         setModelsReady(true);
       }
-      await waitForFace(2500);
+      await waitForFace(1600);
 
       const samples = [];
       for (let i = 0; i < SAMPLE_COUNT; i += 1) {
         setHint(`Photo ${i + 1} of ${SAMPLE_COUNT}`);
         setDetail('Hold still');
         setRing('capturing');
-        const shot = await grabDescriptor(Date.now() + 2000);
+        const shot = await grabDescriptor(Date.now() + 1200);
         samples.push(Array.from(shot.descriptor));
         setProgress(35 + Math.round(((i + 1) / SAMPLE_COUNT) * 50));
         if (i < SAMPLE_COUNT - 1) await sleep(SAMPLE_GAP_MS);
@@ -498,7 +497,7 @@ export default function AttendancePage() {
         kind: 'enroll',
         status: 'enrolled',
       });
-      await load();
+      void load();
       runningRef.current = false;
       settleStage('ready');
     } catch (err) {
@@ -520,9 +519,8 @@ export default function AttendancePage() {
     setVerify({ result: 'scanning', confidence: null, time: null, kind: openCheck?.kind || 'start', status: null });
     runningRef.current = true;
     try {
-      const verifyStarted = Date.now();
       setHint('Look at the camera');
-      setDetail('Hold still — this takes a few seconds');
+      setDetail('Hold still — almost done');
       setProgress(18);
       setRing('capturing');
       await startCamera();
@@ -536,7 +534,7 @@ export default function AttendancePage() {
       setDetail('Matching your enrolled face');
       setProgress(55);
       const snapshot = faceCheckCapture ? videoFrameJpeg(videoRef.current) : null;
-      const shot = await grabDescriptor(verifyStarted + VERIFY_MS);
+      const shot = await grabDescriptor(Date.now() + VERIFY_MS);
       const payload = {
         embedding: Array.from(shot.descriptor),
         liveness_passed: true,
@@ -562,7 +560,7 @@ export default function AttendancePage() {
         kind: data.kind,
         status: data.status,
       });
-      await load();
+      void load();
       runningRef.current = false;
       settleStage('ready');
     } catch (err) {

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
-const { notifyTPinOtp } = require('../services/notifications');
+const { notifyTPinOtp, notifyTlViewPinOtp } = require('../services/notifications');
 const {
   isCeoOrManagerRole,
   isTeamLeaderRole,
@@ -21,6 +21,23 @@ async function ensureTPinOtpSchema() {
   tPinOtpColumnsReady = true;
 }
 
+let viewPinColumnsReady = false;
+async function ensureTlViewPinSchema() {
+  if (viewPinColumnsReady) return;
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tl_view_pin_hash TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tl_view_pin_otp_hash TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tl_view_pin_otp_expires_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS tl_view_pin_change_until TIMESTAMPTZ`);
+  viewPinColumnsReady = true;
+}
+
+let itemUsernameReady = false;
+async function ensureTlItemUsernameSchema() {
+  if (itemUsernameReady) return;
+  await pool.query(`ALTER TABLE tl_category_items ADD COLUMN IF NOT EXISTS username TEXT`);
+  itemUsernameReady = true;
+}
+
 function maskEmail(email) {
   const [name, domain] = String(email || '').split('@');
   if (!domain) return 'your email';
@@ -38,9 +55,12 @@ function normalizeSection(value) {
 async function loadUserAccessFlags(userId) {
   const { ensureDesignationsSchema } = require('../utils/designationsSchema');
   await ensureDesignationsSchema();
+  await ensureTlViewPinSchema();
   const { rows } = await pool.query(
     `
-      SELECT role, designation, t_pin_hash IS NOT NULL AS t_pin_configured
+      SELECT role, designation,
+             t_pin_hash IS NOT NULL AS t_pin_configured,
+             tl_view_pin_hash IS NOT NULL AS view_pin_configured
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -76,12 +96,15 @@ async function getAccess(req, res) {
       assigned,
     });
 
+    const canManage = isCeoOrManagerRole(row.role);
     return res.json({
       access,
       role: row.role,
-      canManage: isCeoOrManagerRole(row.role),
+      canManage,
       isTeamLeader: isTeamLeaderRole(row.role) || canViewAllTlCategories(row),
-      tPinConfigured: Boolean(row.t_pin_configured) && isCeoOrManagerRole(row.role),
+      tPinConfigured: Boolean(row.t_pin_configured) && canManage,
+      requiresViewPin: Boolean(access),
+      viewPinConfigured: Boolean(row.view_pin_configured) && Boolean(access),
     });
   } catch (err) {
     console.error('tl getAccess error:', err);
@@ -94,6 +117,7 @@ async function getAccess(req, res) {
  */
 async function listCategories(req, res) {
   try {
+    await ensureTlItemUsernameSchema();
     const section = normalizeSection(req.query.section);
     if (!section) {
       return res.status(400).json({ message: 'section must be "all" or "merchant".' });
@@ -150,7 +174,7 @@ async function listCategories(req, res) {
     const ids = catRows.map((c) => c.id);
     const { rows: itemRows } = await pool.query(
       `
-        SELECT id, category_id, label, value, item_type, sort_order, created_at, updated_at
+        SELECT id, category_id, label, value, username, item_type, sort_order, created_at, updated_at
         FROM tl_category_items
         WHERE category_id = ANY($1::bigint[])
         ORDER BY sort_order ASC, id ASC
@@ -190,6 +214,7 @@ async function listCategories(req, res) {
         id: row.id,
         label: row.label,
         value: row.value,
+        username: row.username || '',
         item_type: row.item_type,
         sort_order: row.sort_order,
       });
@@ -504,9 +529,11 @@ async function deleteCategory(req, res) {
 
 async function createItem(req, res) {
   try {
+    await ensureTlItemUsernameSchema();
     const categoryId = Number(req.params.id);
     const label = String(req.body?.label || '').trim();
     const value = String(req.body?.value || '').trim();
+    const username = String(req.body?.username || '').trim();
     const itemType = String(req.body?.item_type || req.body?.itemType || 'text')
       .trim()
       .toLowerCase();
@@ -534,11 +561,11 @@ async function createItem(req, res) {
 
     const { rows } = await pool.query(
       `
-        INSERT INTO tl_category_items (category_id, label, value, item_type, sort_order)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, category_id, label, value, item_type, sort_order, created_at, updated_at
+        INSERT INTO tl_category_items (category_id, label, value, username, item_type, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, category_id, label, value, username, item_type, sort_order, created_at, updated_at
       `,
-      [categoryId, label, value, itemType, ord[0].next]
+      [categoryId, label, value, username || null, itemType, ord[0].next]
     );
 
     await pool.query('UPDATE tl_categories SET updated_at = NOW() WHERE id = $1', [
@@ -554,9 +581,11 @@ async function createItem(req, res) {
 
 async function updateItem(req, res) {
   try {
+    await ensureTlItemUsernameSchema();
     const id = Number(req.params.itemId);
     const label = String(req.body?.label || '').trim();
     const value = String(req.body?.value || '').trim();
+    const username = String(req.body?.username || '').trim();
     const itemType = String(req.body?.item_type || req.body?.itemType || 'text')
       .trim()
       .toLowerCase();
@@ -574,11 +603,11 @@ async function updateItem(req, res) {
     const { rows } = await pool.query(
       `
         UPDATE tl_category_items
-        SET label = $1, value = $2, item_type = $3, updated_at = NOW()
-        WHERE id = $4
-        RETURNING id, category_id, label, value, item_type, sort_order, created_at, updated_at
+        SET label = $1, value = $2, username = $3, item_type = $4, updated_at = NOW()
+        WHERE id = $5
+        RETURNING id, category_id, label, value, username, item_type, sort_order, created_at, updated_at
       `,
-      [label, value, itemType, id]
+      [label, value, username || null, itemType, id]
     );
     if (!rows[0]) return res.status(404).json({ message: 'Item not found.' });
     return res.json(rows[0]);
@@ -762,9 +791,11 @@ async function saveSection(req, res) {
       const keptItemIds = new Set();
 
       let itemOrder = 0;
+      await ensureTlItemUsernameSchema();
       for (const item of items) {
         const label = String(item?.label || '').trim();
         const value = String(item?.value || '').trim();
+        const username = String(item?.username || '').trim();
         const itemType = String(item?.item_type || item?.itemType || 'text')
           .trim()
           .toLowerCase();
@@ -785,20 +816,20 @@ async function saveSection(req, res) {
           await client.query(
             `
               UPDATE tl_category_items
-              SET label = $1, value = $2, item_type = $3, sort_order = $4, updated_at = NOW()
-              WHERE id = $5 AND category_id = $6
+              SET label = $1, value = $2, username = $3, item_type = $4, sort_order = $5, updated_at = NOW()
+              WHERE id = $6 AND category_id = $7
             `,
-            [label, value, itemType, itemOrder, itemNum, categoryId]
+            [storedLabel, value, username || null, itemType, itemOrder, itemNum, categoryId]
           );
           keptItemIds.add(String(itemNum));
         } else {
           const { rows: ins } = await client.query(
             `
-              INSERT INTO tl_category_items (category_id, label, value, item_type, sort_order)
-              VALUES ($1, $2, $3, $4, $5)
+              INSERT INTO tl_category_items (category_id, label, value, username, item_type, sort_order)
+              VALUES ($1, $2, $3, $4, $5, $6)
               RETURNING id
             `,
-            [categoryId, label, value, itemType, itemOrder]
+            [categoryId, storedLabel, value, username || null, itemType, itemOrder]
           );
           keptItemIds.add(String(ins[0].id));
         }
@@ -872,6 +903,218 @@ async function saveSection(req, res) {
   }
 }
 
+/**
+ * POST /api/tl-dashboard/view-pin
+ * Anyone with dashboard access sets or changes their unlock PIN.
+ * (CEO/manager still use T-Pin separately for Save.)
+ */
+async function setViewPin(req, res) {
+  try {
+    await ensureTlViewPinSchema();
+    const row = await loadUserAccessFlags(req.user.id);
+    if (!row) return res.status(404).json({ message: 'User not found.' });
+    const assigned = await userHasAssignment(req.user.id);
+    if (
+      !hasTeamLeaderDashboardAccess({
+        role: row.role,
+        designation: row.designation,
+        assigned,
+      })
+    ) {
+      return res.status(403).json({ message: 'You are not assigned to this dashboard.' });
+    }
+
+    const newPin = String(req.body?.tl_view_pin ?? req.body?.view_pin ?? req.body?.new_view_pin ?? '').trim();
+    if (!/^\d{4,8}$/.test(newPin)) {
+      return res.status(400).json({ message: 'PIN must be 4–8 digits.' });
+    }
+
+    const { rows } = await pool.query(
+      'SELECT password, tl_view_pin_hash, tl_view_pin_change_until FROM users WHERE id = $1 LIMIT 1',
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const otpWindow =
+      user.tl_view_pin_change_until &&
+      new Date(user.tl_view_pin_change_until).getTime() > Date.now();
+
+    if (otpWindow) {
+      /* verified email OTP — allowed to set a new PIN */
+    } else if (user.tl_view_pin_hash) {
+      const current = String(req.body?.current_tl_view_pin ?? req.body?.current_view_pin ?? '').trim();
+      if (!current || !(await bcrypt.compare(current, user.tl_view_pin_hash))) {
+        return res.status(403).json({
+          message: 'Current PIN is incorrect.',
+          code: 'TL_VIEW_PIN_INVALID',
+        });
+      }
+    } else {
+      const password = String(req.body?.current_password ?? '').trim();
+      if (!password || !(await bcrypt.compare(password, user.password))) {
+        return res.status(403).json({
+          message: 'Account password is required to create your PIN.',
+          code: 'TL_VIEW_PIN_PASSWORD_REQUIRED',
+        });
+      }
+    }
+
+    const hash = await bcrypt.hash(newPin, 10);
+    await pool.query(
+      `
+        UPDATE users
+        SET tl_view_pin_hash = $1,
+            tl_view_pin_otp_hash = NULL,
+            tl_view_pin_otp_expires_at = NULL,
+            tl_view_pin_change_until = NULL,
+            updated_at = NOW()
+        WHERE id = $2
+      `,
+      [hash, req.user.id]
+    );
+
+    return res.json({ message: 'Dashboard PIN saved.', viewPinConfigured: true });
+  } catch (err) {
+    console.error('setViewPin error:', err);
+    return res.status(500).json({ message: 'Server error saving dashboard PIN.' });
+  }
+}
+
+async function requestViewPinOtp(req, res) {
+  try {
+    await ensureTlViewPinSchema();
+    const { rows } = await pool.query(
+      `
+        SELECT id, name, email, role, designation, tl_view_pin_otp_expires_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    const assigned = await userHasAssignment(req.user.id);
+    if (
+      !hasTeamLeaderDashboardAccess({
+        role: user.role,
+        designation: user.designation,
+        assigned,
+      })
+    ) {
+      return res.status(403).json({ message: 'You are not assigned to this dashboard.' });
+    }
+
+    const email = String(user.email || '').trim();
+    if (!email) {
+      return res.status(400).json({
+        message: 'Add an email on your profile before resetting the dashboard PIN.',
+      });
+    }
+
+    if (
+      user.tl_view_pin_otp_expires_at &&
+      new Date(user.tl_view_pin_otp_expires_at).getTime() > Date.now() + 9 * 60 * 1000
+    ) {
+      return res.status(429).json({
+        message: 'A code was already sent. Wait a minute before requesting another.',
+        email_hint: maskEmail(email),
+      });
+    }
+
+    const otp = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await pool.query(
+      `
+        UPDATE users
+        SET tl_view_pin_otp_hash = $1,
+            tl_view_pin_otp_expires_at = $2,
+            tl_view_pin_change_until = NULL,
+            updated_at = NOW()
+        WHERE id = $3
+      `,
+      [otpHash, expiresAt, user.id]
+    );
+
+    const sent = await notifyTlViewPinOtp(user, otp);
+    if (!sent) {
+      return res.status(500).json({ message: 'Could not send the code. Try again in a minute.' });
+    }
+
+    return res.json({
+      message: 'We sent a 6-digit code to your email. It expires in 10 minutes.',
+      email_hint: maskEmail(email),
+      expires_in: 600,
+    });
+  } catch (err) {
+    console.error('requestViewPinOtp error:', err);
+    return res.status(500).json({ message: 'Server error sending PIN reset code.' });
+  }
+}
+
+async function verifyViewPinOtp(req, res) {
+  try {
+    await ensureTlViewPinSchema();
+    const otp = String(req.body?.otp || req.body?.code || '').replace(/\D/g, '');
+    if (!/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ message: 'Enter the 6-digit code from your email.' });
+    }
+
+    const { rows } = await pool.query(
+      `
+        SELECT tl_view_pin_otp_hash, tl_view_pin_otp_expires_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (
+      !user?.tl_view_pin_otp_hash ||
+      !user.tl_view_pin_otp_expires_at ||
+      new Date(user.tl_view_pin_otp_expires_at).getTime() <= Date.now()
+    ) {
+      return res.status(400).json({
+        message: 'That code is invalid or expired. Request a new one.',
+        code: 'TL_VIEW_PIN_OTP_INVALID',
+      });
+    }
+
+    const ok = await bcrypt.compare(otp, user.tl_view_pin_otp_hash);
+    if (!ok) {
+      return res.status(400).json({
+        message: 'That code is invalid or expired. Request a new one.',
+        code: 'TL_VIEW_PIN_OTP_INVALID',
+      });
+    }
+
+    const changeUntil = new Date(Date.now() + 10 * 60 * 1000);
+    await pool.query(
+      `
+        UPDATE users
+        SET tl_view_pin_otp_hash = NULL,
+            tl_view_pin_otp_expires_at = NULL,
+            tl_view_pin_change_until = $1,
+            updated_at = NOW()
+        WHERE id = $2
+      `,
+      [changeUntil, req.user.id]
+    );
+
+    return res.json({
+      message: 'Code confirmed. Set a new viewer PIN now.',
+      change_until: changeUntil.toISOString(),
+    });
+  } catch (err) {
+    console.error('verifyViewPinOtp error:', err);
+    return res.status(500).json({ message: 'Server error verifying the code.' });
+  }
+}
+
 module.exports = {
   getAccess,
   listCategories,
@@ -879,6 +1122,9 @@ module.exports = {
   setTPin,
   requestTPinOtp,
   verifyTPinOtp,
+  setViewPin,
+  requestViewPinOtp,
+  verifyViewPinOtp,
   createCategory,
   updateCategory,
   deleteCategory,
