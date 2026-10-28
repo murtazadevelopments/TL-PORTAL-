@@ -180,7 +180,8 @@ function setSpaCacheHeaders(res, filePath) {
     base === 'registerSW.js' ||
     base === 'manifest.json' ||
     base.endsWith('.webmanifest') ||
-    /^sw-.+\.js$/.test(base);
+    /^sw-.+\.js$/.test(base) ||
+    /^tl-sw-/.test(base);
 
   if (isAppShell || res.req?.get?.('Service-Worker') === 'script') {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
