@@ -399,6 +399,8 @@ async function createLowerStaff(req, res, body) {
   const name = String(body.name || '').trim();
   const salary = Number(body.salary);
   const branch = String(body.branch || '').trim();
+  const shift = String(body.shift || '').trim() || null;
+  const designation = String(body.designation || '').trim() || null;
   if (!name) {
     return res.status(400).json({ message: 'Name is required.' });
   }
@@ -420,16 +422,16 @@ async function createLowerStaff(req, res, body) {
     `
       INSERT INTO users (
         employee_id, username, name, email, password, contact_number,
-        role, status, salary, branch, staff_kind, employment_type,
+        role, status, salary, branch, shift, designation, staff_kind, employment_type,
         staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text,
         staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text,
         is_active, date_joined
       )
       VALUES (
         $1, $2, $3, $4, $5, '',
-        'employee', 'active', $6, $7, 'lower', 'onsite',
-        $8, $9, $10,
-        $11, $12, $13,
+        'employee', 'active', $6, $7, $8, $9, 'lower', 'onsite',
+        $10, $11, $12,
+        $13, $14, $15,
         true, NOW()
       )
       RETURNING ${DETAIL_COLUMNS}
@@ -442,6 +444,8 @@ async function createLowerStaff(req, res, body) {
       hashedPassword,
       salary,
       branch,
+      shift,
+      designation,
       extra1.kind,
       extra1.label,
       extra1.kind === 'text' ? extra1.text : null,
@@ -517,6 +521,8 @@ async function updateLowerStaff(req, res) {
     const name = String(body.name || '').trim();
     const salary = Number(body.salary);
     const branch = String(body.branch || '').trim();
+    const shift = String(body.shift || '').trim() || null;
+    const designation = String(body.designation || '').trim() || null;
     if (!name) {
       return res.status(400).json({ message: 'Name is required.' });
     }
@@ -561,24 +567,28 @@ async function updateLowerStaff(req, res) {
           name = $1,
           salary = $2,
           branch = $3,
-          cnic_front_url = COALESCE($4, cnic_front_url),
-          cnic_back_url = COALESCE($5, cnic_back_url),
-          staff_extra_1_kind = $6,
-          staff_extra_1_label = $7,
-          staff_extra_1_text = $8,
-          staff_extra_1_url = $9,
-          staff_extra_2_kind = $10,
-          staff_extra_2_label = $11,
-          staff_extra_2_text = $12,
-          staff_extra_2_url = $13,
+          shift = $4,
+          designation = $5,
+          cnic_front_url = COALESCE($6, cnic_front_url),
+          cnic_back_url = COALESCE($7, cnic_back_url),
+          staff_extra_1_kind = $8,
+          staff_extra_1_label = $9,
+          staff_extra_1_text = $10,
+          staff_extra_1_url = $11,
+          staff_extra_2_kind = $12,
+          staff_extra_2_label = $13,
+          staff_extra_2_text = $14,
+          staff_extra_2_url = $15,
           updated_at = NOW()
-        WHERE id = $14 AND is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
+        WHERE id = $16 AND is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
         name,
         salary,
         branch,
+        shift,
+        designation,
         filePatch.cnic_front_url || null,
         filePatch.cnic_back_url || null,
         extra1.kind,

@@ -13,6 +13,7 @@ const {
   monthLabel,
   compareMonth,
   splitInstallments,
+  parseRemarks,
   loadLowerStaff,
   remainingForMonth,
   payrollForUsers,
@@ -53,7 +54,7 @@ function parseMonth(value) {
 async function listLowerStaffRows() {
   const { rows } = await pool.query(
     `
-      SELECT id, employee_id, name, branch, salary, staff_kind, is_active
+      SELECT id, employee_id, name, branch, shift, designation, salary, staff_kind, is_active
       FROM users
       WHERE is_active = true AND COALESCE(staff_kind, 'portal') = 'lower'
       ORDER BY name ASC NULLS LAST, id DESC
@@ -68,17 +69,26 @@ function withMonthTotals(person, monthKey, payroll) {
   const loanAmount = money(payroll?.loan_amount);
   const remaining = remainingForMonth(salary, advanceAmount, loanAmount);
   return {
-    id: person.id,
+    id: Number(person.id),
     employee_id: person.employee_id,
     name: person.name,
     branch: person.branch,
+    shift: person.shift || '',
+    designation: person.designation || '',
     salary,
     month_key: monthKey,
     month_label: monthLabel(monthKey),
     advance_amount: advanceAmount,
     advance_count: Number(payroll?.advance_count) || 0,
+    advance_remarks: String(payroll?.advance_remarks || '').trim(),
     loan_amount: loanAmount,
     loan_count: Number(payroll?.loan_count) || 0,
+    loan_remarks: String(payroll?.loan_remarks || '').trim(),
+    remarks: [...new Set(
+      [payroll?.advance_remarks, payroll?.loan_remarks]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )].join(' · '),
     remaining,
     has_advance: (Number(payroll?.advance_count) || 0) > 0,
     has_loan: (Number(payroll?.loan_count) || 0) > 0,
@@ -161,6 +171,7 @@ async function createAdvance(req, res) {
 
     const amount = money(req.body?.amount);
     const paidOn = isDateKey(req.body?.paid_on) ? String(req.body.paid_on).slice(0, 10) : karachiToday();
+    const remarks = parseRemarks(req.body?.remarks);
     if (!(amount > 0)) {
       return res.status(400).json({ message: 'Enter an advance amount greater than 0.' });
     }
@@ -168,11 +179,11 @@ async function createAdvance(req, res) {
     const monthKey = monthFromDate(paidOn);
     const { rows } = await pool.query(
       `
-        INSERT INTO staff_salary_advances (user_id, amount, paid_on, month_key, created_by)
-        VALUES ($1, $2, $3::date, $4, $5)
-        RETURNING id, amount, paid_on::text AS paid_on, month_key, created_at
+        INSERT INTO staff_salary_advances (user_id, amount, paid_on, month_key, remarks, created_by)
+        VALUES ($1, $2, $3::date, $4, $5, $6)
+        RETURNING id, amount, paid_on::text AS paid_on, month_key, remarks, created_at
       `,
-      [user.id, amount, paidOn, monthKey, req.user.id]
+      [user.id, amount, paidOn, monthKey, remarks, req.user.id]
     );
 
     try {
@@ -238,6 +249,7 @@ async function createLoan(req, res) {
     const startMonth = isMonthKey(req.body?.start_month)
       ? String(req.body.start_month).slice(0, 7)
       : karachiMonth();
+    const remarks = parseRemarks(req.body?.remarks);
     if (!(amount > 0)) {
       return res.status(400).json({ message: 'Enter a loan amount greater than 0.' });
     }
@@ -251,11 +263,11 @@ async function createLoan(req, res) {
     await client.query('BEGIN');
     const { rows } = await client.query(
       `
-        INSERT INTO staff_loans (user_id, amount, installments, monthly_amount, start_month, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, amount, installments, monthly_amount, start_month, created_at
+        INSERT INTO staff_loans (user_id, amount, installments, monthly_amount, start_month, remarks, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, amount, installments, monthly_amount, start_month, remarks, created_at
       `,
-      [user.id, amount, installments, monthlyAmount, startMonth, req.user.id]
+      [user.id, amount, installments, monthlyAmount, startMonth, remarks, req.user.id]
     );
     const loan = rows[0];
     for (let i = 0; i < parts.length; i += 1) {
@@ -352,7 +364,12 @@ async function exportStaffPayroll(req, res) {
           kind: 'Advance',
           date: person.month_label,
           amount: person.advance_amount.toLocaleString('en-PK'),
-          extra: `${person.advance_count} advance${person.advance_count === 1 ? '' : 's'} this month`,
+          extra: [
+            `${person.advance_count} advance${person.advance_count === 1 ? '' : 's'} this month`,
+            person.advance_remarks,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         });
       }
       if (person.has_loan || person.open_loans) {
@@ -361,9 +378,14 @@ async function exportStaffPayroll(req, res) {
           kind: 'Loan',
           date: person.month_label,
           amount: person.loan_amount.toLocaleString('en-PK'),
-          extra: person.open_loans
-            ? `${person.open_loans} open loan${person.open_loans === 1 ? '' : 's'}`
-            : 'Loan installment this month',
+          extra: [
+            person.open_loans
+              ? `${person.open_loans} open loan${person.open_loans === 1 ? '' : 's'}`
+              : 'Loan installment this month',
+            person.loan_remarks,
+          ]
+            .filter(Boolean)
+            .join(' · '),
         });
       }
     }

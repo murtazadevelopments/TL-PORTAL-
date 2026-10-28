@@ -87,6 +87,22 @@ function monthKeyFromDate(dateKey) {
   return String(dateKey || '').slice(0, 7);
 }
 
+function indexPayroll(employees) {
+  const map = {};
+  for (const row of employees || []) {
+    map[row.id] = row;
+    map[String(row.id)] = row;
+    const n = Number(row.id);
+    if (Number.isFinite(n)) map[n] = row;
+  }
+  return map;
+}
+
+function payFor(map, id) {
+  if (!map) return null;
+  return map[id] || map[String(id)] || map[Number(id)] || null;
+}
+
 function PortalModal({ children }) {
   if (typeof document === 'undefined') return null;
   return createPortal(children, document.body);
@@ -118,8 +134,8 @@ export default function LowerStaffPayroll({
   const [detailFor, setDetailFor] = useState(null);
   const [detail, setDetail] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [advanceForm, setAdvanceForm] = useState({ amount: '', paid_on: todayKey() });
-  const [loanForm, setLoanForm] = useState({ amount: '', installments: '3', start_month: nowMonth });
+  const [advanceForm, setAdvanceForm] = useState({ amount: '', paid_on: todayKey(), remarks: '' });
+  const [loanForm, setLoanForm] = useState({ amount: '', installments: '3', start_month: nowMonth, remarks: '' });
   useFlashSuccess(success);
 
   const loadPayroll = useCallback(async (monthKey) => {
@@ -129,9 +145,7 @@ export default function LowerStaffPayroll({
       const { data } = await api.get('/api/admin/lower-staff/payroll', {
         params: { month: monthKey },
       });
-      const map = {};
-      for (const row of data.employees || []) map[row.id] = row;
-      setPayroll(map);
+      setPayroll(indexPayroll(data.employees));
       if (data.today) setToday(data.today);
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load salary details.');
@@ -171,16 +185,16 @@ export default function LowerStaffPayroll({
   }
 
   function openAdvance(row) {
-    const pay = payroll[row.id];
+    const pay = payFor(payroll, row.id);
     setAdvanceFor({ ...row, ...pay });
-    setAdvanceForm({ amount: '', paid_on: today });
+    setAdvanceForm({ amount: '', paid_on: today, remarks: '' });
     setError('');
   }
 
   function openLoan(row) {
-    const pay = payroll[row.id];
+    const pay = payFor(payroll, row.id);
     setLoanFor({ ...row, ...pay });
-    setLoanForm({ amount: '', installments: '3', start_month: month });
+    setLoanForm({ amount: '', installments: '3', start_month: month, remarks: '' });
     setError('');
   }
 
@@ -216,6 +230,7 @@ export default function LowerStaffPayroll({
       const { data } = await api.post(`/api/admin/employees/${advanceFor.id}/advances`, {
         amount: money(advanceForm.amount),
         paid_on: advanceForm.paid_on,
+        remarks: advanceForm.remarks.trim(),
       });
       setSuccess(data.message || 'Advance saved.');
       setAdvanceFor(null);
@@ -238,6 +253,7 @@ export default function LowerStaffPayroll({
         amount: money(loanForm.amount),
         installments: Number(loanForm.installments),
         start_month: loanForm.start_month,
+        remarks: loanForm.remarks.trim(),
       });
       setSuccess(data.message || 'Loan saved.');
       setLoanFor(null);
@@ -332,7 +348,7 @@ export default function LowerStaffPayroll({
 
       <div className="lower-staff-cards">
         {employees.map((row) => {
-          const pay = payroll[row.id];
+          const pay = payFor(payroll, row.id);
           const remaining = pay ? pay.remaining : null;
           return (
             <article
@@ -355,14 +371,10 @@ export default function LowerStaffPayroll({
               <div className="lower-staff-card-body">
                 <strong className="lower-staff-card-name">{fullName(row)}</strong>
                 <p className="muted">
-                  {row.branch || 'No branch'} · salary {formatSalaryAmount(row.salary)}
-                </p>
-                <p className={`lower-staff-card-remain${remaining < 0 ? ' is-over' : ''}`}>
-                  {pay
-                    ? `${moneyLabel(remaining)} left this month`
-                    : loadingPay
-                      ? 'Loading salary…'
-                      : 'Salary not loaded'}
+                  {[row.designation, row.shift, row.branch || 'No branch']
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {` · salary ${formatSalaryAmount(row.salary)}`}
                 </p>
                 <span className="lower-pill-row">
                   {pay?.has_advance ? (
@@ -377,6 +389,16 @@ export default function LowerStaffPayroll({
                     <span className="muted-cell">No advance or loan this month</span>
                   ) : null}
                 </span>
+              </div>
+              <div className={`lower-staff-remain-box${remaining < 0 ? ' is-over' : ''}`}>
+                <span>Remaining this month</span>
+                <strong>
+                  {pay
+                    ? moneyLabel(remaining)
+                    : loadingPay
+                      ? '…'
+                      : formatSalaryAmount(row.salary)}
+                </strong>
               </div>
             </article>
           );
@@ -397,9 +419,12 @@ export default function LowerStaffPayroll({
               <div>
                 <h2>{fullName(hubFor)}</h2>
                 <p className="muted" style={{ margin: 0 }}>
-                  {hubFor.branch || 'No branch'} · salary {formatSalaryAmount(hubFor.salary)}
-                  {payroll[hubFor.id]
-                    ? ` · ${moneyLabel(payroll[hubFor.id].remaining)} left this month`
+                  {[hubFor.designation, hubFor.shift, hubFor.branch || 'No branch']
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {` · salary ${formatSalaryAmount(hubFor.salary)}`}
+                  {payFor(payroll, hubFor.id)
+                    ? ` · ${moneyLabel(payFor(payroll, hubFor.id).remaining)} left this month`
                     : ''}
                 </p>
               </div>
@@ -484,6 +509,16 @@ export default function LowerStaffPayroll({
                 onChange={(e) => setAdvanceForm((f) => ({ ...f, paid_on: e.target.value }))}
               />
             </label>
+            <label>
+              Remarks <span className="muted">(optional)</span>
+              <textarea
+                rows={3}
+                maxLength={500}
+                value={advanceForm.remarks}
+                onChange={(e) => setAdvanceForm((f) => ({ ...f, remarks: e.target.value }))}
+                placeholder="Reason or note"
+              />
+            </label>
             {advancePreview ? (
               <p className={`lower-pay-preview${advancePreview.remaining < 0 ? ' is-over' : ''}`}>
                 {advancePreview.hitsMonth
@@ -545,6 +580,16 @@ export default function LowerStaffPayroll({
                 required
                 value={loanForm.start_month}
                 onChange={(e) => setLoanForm((f) => ({ ...f, start_month: e.target.value }))}
+              />
+            </label>
+            <label>
+              Remarks <span className="muted">(optional)</span>
+              <textarea
+                rows={3}
+                maxLength={500}
+                value={loanForm.remarks}
+                onChange={(e) => setLoanForm((f) => ({ ...f, remarks: e.target.value }))}
+                placeholder="Reason or note"
               />
             </label>
             {loanPreview ? (
@@ -612,6 +657,7 @@ export default function LowerStaffPayroll({
                       <li key={item.id}>
                         <span>
                           {moneyLabel(item.amount)} on {item.paid_on} ({item.month_label})
+                          {item.remarks ? <em className="muted"> · {item.remarks}</em> : null}
                         </span>
                         <button type="button" className="btn btn-ghost" onClick={() => removeAdvance(detailFor, item.id)}>
                           Remove
@@ -633,6 +679,7 @@ export default function LowerStaffPayroll({
                           <p className="muted">
                             Started {item.start_month_label}. Remaining {moneyLabel(item.remaining_amount)} (
                             {item.remaining_installments} left).
+                            {item.remarks ? ` Remarks: ${item.remarks}` : ''}
                           </p>
                         </div>
                         <button type="button" className="btn btn-ghost" onClick={() => removeLoan(detailFor, item.id)}>

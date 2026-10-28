@@ -84,12 +84,15 @@
   color: var(--cyan-soft);
 }
 
-.lower-pay-modal input {
+.lower-pay-modal input,
+.lower-pay-modal textarea {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.55rem 0.75rem;
   background: rgba(5, 8, 16, 0.7);
   color: var(--text-h);
+  font: inherit;
+  resize: vertical;
 }
 
 .lower-pay-preview {
@@ -156,7 +159,7 @@
 
 .lower-staff-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.85rem 1rem;
   align-items: center;
   padding: 0.85rem 1rem;
@@ -195,12 +198,36 @@
   margin: 0;
 }
 
-.lower-staff-card-remain {
+.lower-staff-card-remain,
+.lower-staff-remain-box.is-over strong {
   font-weight: 800;
 }
 
-.lower-staff-card-remain.is-over {
+.lower-staff-card-remain.is-over,
+.lower-staff-remain-box.is-over strong {
   color: #fb7185;
+}
+
+.lower-staff-remain-box {
+  flex-shrink: 0;
+  min-width: 9.5rem;
+  text-align: right;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.lower-staff-remain-box span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lower-staff-remain-box strong {
+  font-size: 1.15rem;
+  color: var(--green);
+  text-shadow: 0 0 12px var(--glow-green);
 }
 
 .lower-staff-portal.modal-backdrop {
@@ -292,7 +319,13 @@
 
   .lower-staff-card {
     grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
+    align-items: start;
+  }
+
+  .lower-staff-remain-box {
+    grid-column: 2;
+    text-align: left;
+    min-width: 0;
   }
 
   .lower-staff-hub-actions {

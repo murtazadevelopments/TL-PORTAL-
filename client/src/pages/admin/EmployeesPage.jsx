@@ -97,6 +97,8 @@ const EMPTY_LOWER = {
   name: '',
   salary: '',
   branch: '',
+  shift: '',
+  designation: '',
   extra1Kind: 'text',
   extra1Label: '',
   extra1Text: '',
@@ -110,6 +112,8 @@ function lowerFormFromRow(row) {
     name: row?.name || '',
     salary: row?.salary == null ? '' : String(row.salary),
     branch: row?.branch || '',
+    shift: row?.shift || '',
+    designation: row?.designation || '',
     extra1Kind: row?.staff_extra_1_kind === 'file' ? 'file' : 'text',
     extra1Label: row?.staff_extra_1_label || '',
     extra1Text: row?.staff_extra_1_text || '',
@@ -1819,6 +1823,8 @@ function EmployeesPage() {
     fd.append('name', lowerForm.name.trim());
     fd.append('salary', String(lowerForm.salary).trim());
     fd.append('branch', lowerForm.branch.trim());
+    fd.append('shift', lowerForm.shift.trim());
+    fd.append('designation', lowerForm.designation.trim());
     fd.append('extra_1_kind', lowerForm.extra1Kind);
     fd.append('extra_1_label', lowerForm.extra1Label.trim());
     fd.append('extra_1_text', lowerForm.extra1Text);
@@ -2272,6 +2278,37 @@ function EmployeesPage() {
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="lower-field">
+                  <span className="lower-field-label">Shift</span>
+                  <select
+                    value={lowerForm.shift}
+                    onChange={(e) => setLowerForm((f) => ({ ...f, shift: e.target.value }))}
+                  >
+                    <option value="">Select shift</option>
+                    {shiftOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="lower-field">
+                  <span className="lower-field-label">Designation</span>
+                  <input
+                    type="text"
+                    list="lower-staff-designation-options"
+                    value={lowerForm.designation}
+                    onChange={(e) => setLowerForm((f) => ({ ...f, designation: e.target.value }))}
+                    placeholder="Type designation"
+                    maxLength={80}
+                    autoComplete="off"
+                  />
+                  <datalist id="lower-staff-designation-options">
+                    {designations.map((d) => (
+                      <option key={d.id || d.name} value={d.name} />
+                    ))}
+                  </datalist>
                 </label>
               </div>
             </section>

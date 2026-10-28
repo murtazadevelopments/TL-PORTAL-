@@ -21,14 +21,17 @@ try {
 }
 
 const SUMMARY_COLUMNS = [
-  { key: 'name', label: 'Name', width: 130 },
-  { key: 'branch', label: 'Branch', width: 90 },
+  { key: 'name', label: 'Name', width: 118 },
+  { key: 'branch', label: 'Branch', width: 78 },
+  { key: 'designation', label: 'Designation', width: 90 },
+  { key: 'shift', label: 'Shift', width: 78 },
   { key: 'salary', label: 'Salary', width: 80 },
   { key: 'advance_amount', label: 'Advance', width: 80 },
   { key: 'loan_amount', label: 'Loan this month', width: 95 },
-  { key: 'remaining', label: 'Remaining salary', width: 120, align: 'right' },
+  { key: 'remaining', label: 'Remaining salary', width: 110, align: 'right' },
   { key: '_gap', label: '', width: 18 },
-  { key: 'status', label: 'Advance / Loan', width: 130 },
+  { key: 'status', label: 'Advance / Loan', width: 120 },
+  { key: 'remarks', label: 'Remarks', width: 140 },
 ];
 
 function xmlEscape(value) {
@@ -83,11 +86,14 @@ function displayRows(records) {
   return (records || []).map((row) => ({
     name: row.name || '—',
     branch: row.branch || '—',
+    designation: row.designation || '—',
+    shift: row.shift || '—',
     salary: moneyCell(row.salary),
     advance_amount: moneyCell(row.advance_amount),
     loan_amount: moneyCell(row.loan_amount),
     remaining: moneyCell(row.remaining),
     status: statusLabel(row),
+    remarks: String(row.remarks || '').trim() || '—',
   }));
 }
 
@@ -139,7 +145,7 @@ function buildPayrollExcelXml(records, details = [], meta = {}) {
     { key: 'kind', label: 'Type', width: 80 },
     { key: 'date', label: 'Date / month', width: 90 },
     { key: 'amount', label: 'Amount', width: 80 },
-    { key: 'extra', label: 'Details', width: 180 },
+    { key: 'extra', label: 'Details', width: 220 },
   ];
   const detailColDefs = detailCols.map((col) => `<Column ss:Width="${col.width}"/>`).join('');
   const detailHeader = detailCols
@@ -308,14 +314,17 @@ async function buildPayrollPdf(records, meta = {}) {
   const rule = rgb(0.85, 0.88, 0.92);
 
   const cols = [
-    { key: 'name', label: 'Name', width: 140, align: 'left' },
-    { key: 'branch', label: 'Branch', width: 90, align: 'left' },
-    { key: 'salary', label: 'Salary', width: 72, align: 'right' },
-    { key: 'advance_amount', label: 'Advance', width: 72, align: 'right' },
-    { key: 'loan_amount', label: 'Loan', width: 72, align: 'right' },
-    { key: 'remaining', label: 'Remaining', width: 96, align: 'right' },
-    { key: '_gap', label: '', width: 16, align: 'left' },
-    { key: 'status', label: 'Advance / Loan', width: 148, align: 'left' },
+    { key: 'name', label: 'Name', width: 90, align: 'left' },
+    { key: 'branch', label: 'Branch', width: 58, align: 'left' },
+    { key: 'designation', label: 'Designation', width: 68, align: 'left' },
+    { key: 'shift', label: 'Shift', width: 52, align: 'left' },
+    { key: 'salary', label: 'Salary', width: 52, align: 'right' },
+    { key: 'advance_amount', label: 'Advance', width: 52, align: 'right' },
+    { key: 'loan_amount', label: 'Loan', width: 48, align: 'right' },
+    { key: 'remaining', label: 'Remaining', width: 64, align: 'right' },
+    { key: '_gap', label: '', width: 8, align: 'left' },
+    { key: 'status', label: 'Advance / Loan', width: 88, align: 'left' },
+    { key: 'remarks', label: 'Remarks', width: 130, align: 'left' },
   ];
 
   let page = null;

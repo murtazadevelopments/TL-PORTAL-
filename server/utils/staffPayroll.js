@@ -43,6 +43,11 @@ async function runEnsurePayrollTables() {
       ON staff_loan_installments (user_id, month_key);
     CREATE INDEX IF NOT EXISTS staff_loan_installments_loan_idx
       ON staff_loan_installments (loan_id);
+
+    ALTER TABLE staff_salary_advances
+      ADD COLUMN IF NOT EXISTS remarks TEXT;
+    ALTER TABLE staff_loans
+      ADD COLUMN IF NOT EXISTS remarks TEXT;
   `);
   ensured = true;
 }
@@ -124,10 +129,16 @@ function formatMoney(value) {
   });
 }
 
+function parseRemarks(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  return text.slice(0, 500);
+}
+
 async function loadLowerStaff(userId) {
   const { rows } = await pool.query(
     `
-      SELECT id, employee_id, name, branch, salary, staff_kind, date_joined, is_active
+      SELECT id, employee_id, name, branch, shift, designation, salary, staff_kind, date_joined, is_active
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -150,7 +161,11 @@ async function payrollForUsers(userIds, monthKey) {
   const [{ rows: advances }, { rows: loans }] = await Promise.all([
     pool.query(
       `
-        SELECT user_id, COALESCE(SUM(amount), 0) AS total, COUNT(*)::int AS count
+        SELECT
+          user_id,
+          COALESCE(SUM(amount), 0) AS total,
+          COUNT(*)::int AS count,
+          NULLIF(string_agg(NULLIF(BTRIM(remarks), ''), ' · ' ORDER BY paid_on DESC, id DESC), '') AS remarks
         FROM staff_salary_advances
         WHERE user_id = ANY($1::int[]) AND month_key = $2
         GROUP BY user_id
@@ -159,10 +174,15 @@ async function payrollForUsers(userIds, monthKey) {
     ),
     pool.query(
       `
-        SELECT user_id, COALESCE(SUM(amount), 0) AS total, COUNT(*)::int AS count
-        FROM staff_loan_installments
-        WHERE user_id = ANY($1::int[]) AND month_key = $2
-        GROUP BY user_id
+        SELECT
+          i.user_id,
+          COALESCE(SUM(i.amount), 0) AS total,
+          COUNT(*)::int AS count,
+          NULLIF(string_agg(DISTINCT NULLIF(BTRIM(l.remarks), ''), ' · '), '') AS remarks
+        FROM staff_loan_installments i
+        LEFT JOIN staff_loans l ON l.id = i.loan_id
+        WHERE i.user_id = ANY($1::int[]) AND i.month_key = $2
+        GROUP BY i.user_id
       `,
       [ids, monthKey]
     ),
@@ -183,8 +203,10 @@ async function payrollForUsers(userIds, monthKey) {
     byUser.set(id, {
       advance_amount: 0,
       advance_count: 0,
+      advance_remarks: '',
       loan_amount: 0,
       loan_count: 0,
+      loan_remarks: '',
       open_loans: 0,
     });
   }
@@ -193,6 +215,7 @@ async function payrollForUsers(userIds, monthKey) {
     if (item) {
       item.advance_amount = money(row.total);
       item.advance_count = Number(row.count) || 0;
+      item.advance_remarks = String(row.remarks || '').trim();
     }
   }
   for (const row of loans) {
@@ -200,6 +223,7 @@ async function payrollForUsers(userIds, monthKey) {
     if (item) {
       item.loan_amount = money(row.total);
       item.loan_count = Number(row.count) || 0;
+      item.loan_remarks = String(row.remarks || '').trim();
     }
   }
   for (const row of openLoans) {
@@ -214,7 +238,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
   const [{ rows: advances }, { rows: loans }, { rows: installments }] = await Promise.all([
     pool.query(
       `
-        SELECT id, amount, paid_on::text AS paid_on, month_key, created_at
+        SELECT id, amount, paid_on::text AS paid_on, month_key, remarks, created_at
         FROM staff_salary_advances
         WHERE user_id = $1
         ORDER BY paid_on DESC, id DESC
@@ -223,7 +247,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
     ),
     pool.query(
       `
-        SELECT id, amount, installments, monthly_amount, start_month, created_at
+        SELECT id, amount, installments, monthly_amount, start_month, remarks, created_at
         FROM staff_loans
         WHERE user_id = $1
         ORDER BY created_at DESC, id DESC
@@ -267,6 +291,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
       created_at: loan.created_at,
       remaining_amount: money(remainingParts.reduce((sum, part) => sum + part.amount, 0)),
       remaining_installments: remainingParts.length,
+      remarks: loan.remarks ? String(loan.remarks).trim() : '',
       schedule,
     };
   });
@@ -279,6 +304,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
       id: row.id,
       amount: money(row.amount),
       paid_on: String(row.paid_on).slice(0, 10),
+      remarks: row.remarks ? String(row.remarks).trim() : '',
     });
     advanceByMonth.set(key, list);
   }
@@ -326,6 +352,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
       paid_on: String(row.paid_on).slice(0, 10),
       month_key: row.month_key,
       month_label: monthLabel(row.month_key),
+      remarks: row.remarks ? String(row.remarks).trim() : '',
       created_at: row.created_at,
     })),
     loans: loanRows,
@@ -346,6 +373,7 @@ module.exports = {
   compareMonth,
   splitInstallments,
   formatMoney,
+  parseRemarks,
   loadLowerStaff,
   remainingForMonth,
   payrollForUsers,
