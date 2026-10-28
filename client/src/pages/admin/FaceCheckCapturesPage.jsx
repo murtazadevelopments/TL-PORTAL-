@@ -127,7 +127,7 @@ export default function FaceCheckCapturesPage() {
             Picture is on for that employee.
           </p>
         </div>
-        <Link className="btn btn-ghost" to="/admin/attendance">
+        <Link className="btn btn-ghost" to="/admin/attendance/remote">
           Team attendance
         </Link>
       </div>

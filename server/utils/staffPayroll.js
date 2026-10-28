@@ -48,6 +48,24 @@ async function runEnsurePayrollTables() {
       ADD COLUMN IF NOT EXISTS remarks TEXT;
     ALTER TABLE staff_loans
       ADD COLUMN IF NOT EXISTS remarks TEXT;
+    ALTER TABLE staff_loans
+      ADD COLUMN IF NOT EXISTS loaned_on DATE;
+    UPDATE staff_loans
+    SET loaned_on = to_date(start_month || '-01', 'YYYY-MM-DD')
+    WHERE loaned_on IS NULL AND start_month ~ '^[0-9]{4}-[0-9]{2}$';
+
+    CREATE TABLE IF NOT EXISTS staff_salary_payments (
+      id          BIGSERIAL PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      month_key   TEXT NOT NULL,
+      paid_on     DATE NOT NULL,
+      paid_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, month_key)
+    );
+    CREATE INDEX IF NOT EXISTS staff_salary_payments_month_idx
+      ON staff_salary_payments (month_key, user_id);
   `);
   ensured = true;
 }
@@ -135,6 +153,21 @@ function parseRemarks(value) {
   return text.slice(0, 500);
 }
 
+function formatPaidAt(value) {
+  if (!value) return '';
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleString('en-PK', {
+    timeZone: 'Asia/Karachi',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 async function loadLowerStaff(userId) {
   const { rows } = await pool.query(
     `
@@ -158,14 +191,15 @@ async function payrollForUsers(userIds, monthKey) {
   const ids = (userIds || []).map(Number).filter((id) => Number.isFinite(id) && id > 0);
   if (!ids.length) return new Map();
 
-  const [{ rows: advances }, { rows: loans }] = await Promise.all([
+  const [{ rows: advances }, { rows: loans }, { rows: payments }] = await Promise.all([
     pool.query(
       `
         SELECT
           user_id,
           COALESCE(SUM(amount), 0) AS total,
           COUNT(*)::int AS count,
-          NULLIF(string_agg(NULLIF(BTRIM(remarks), ''), ' · ' ORDER BY paid_on DESC, id DESC), '') AS remarks
+          NULLIF(string_agg(NULLIF(BTRIM(remarks), ''), ' · ' ORDER BY paid_on DESC, id DESC), '') AS remarks,
+          MIN(paid_on)::text AS paid_on
         FROM staff_salary_advances
         WHERE user_id = ANY($1::int[]) AND month_key = $2
         GROUP BY user_id
@@ -178,11 +212,20 @@ async function payrollForUsers(userIds, monthKey) {
           i.user_id,
           COALESCE(SUM(i.amount), 0) AS total,
           COUNT(*)::int AS count,
-          NULLIF(string_agg(DISTINCT NULLIF(BTRIM(l.remarks), ''), ' · '), '') AS remarks
+          NULLIF(string_agg(DISTINCT NULLIF(BTRIM(l.remarks), ''), ' · '), '') AS remarks,
+          MIN(l.loaned_on)::text AS loaned_on
         FROM staff_loan_installments i
         LEFT JOIN staff_loans l ON l.id = i.loan_id
         WHERE i.user_id = ANY($1::int[]) AND i.month_key = $2
         GROUP BY i.user_id
+      `,
+      [ids, monthKey]
+    ),
+    pool.query(
+      `
+        SELECT user_id, paid_on::text AS paid_on, paid_at
+        FROM staff_salary_payments
+        WHERE user_id = ANY($1::int[]) AND month_key = $2
       `,
       [ids, monthKey]
     ),
@@ -204,10 +247,16 @@ async function payrollForUsers(userIds, monthKey) {
       advance_amount: 0,
       advance_count: 0,
       advance_remarks: '',
+      advance_paid_on: '',
       loan_amount: 0,
       loan_count: 0,
       loan_remarks: '',
+      loaned_on: '',
       open_loans: 0,
+      salary_paid: false,
+      salary_paid_on: '',
+      salary_paid_at: null,
+      salary_paid_label: '',
     });
   }
   for (const row of advances) {
@@ -216,6 +265,7 @@ async function payrollForUsers(userIds, monthKey) {
       item.advance_amount = money(row.total);
       item.advance_count = Number(row.count) || 0;
       item.advance_remarks = String(row.remarks || '').trim();
+      item.advance_paid_on = String(row.paid_on || '').slice(0, 10);
     }
   }
   for (const row of loans) {
@@ -224,6 +274,16 @@ async function payrollForUsers(userIds, monthKey) {
       item.loan_amount = money(row.total);
       item.loan_count = Number(row.count) || 0;
       item.loan_remarks = String(row.remarks || '').trim();
+      item.loaned_on = String(row.loaned_on || '').slice(0, 10);
+    }
+  }
+  for (const row of payments) {
+    const item = byUser.get(Number(row.user_id));
+    if (item) {
+      item.salary_paid = true;
+      item.salary_paid_on = String(row.paid_on || '').slice(0, 10);
+      item.salary_paid_at = row.paid_at || null;
+      item.salary_paid_label = formatPaidAt(row.paid_at);
     }
   }
   for (const row of openLoans) {
@@ -235,7 +295,7 @@ async function payrollForUsers(userIds, monthKey) {
 
 async function employeePayrollDetail(user, fromMonth, throughMonth) {
   const userId = user.id;
-  const [{ rows: advances }, { rows: loans }, { rows: installments }] = await Promise.all([
+  const [{ rows: advances }, { rows: loans }, { rows: installments }, { rows: payments }] = await Promise.all([
     pool.query(
       `
         SELECT id, amount, paid_on::text AS paid_on, month_key, remarks, created_at
@@ -247,7 +307,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
     ),
     pool.query(
       `
-        SELECT id, amount, installments, monthly_amount, start_month, remarks, created_at
+        SELECT id, amount, installments, monthly_amount, start_month, loaned_on::text AS loaned_on, remarks, created_at
         FROM staff_loans
         WHERE user_id = $1
         ORDER BY created_at DESC, id DESC
@@ -260,6 +320,14 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
         FROM staff_loan_installments
         WHERE user_id = $1
         ORDER BY month_key ASC, id ASC
+      `,
+      [userId]
+    ),
+    pool.query(
+      `
+        SELECT month_key, paid_on::text AS paid_on, paid_at
+        FROM staff_salary_payments
+        WHERE user_id = $1
       `,
       [userId]
     ),
@@ -288,6 +356,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
       monthly_amount: money(loan.monthly_amount),
       start_month: loan.start_month,
       start_month_label: monthLabel(loan.start_month),
+      loaned_on: loan.loaned_on ? String(loan.loaned_on).slice(0, 10) : '',
       created_at: loan.created_at,
       remaining_amount: money(remainingParts.reduce((sum, part) => sum + part.amount, 0)),
       remaining_installments: remainingParts.length,
@@ -316,6 +385,15 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
     loanByMonth.set(key, list);
   }
 
+  const paymentByMonth = new Map();
+  for (const row of payments) {
+    paymentByMonth.set(row.month_key, {
+      paid_on: String(row.paid_on || '').slice(0, 10),
+      paid_at: row.paid_at,
+      paid_label: formatPaidAt(row.paid_at),
+    });
+  }
+
   const months = [];
   let cursor = fromMonth;
   while (cursor && compareMonth(cursor, throughMonth) <= 0) {
@@ -324,6 +402,7 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
     const advanceTotal = money(monthAdvances.reduce((sum, item) => sum + item.amount, 0));
     const loanTotal = money(monthLoans.reduce((sum, item) => sum + item.amount, 0));
     const salary = money(user.salary);
+    const payment = paymentByMonth.get(cursor);
     months.push({
       month_key: cursor,
       month_label: monthLabel(cursor),
@@ -333,6 +412,9 @@ async function employeePayrollDetail(user, fromMonth, throughMonth) {
       remaining: remainingForMonth(salary, advanceTotal, loanTotal),
       has_advance: monthAdvances.length > 0,
       has_loan: monthLoans.length > 0,
+      salary_paid: Boolean(payment),
+      salary_paid_on: payment?.paid_on || '',
+      salary_paid_label: payment?.paid_label || '',
       advances: monthAdvances,
     });
     cursor = addMonths(cursor, 1);
@@ -374,6 +456,7 @@ module.exports = {
   splitInstallments,
   formatMoney,
   parseRemarks,
+  formatPaidAt,
   loadLowerStaff,
   remainingForMonth,
   payrollForUsers,

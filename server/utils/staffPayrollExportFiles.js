@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
-const { formatMoney, monthLabel } = require('./staffPayroll');
+const { formatMoney, monthLabel, money } = require('./staffPayroll');
 
 const UNICODE_FONT_PATH = path.join(__dirname, '../assets/fonts/NotoSansArabic-Regular.ttf');
 const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
@@ -30,8 +30,9 @@ const SUMMARY_COLUMNS = [
   { key: 'loan_amount', label: 'Loan this month', width: 95 },
   { key: 'remaining', label: 'Remaining salary', width: 110, align: 'right' },
   { key: '_gap', label: '', width: 18 },
-  { key: 'status', label: 'Advance / Loan', width: 120 },
-  { key: 'remarks', label: 'Remarks', width: 140 },
+  { key: 'status', label: 'Advance / Loan', width: 110 },
+  { key: 'paid', label: 'Salary paid', width: 120 },
+  { key: 'remarks', label: 'Remarks', width: 130 },
 ];
 
 function xmlEscape(value) {
@@ -93,12 +94,43 @@ function displayRows(records) {
     loan_amount: moneyCell(row.loan_amount),
     remaining: moneyCell(row.remaining),
     status: statusLabel(row),
+    paid: row.salary_paid ? (row.salary_paid_label || row.salary_paid_on || 'Paid') : '—',
     remarks: String(row.remarks || '').trim() || '—',
   }));
 }
 
+function sumField(records, key) {
+  return money((records || []).reduce((sum, row) => sum + money(row[key]), 0));
+}
+
+function totalSalaryAmount(records) {
+  return sumField(records, 'salary');
+}
+
 function buildPayrollExcelXml(records, details = [], meta = {}) {
   const rows = displayRows(records);
+  const salaryTotal = totalSalaryAmount(records);
+  const advanceTotal = sumField(records, 'advance_amount');
+  const loanTotal = sumField(records, 'loan_amount');
+  const remainingTotal = sumField(records, 'remaining');
+  const totalCells = SUMMARY_COLUMNS.map((col, index) => {
+    if (index === 0) {
+      return `<Cell ss:StyleID="Total"><Data ss:Type="String">Total amount</Data></Cell>`;
+    }
+    if (col.key === 'salary') {
+      return `<Cell ss:StyleID="Total"><Data ss:Type="String">${xmlEscape(moneyCell(salaryTotal))}</Data></Cell>`;
+    }
+    if (col.key === 'advance_amount') {
+      return `<Cell ss:StyleID="Total"><Data ss:Type="String">${xmlEscape(moneyCell(advanceTotal))}</Data></Cell>`;
+    }
+    if (col.key === 'loan_amount') {
+      return `<Cell ss:StyleID="Total"><Data ss:Type="String">${xmlEscape(moneyCell(loanTotal))}</Data></Cell>`;
+    }
+    if (col.key === 'remaining') {
+      return `<Cell ss:StyleID="Total"><Data ss:Type="String">${xmlEscape(moneyCell(remainingTotal))}</Data></Cell>`;
+    }
+    return `<Cell ss:StyleID="Total"><Data ss:Type="String"></Data></Cell>`;
+  }).join('');
   const sheetPassword = excelSheetPasswordHash(
     process.env.EXPORT_SHEET_PASSWORD || 'TL-attendance-A1'
   );
@@ -211,6 +243,12 @@ function buildPayrollExcelXml(records, details = [], meta = {}) {
    <Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/>
    <Protection ss:Protected="0"/>
   </Style>
+  <Style ss:ID="Total">
+   <Font ss:Bold="1" ss:Color="#0F172A" ss:Size="11"/>
+   <Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/>
+   <Alignment ss:Vertical="Center"/>
+   <Protection ss:Protected="0"/>
+  </Style>
  </Styles>
  <Worksheet ss:Name="Monthly salary" ss:Protected="1">
   <Table>
@@ -224,6 +262,7 @@ function buildPayrollExcelXml(records, details = [], meta = {}) {
    <Row><Cell ss:StyleID="Default"/></Row>
    <Row>${summaryHeaderCells}</Row>
    ${summaryBodyRows}
+   <Row>${totalCells}</Row>
   </Table>
   <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
    <EnableSelection>UnlockedCells</EnableSelection>
@@ -323,8 +362,9 @@ async function buildPayrollPdf(records, meta = {}) {
     { key: 'loan_amount', label: 'Loan', width: 48, align: 'right' },
     { key: 'remaining', label: 'Remaining', width: 64, align: 'right' },
     { key: '_gap', label: '', width: 8, align: 'left' },
-    { key: 'status', label: 'Advance / Loan', width: 88, align: 'left' },
-    { key: 'remarks', label: 'Remarks', width: 130, align: 'left' },
+    { key: 'status', label: 'Advance / Loan', width: 72, align: 'left' },
+    { key: 'paid', label: 'Salary paid', width: 88, align: 'left' },
+    { key: 'remarks', label: 'Remarks', width: 90, align: 'left' },
   ];
 
   let page = null;
@@ -485,6 +525,32 @@ async function buildPayrollPdf(records, meta = {}) {
       });
       y -= rowHeight;
     }
+    const salaryTotal = totalSalaryAmount(records);
+    const remainingTotal = sumField(records, 'remaining');
+    if (y - 42 < margin + 18) addPage();
+    y -= 14;
+    page.drawLine({
+      start: { x: margin, y },
+      end: { x: pageWidth - margin, y },
+      thickness: 1,
+      color: band,
+    });
+    y -= 16;
+    safeDrawText(page, `Total amount: ${moneyCell(salaryTotal)}`, {
+      x: margin,
+      y,
+      size: 11,
+      font: bold,
+      color: ink,
+    });
+    y -= 14;
+    safeDrawText(page, `Total remaining: ${moneyCell(remainingTotal)}`, {
+      x: margin,
+      y,
+      size: 9.5,
+      font: bold,
+      color: muted,
+    });
   }
 
   const allPages = pdf.getPages();

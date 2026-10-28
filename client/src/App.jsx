@@ -35,6 +35,7 @@ const MessagesInbox = lazy(() => import('./pages/account/MessagesInbox'));
 const ComposeMessagePage = lazy(() => import('./pages/admin/ComposeMessagePage'));
 const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
+const AttendanceAdminRedirect = lazy(() => import('./pages/admin/AttendanceAdminRedirect'));
 const FaceCheckCapturesPage = lazy(() => import('./pages/admin/FaceCheckCapturesPage'));
 const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
 const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
@@ -75,10 +76,12 @@ function App() {
               <Route path="/admin" element={<Navigate to="/admin/employees" replace />} />
               <Route path="/admin/employees" element={<EmployeesPage />} />
               <Route path="/admin/employees/export" element={<EmployeeExportPage />} />
-              <Route path="/admin/attendance" element={<AttendanceAdminPage />} />
+              <Route path="/admin/attendance" element={<AttendanceAdminRedirect />} />
+              <Route path="/admin/attendance/onsite" element={<AttendanceAdminPage mode="onsite" />} />
+              <Route path="/admin/attendance/remote" element={<AttendanceAdminPage mode="remote" />} />
               <Route path="/admin/attendance/face-checks" element={<FaceCheckCapturesPage />} />
               <Route path="/admin/attendance/export" element={<AttendanceExportPage />} />
-              <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance" replace />} />
+              <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance/onsite" replace />} />
               <Route path="/admin/messages" element={<ComposeMessagePage />} />
               <Route path="/admin/locked" element={<LockedAccountsPage />} />
               <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />

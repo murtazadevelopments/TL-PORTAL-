@@ -10,7 +10,6 @@ import TeamFilterSelect from '../../components/TeamFilterSelect';
 import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
-  canViewTeamAttendance,
   isCeo,
   isCeoOrManager,
 } from '../../utils/permissions';
@@ -416,14 +415,15 @@ function AttendancePhoto({ row, onOpen }) {
   );
 }
 
-export default function AttendanceAdminPage() {
+export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const { user, permissions, loading: authLoading } = useAuthUser();
   const ceo = isCeo(user?.role);
   const fullDays = isCeoOrManager(user?.role);
   const canDeleteAttendance = fullDays;
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
-  const canAny = canViewTeamAttendance(user?.role, permissions);
+  const mode = forcedMode === 'remote' ? 'remote' : 'onsite';
+  const canPage = mode === 'remote' ? canRemote : canOnsite;
 
   const [date, setDate] = useState(() => clampAttendanceDate(karachiDateKey()));
   const [search, setSearch] = useState('');
@@ -442,7 +442,6 @@ export default function AttendanceAdminPage() {
   const [history, setHistory] = useState(null);
   const [historyMode, setHistoryMode] = useState('detail');
   const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState('onsite');
   const [onsite, setOnsite] = useState(null);
   const [onsiteManual, setOnsiteManual] = useState(EMPTY_ONSITE_MANUAL);
   const [overrideRow, setOverrideRow] = useState(null);
@@ -494,23 +493,13 @@ export default function AttendanceAdminPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (mode === 'onsite' && canOnsite) return;
-    if (mode === 'remote' && canRemote) return;
-    if (canOnsite) setMode('onsite');
-    else if (canRemote) setMode('remote');
-  }, [authLoading, canRemote, canOnsite, mode]);
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (!canAny) {
+    if (!canPage) {
       setLoading(false);
       return;
     }
-    if (mode === 'remote' && !canRemote) return;
-    if (mode === 'onsite' && !canOnsite) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, status, branch, team, mode, authLoading, canRemote, canOnsite, canAny]);
+  }, [date, status, branch, team, mode, authLoading, canPage]);
 
   async function submitManual(e) {
     e.preventDefault();
@@ -990,13 +979,14 @@ export default function AttendanceAdminPage() {
       ? onsite?.summary || { employees: 0, on_time: 0, late: 0, absent: 0, pending: 0, manual: 0 }
       : data?.summary || { verified: 0, missed: 0, failed: 0, manual: 0, employees: 0 };
 
-  if (!authLoading && !canAny) {
+  if (!authLoading && !canPage) {
     return (
       <div className="admin-page page-panel attendance-admin">
-        <h1>Team attendance</h1>
+        <h1>{mode === 'onsite' ? 'Onsite attendance' : 'Remote attendance'}</h1>
         <p className="muted">
-          You do not have attendance access. Ask the CEO to assign attendance permissions, or use an HR
-          account for onsite employees attendance.
+          {mode === 'onsite'
+            ? 'You do not have onsite attendance access. Ask the CEO to assign attendance permissions, or use an HR account.'
+            : 'You do not have remote attendance access. Ask the CEO to grant Remote employees access.'}
         </p>
       </div>
     );
@@ -1006,47 +996,15 @@ export default function AttendanceAdminPage() {
     <div className="admin-page page-panel attendance-admin">
       <div className="attendance-hero">
         <div>
-          <h1>Team attendance</h1>
+          <h1>{mode === 'onsite' ? 'Onsite attendance' : 'Remote attendance'}</h1>
           <p className="muted">
             {mode === 'onsite'
-              ? 'Onsite employees attendance — office check-in. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Remote employees attendance — face checks per shift. Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
+              ? 'Office check-in for onsite employees. Visible to CEO, HR, and people the CEO assigns attendance access.'
+              : 'Face checks per shift for remote employees. Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
           </p>
         </div>
         <div className="attendance-hero-tools">
-        {canRemote && canOnsite ? (
-        <div className="attendance-mode-toggle" role="tablist" aria-label="Attendance type">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'remote'}
-            className={mode === 'remote' ? 'btn btn-primary' : 'btn btn-ghost'}
-            onClick={() => {
-              setStatus('all');
-              setBranch('all');
-              setTeam('all');
-              setMode('remote');
-            }}
-          >
-            Remote employees attendance
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'onsite'}
-            className={mode === 'onsite' ? 'btn btn-primary' : 'btn btn-ghost'}
-            onClick={() => {
-              setStatus('all');
-              setBranch('all');
-              setTeam('all');
-              setMode('onsite');
-            }}
-          >
-            Onsite employees attendance
-          </button>
-        </div>
-        ) : null}
-        {ceo && canRemote ? (
+        {ceo && mode === 'remote' ? (
           <Link className="btn btn-ghost attendance-face-link" to="/admin/attendance/face-checks">
             Face check photos
           </Link>

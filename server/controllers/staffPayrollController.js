@@ -14,6 +14,7 @@ const {
   compareMonth,
   splitInstallments,
   parseRemarks,
+  formatPaidAt,
   loadLowerStaff,
   remainingForMonth,
   payrollForUsers,
@@ -93,6 +94,12 @@ function withMonthTotals(person, monthKey, payroll) {
     has_advance: (Number(payroll?.advance_count) || 0) > 0,
     has_loan: (Number(payroll?.loan_count) || 0) > 0,
     open_loans: Number(payroll?.open_loans) || 0,
+    advance_paid_on: String(payroll?.advance_paid_on || '').slice(0, 10),
+    loaned_on: String(payroll?.loaned_on || '').slice(0, 10),
+    salary_paid: Boolean(payroll?.salary_paid),
+    salary_paid_on: String(payroll?.salary_paid_on || '').slice(0, 10),
+    salary_paid_at: payroll?.salary_paid_at || null,
+    salary_paid_label: String(payroll?.salary_paid_label || '').trim(),
   };
 }
 
@@ -246,9 +253,12 @@ async function createLoan(req, res) {
 
     const amount = money(req.body?.amount);
     const installments = Math.floor(Number(req.body?.installments));
-    const startMonth = isMonthKey(req.body?.start_month)
+    const loanedOn = isDateKey(req.body?.loaned_on)
+      ? String(req.body.loaned_on).slice(0, 10)
+      : karachiToday();
+    const startMonth = monthFromDate(loanedOn) || (isMonthKey(req.body?.start_month)
       ? String(req.body.start_month).slice(0, 7)
-      : karachiMonth();
+      : karachiMonth());
     const remarks = parseRemarks(req.body?.remarks);
     if (!(amount > 0)) {
       return res.status(400).json({ message: 'Enter a loan amount greater than 0.' });
@@ -263,11 +273,11 @@ async function createLoan(req, res) {
     await client.query('BEGIN');
     const { rows } = await client.query(
       `
-        INSERT INTO staff_loans (user_id, amount, installments, monthly_amount, start_month, remarks, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, amount, installments, monthly_amount, start_month, remarks, created_at
+        INSERT INTO staff_loans (user_id, amount, installments, monthly_amount, start_month, loaned_on, remarks, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8)
+        RETURNING id, amount, installments, monthly_amount, start_month, loaned_on::text AS loaned_on, remarks, created_at
       `,
-      [user.id, amount, installments, monthlyAmount, startMonth, remarks, req.user.id]
+      [user.id, amount, installments, monthlyAmount, startMonth, loanedOn, remarks, req.user.id]
     );
     const loan = rows[0];
     for (let i = 0; i < parts.length; i += 1) {
@@ -345,6 +355,80 @@ async function deleteLoan(req, res) {
   }
 }
 
+async function markSalaryPaid(req, res) {
+  try {
+    if (denyUnlessHr(req, res)) return;
+    await ensurePayrollTables();
+    const user = await loadLowerStaff(Number(req.params.id));
+    if (!user) return res.status(404).json({ message: 'Subordinate staff record not found.' });
+
+    const paidOn = isDateKey(req.body?.paid_on) ? String(req.body.paid_on).slice(0, 10) : karachiToday();
+    const monthKey = isMonthKey(req.body?.month) ? String(req.body.month).slice(0, 7) : monthFromDate(paidOn);
+    const { rows } = await pool.query(
+      `
+        INSERT INTO staff_salary_payments (user_id, month_key, paid_on, paid_at, created_by)
+        VALUES ($1, $2, $3::date, NOW(), $4)
+        ON CONFLICT (user_id, month_key)
+        DO UPDATE SET
+          paid_on = EXCLUDED.paid_on,
+          paid_at = NOW(),
+          created_by = EXCLUDED.created_by
+        RETURNING id, month_key, paid_on::text AS paid_on, paid_at
+      `,
+      [user.id, monthKey, paidOn, req.user.id]
+    );
+    const payment = rows[0];
+    const paidLabel = formatPaidAt(payment.paid_at);
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username,
+        action: 'staff_salary_paid',
+        targetTable: 'staff_salary_payments',
+        targetId: payment.id,
+        reason: `Salary paid for ${user.name} · ${monthLabel(monthKey)} · ${paidLabel}`,
+      });
+    } catch (auditErr) {
+      console.warn('staff_salary_paid audit failed:', auditErr.message || auditErr);
+    }
+    return res.status(201).json({
+      message: `Salary marked paid on ${paidLabel}.`,
+      payment: {
+        ...payment,
+        paid_label: paidLabel,
+        salary_paid: true,
+      },
+    });
+  } catch (err) {
+    console.error('markSalaryPaid error:', err);
+    return res.status(500).json({ message: 'Server error saving salary payment.' });
+  }
+}
+
+async function unmarkSalaryPaid(req, res) {
+  try {
+    if (denyUnlessHr(req, res)) return;
+    await ensurePayrollTables();
+    const user = await loadLowerStaff(Number(req.params.id));
+    if (!user) return res.status(404).json({ message: 'Subordinate staff record not found.' });
+    const monthKey = isMonthKey(req.params.monthKey) ? String(req.params.monthKey).slice(0, 7) : '';
+    if (!monthKey) return res.status(400).json({ message: 'Month is required.' });
+    const { rows } = await pool.query(
+      `
+        DELETE FROM staff_salary_payments
+        WHERE user_id = $1 AND month_key = $2
+        RETURNING id
+      `,
+      [user.id, monthKey]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Salary payment not found.' });
+    return res.json({ message: 'Salary paid mark removed.' });
+  } catch (err) {
+    console.error('unmarkSalaryPaid error:', err);
+    return res.status(500).json({ message: 'Server error removing salary payment.' });
+  }
+}
+
 async function exportStaffPayroll(req, res) {
   try {
     if (denyUnlessHr(req, res)) return;
@@ -362,7 +446,7 @@ async function exportStaffPayroll(req, res) {
         details.push({
           name: person.name,
           kind: 'Advance',
-          date: person.month_label,
+          date: person.advance_paid_on || person.month_label,
           amount: person.advance_amount.toLocaleString('en-PK'),
           extra: [
             `${person.advance_count} advance${person.advance_count === 1 ? '' : 's'} this month`,
@@ -372,11 +456,20 @@ async function exportStaffPayroll(req, res) {
             .join(' · '),
         });
       }
+      if (person.salary_paid) {
+        details.push({
+          name: person.name,
+          kind: 'Salary paid',
+          date: person.salary_paid_label || person.salary_paid_on,
+          amount: person.remaining.toLocaleString('en-PK'),
+          extra: `Paid remaining salary for ${person.month_label}`,
+        });
+      }
       if (person.has_loan || person.open_loans) {
         details.push({
           name: person.name,
           kind: 'Loan',
-          date: person.month_label,
+          date: person.loaned_on || person.month_label,
           amount: person.loan_amount.toLocaleString('en-PK'),
           extra: [
             person.open_loans
@@ -451,5 +544,7 @@ module.exports = {
   deleteAdvance,
   createLoan,
   deleteLoan,
+  markSalaryPaid,
+  unmarkSalaryPaid,
   exportStaffPayroll,
 };

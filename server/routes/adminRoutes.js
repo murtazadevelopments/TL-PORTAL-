@@ -44,6 +44,8 @@ const {
   deleteAdvance,
   createLoan,
   deleteLoan,
+  markSalaryPaid,
+  unmarkSalaryPaid,
   exportStaffPayroll,
 } = require('../controllers/staffPayrollController');
 const {
@@ -335,6 +337,18 @@ router.delete(
   requireRole('admin'),
   requirePermission('hr:add_employee'),
   deleteLoan
+);
+router.post(
+  '/employees/:id/salary-payments',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  markSalaryPaid
+);
+router.delete(
+  '/employees/:id/salary-payments/:monthKey',
+  requireRole('admin'),
+  requirePermission('hr:add_employee'),
+  unmarkSalaryPaid
 );
 router.put(
   '/employees/:id/lower-staff',

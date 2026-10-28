@@ -135,7 +135,15 @@ export default function LowerStaffPayroll({
   const [detail, setDetail] = useState(null);
   const [saving, setSaving] = useState(false);
   const [advanceForm, setAdvanceForm] = useState({ amount: '', paid_on: todayKey(), remarks: '' });
-  const [loanForm, setLoanForm] = useState({ amount: '', installments: '3', start_month: nowMonth, remarks: '' });
+  const [loanForm, setLoanForm] = useState({
+    amount: '',
+    installments: '3',
+    loaned_on: todayKey(),
+    remarks: '',
+  });
+  const [paySalaryFor, setPaySalaryFor] = useState(null);
+  const [payForm, setPayForm] = useState({ paid_on: todayKey() });
+  const [payingId, setPayingId] = useState('');
   useFlashSuccess(success);
 
   const loadPayroll = useCallback(async (monthKey) => {
@@ -167,6 +175,7 @@ export default function LowerStaffPayroll({
     setHubFor(null);
     setAdvanceFor(null);
     setLoanFor(null);
+    setPaySalaryFor(null);
     setDetailFor(null);
     setDetail(null);
     onCancelEdit?.();
@@ -194,7 +203,7 @@ export default function LowerStaffPayroll({
   function openLoan(row) {
     const pay = payFor(payroll, row.id);
     setLoanFor({ ...row, ...pay });
-    setLoanForm({ amount: '', installments: '3', start_month: month, remarks: '' });
+    setLoanForm({ amount: '', installments: '3', loaned_on: today, remarks: '' });
     setError('');
   }
 
@@ -204,7 +213,7 @@ export default function LowerStaffPayroll({
     if (!(amount > 0)) return null;
     const monthly = splitPreview(amount, count);
     const pay = loanFor || {};
-    const firstHitsThisMonth = loanForm.start_month === month;
+    const firstHitsThisMonth = monthKeyFromDate(loanForm.loaned_on) === month;
     const remaining = firstHitsThisMonth
       ? money(pay.salary) - money(pay.advance_amount) - money(pay.loan_amount) - monthly
       : money(pay.remaining ?? pay.salary);
@@ -252,7 +261,7 @@ export default function LowerStaffPayroll({
       const { data } = await api.post(`/api/admin/employees/${loanFor.id}/loans`, {
         amount: money(loanForm.amount),
         installments: Number(loanForm.installments),
-        start_month: loanForm.start_month,
+        loaned_on: loanForm.loaned_on,
         remarks: loanForm.remarks.trim(),
       });
       setSuccess(data.message || 'Loan saved.');
@@ -263,6 +272,68 @@ export default function LowerStaffPayroll({
       setError(err.response?.data?.message || 'Could not save loan.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openPaySalary(row) {
+    const pay = payFor(payroll, row.id);
+    setPaySalaryFor({ ...row, ...pay });
+    setPayForm({ paid_on: pay?.salary_paid_on || today });
+    setError('');
+  }
+
+  async function submitPaySalary(e) {
+    e.preventDefault();
+    if (!paySalaryFor) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { data } = await api.post(`/api/admin/employees/${paySalaryFor.id}/salary-payments`, {
+        month,
+        paid_on: payForm.paid_on,
+      });
+      setSuccess(data.message || 'Salary marked paid.');
+      setPaySalaryFor(null);
+      await loadPayroll(month);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not mark salary paid.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markPaidNow(row) {
+    const pay = payFor(payroll, row.id);
+    if (pay?.salary_paid) {
+      const ok = window.confirm(
+        `Salary is already marked paid${pay.salary_paid_label ? ` on ${pay.salary_paid_label}` : ''}. Remove that mark?`
+      );
+      if (!ok) return;
+      setPayingId(row.id);
+      try {
+        await api.delete(`/api/admin/employees/${row.id}/salary-payments/${encodeURIComponent(month)}`);
+        setSuccess('Salary paid mark removed.');
+        await loadPayroll(month);
+      } catch (err) {
+        setError(err.response?.data?.message || 'Could not remove salary paid mark.');
+      } finally {
+        setPayingId('');
+      }
+      return;
+    }
+    setPayingId(row.id);
+    setError('');
+    try {
+      const { data } = await api.post(`/api/admin/employees/${row.id}/salary-payments`, {
+        month,
+        paid_on: today,
+      });
+      setSuccess(data.message || 'Salary marked paid.');
+      await loadPayroll(month);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not mark salary paid.');
+    } finally {
+      setPayingId('');
     }
   }
 
@@ -289,6 +360,11 @@ export default function LowerStaffPayroll({
       setError(err.response?.data?.message || 'Could not remove loan.');
     }
   }
+
+  const salaryTotal = useMemo(
+    () => money(employees.reduce((sum, row) => sum + money(row.salary), 0)),
+    [employees]
+  );
 
   async function handleExport(format) {
     setExporting(format);
@@ -323,6 +399,7 @@ export default function LowerStaffPayroll({
         </label>
         <p className="muted lower-payroll-hint">
           Remaining salary = monthly salary minus advances and loan installments in this month.
+          {employees.length ? ` Total salary: ${moneyLabel(salaryTotal)}.` : ''}
         </p>
         <div className="lower-payroll-export">
           <button
@@ -344,7 +421,7 @@ export default function LowerStaffPayroll({
         </div>
       </div>
 
-      {error && !advanceFor && !loanFor && !hubFor ? <p className="error">{error}</p> : null}
+      {error && !advanceFor && !loanFor && !hubFor && !paySalaryFor ? <p className="error">{error}</p> : null}
 
       <div className="lower-staff-cards">
         {employees.map((row) => {
@@ -353,7 +430,7 @@ export default function LowerStaffPayroll({
           return (
             <article
               key={row.id}
-              className={`lower-staff-card${hubFor?.id === row.id ? ' is-open' : ''}`}
+              className={`lower-staff-card${hubFor?.id === row.id ? ' is-open' : ''}${canManage ? ' has-paid-action' : ''}`}
               onClick={canManage ? () => openHub(row) : undefined}
             >
               {canManage ? (
@@ -400,6 +477,23 @@ export default function LowerStaffPayroll({
                       : formatSalaryAmount(row.salary)}
                 </strong>
               </div>
+              {canManage ? (
+                <button
+                  type="button"
+                  className={`btn ${pay?.salary_paid ? 'btn-ghost' : 'btn-primary'} lower-staff-paid-btn${pay?.salary_paid ? ' is-paid' : ''}`}
+                  disabled={payingId === row.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    markPaidNow(row);
+                  }}
+                >
+                  {payingId === row.id
+                    ? 'Saving…'
+                    : pay?.salary_paid
+                      ? `Paid ${pay.salary_paid_label || pay.salary_paid_on}`
+                      : 'Salary paid'}
+                </button>
+              ) : null}
             </article>
           );
         })}
@@ -439,6 +533,9 @@ export default function LowerStaffPayroll({
               <button type="button" className="btn btn-primary" onClick={() => openLoan(hubFor)}>
                 Loan
               </button>
+              <button type="button" className="btn btn-ghost" onClick={() => openPaySalary(hubFor)}>
+                Pay salary
+              </button>
               <button type="button" className="btn btn-ghost" onClick={() => openDetail(hubFor)}>
                 Salary details
               </button>
@@ -450,6 +547,7 @@ export default function LowerStaffPayroll({
                   setHubFor(null);
                   setAdvanceFor(null);
                   setLoanFor(null);
+                  setPaySalaryFor(null);
                   setDetailFor(null);
                   setDetail(null);
                   onEdit(hubFor);
@@ -501,7 +599,7 @@ export default function LowerStaffPayroll({
               />
             </label>
             <label>
-              Date
+              Date of advance salary
               <input
                 type="date"
                 required
@@ -574,12 +672,12 @@ export default function LowerStaffPayroll({
               />
             </label>
             <label>
-              First month
+              Date of loan
               <input
-                type="month"
+                type="date"
                 required
-                value={loanForm.start_month}
-                onChange={(e) => setLoanForm((f) => ({ ...f, start_month: e.target.value }))}
+                value={loanForm.loaned_on}
+                onChange={(e) => setLoanForm((f) => ({ ...f, loaned_on: e.target.value }))}
               />
             </label>
             <label>
@@ -598,7 +696,7 @@ export default function LowerStaffPayroll({
                   <strong>{moneyLabel(loanPreview.monthly)}</strong> per month for {loanPreview.count} months.
                 </p>
                 <p>
-                  Remaining salary {loanForm.start_month === month ? 'this month' : 'in the first month'} after this
+                  Remaining salary {monthKeyFromDate(loanForm.loaned_on) === month ? 'this month' : 'in the first month'} after this
                   installment: <strong>{moneyLabel(loanPreview.remaining)}</strong>
                 </p>
               </div>
@@ -610,6 +708,37 @@ export default function LowerStaffPayroll({
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving…' : 'Save loan'}
+              </button>
+            </div>
+          </form>
+        </div>
+        </PortalModal>
+      ) : null}
+
+      {paySalaryFor ? (
+        <PortalModal>
+        <div className="modal-backdrop modal-backdrop-stack lower-pay-stack lower-staff-portal" onClick={() => !saving && setPaySalaryFor(null)}>
+          <form className="modal-panel modal-panel-center lower-pay-modal" onClick={(e) => e.stopPropagation()} onSubmit={submitPaySalary}>
+            <h2>Pay salary</h2>
+            <p className="muted">
+              For {fullName(paySalaryFor)}. Choose the pay date. Time is saved automatically when you save.
+            </p>
+            <label>
+              Date of pay salary
+              <input
+                type="date"
+                required
+                value={payForm.paid_on}
+                onChange={(e) => setPayForm((f) => ({ ...f, paid_on: e.target.value }))}
+              />
+            </label>
+            {error ? <p className="error">{error}</p> : null}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" disabled={saving} onClick={() => setPaySalaryFor(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save pay date'}
               </button>
             </div>
           </form>
@@ -643,7 +772,8 @@ export default function LowerStaffPayroll({
                         Salary {moneyLabel(row.salary)}
                         {row.has_advance ? ` · advance ${moneyLabel(row.advance_amount)}` : ''}
                         {row.has_loan ? ` · loan ${moneyLabel(row.loan_amount)}` : ''}
-                        {!row.has_advance && !row.has_loan ? ' · no advance or loan' : ''}
+                        {row.salary_paid ? ` · paid ${row.salary_paid_label || row.salary_paid_on}` : ''}
+                        {!row.has_advance && !row.has_loan && !row.salary_paid ? ' · no advance or loan' : ''}
                       </p>
                     </li>
                   ))}
@@ -677,7 +807,7 @@ export default function LowerStaffPayroll({
                           <strong>{moneyLabel(item.amount)}</strong>
                           {` · ${item.installments} months · ${moneyLabel(item.monthly_amount)} / month`}
                           <p className="muted">
-                            Started {item.start_month_label}. Remaining {moneyLabel(item.remaining_amount)} (
+                            {item.loaned_on ? `Date ${item.loaned_on}. ` : ''}Started {item.start_month_label}. Remaining {moneyLabel(item.remaining_amount)} (
                             {item.remaining_installments} left).
                             {item.remarks ? ` Remarks: ${item.remarks}` : ''}
                           </p>

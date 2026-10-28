@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { useSalesLeaveGuard } from '../context/SalesLeaveGuard';
-import { canAccessAdmin, hasPermission, isCeoOrManager, isTeamLeader, canViewTeamAttendance, canManageSalesTargets, canUseFaceCheck, canAssignRoles } from '../utils/permissions';
+import {
+  canAccessAdmin,
+  hasPermission,
+  isCeoOrManager,
+  isTeamLeader,
+  canViewOnsiteTeamAttendance,
+  canViewRemoteTeamAttendance,
+  canManageSalesTargets,
+  canUseFaceCheck,
+  canAssignRoles,
+} from '../utils/permissions';
 
 /**
  * Build sidebar groups from role/permissions. Same gates as existing UI.
@@ -95,8 +105,11 @@ export function buildSidebarGroups(
     if (hasPermission(permissions, 'employees:export', role)) {
       employeeItems.push({ to: '/admin/employees/export', label: 'Export employees' });
     }
-    if (canViewTeamAttendance(role, permissions)) {
-      employeeItems.push({ to: '/admin/attendance', label: 'Team Attendance', end: true });
+    if (canViewOnsiteTeamAttendance(role, permissions)) {
+      employeeItems.push({ to: '/admin/attendance/onsite', label: 'Onsite Attendance', end: true });
+    }
+    if (canViewRemoteTeamAttendance(role, permissions)) {
+      employeeItems.push({ to: '/admin/attendance/remote', label: 'Remote Attendance', end: true });
     }
     if (canUseFaceCheck(role)) {
       employeeItems.push({ to: '/admin/attendance/face-checks', label: 'Face check photos' });

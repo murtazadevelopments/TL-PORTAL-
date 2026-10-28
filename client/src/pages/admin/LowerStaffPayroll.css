@@ -169,6 +169,10 @@
   cursor: pointer;
 }
 
+.lower-staff-card.has-paid-action {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
 .lower-staff-card.is-open {
   border-color: rgba(61, 255, 122, 0.45);
 }
@@ -228,6 +232,21 @@
   font-size: 1.15rem;
   color: var(--green);
   text-shadow: 0 0 12px var(--glow-green);
+}
+
+.lower-staff-paid-btn {
+  margin: 0;
+  min-width: 7.2rem;
+  max-width: 11.5rem;
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.lower-staff-paid-btn.is-paid {
+  color: var(--green);
+  border-color: rgba(61, 255, 122, 0.4);
 }
 
 .lower-staff-portal.modal-backdrop {
@@ -322,10 +341,13 @@
     align-items: start;
   }
 
-  .lower-staff-remain-box {
+  .lower-staff-remain-box,
+  .lower-staff-paid-btn {
     grid-column: 2;
     text-align: left;
     min-width: 0;
+    max-width: none;
+    justify-self: start;
   }
 
   .lower-staff-hub-actions {
