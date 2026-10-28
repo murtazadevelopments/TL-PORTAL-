@@ -92,7 +92,9 @@ async function loadMonthReport(monthKey) {
     people.map((row) => row.id),
     monthKey
   );
-  return people.map((person) => withMonthTotals(person, monthKey, payrollMap.get(person.id)));
+  return people.map((person) =>
+    withMonthTotals(person, monthKey, payrollMap.get(Number(person.id)))
+  );
 }
 
 async function listStaffPayroll(req, res) {
