@@ -117,13 +117,18 @@ function firstName(fullName) {
 async function notifyApp(userId, payload = {}, opts = {}) {
   if (!userId) return { sent: 0 };
   const { sendPushToUserSafe } = require('./pushNotifications');
+  // Unique tags so each update shows as its own notification (unless collapse=true).
+  const baseTag = String(payload.tag || 'portal-update').trim() || 'portal-update';
+  const tag = payload.collapse
+    ? baseTag
+    : `${baseTag}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const result = await sendPushToUserSafe(
     userId,
     {
       title: payload.title || 'Textured Lab Portal',
       body: payload.body || '',
       url: payload.url || '/account/messages',
-      tag: payload.tag || 'portal-update',
+      tag,
     },
     {
       requireEnabled: false,
@@ -132,7 +137,7 @@ async function notifyApp(userId, payload = {}, opts = {}) {
     }
   );
   console.log(
-    `[push] user=${userId} tag=${payload.tag || 'portal-update'} sent=${result?.sent || 0} skipped=${Boolean(result?.skipped)} disabled=${Boolean(result?.disabled)} error=${result?.error || ''}`
+    `[push] user=${userId} tag=${tag} sent=${result?.sent || 0} skipped=${Boolean(result?.skipped)} disabled=${Boolean(result?.disabled)} error=${result?.error || ''}`
   );
   return result;
 }

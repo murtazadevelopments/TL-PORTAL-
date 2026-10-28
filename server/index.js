@@ -275,6 +275,16 @@ function startHttpServer() {
     } catch (err) {
       console.error('[mailer] status check failed:', err.message || err);
     }
+    try {
+      const { isPushConfigured } = require('./services/pushNotifications');
+      console.log(
+        isPushConfigured()
+          ? '[push] Web Push configured (VAPID ready)'
+          : '[push] Web Push OFF — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in server/.env'
+      );
+    } catch (err) {
+      console.error('[push] status check failed:', err.message || err);
+    }
     if (spaEnabled) {
       console.log(`SPA enabled from ${spaDir}`);
     } else {

@@ -124,13 +124,19 @@ export async function enablePushNotifications(options = {}) {
   }
 
   const reg = await navigator.serviceWorker.ready;
-  let subscription = await reg.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-    });
+  // Always refresh the browser subscription so a new VAPID key pair takes effect.
+  const existing = await reg.pushManager.getSubscription();
+  if (existing) {
+    try {
+      await existing.unsubscribe();
+    } catch {
+      /* ignore */
+    }
   }
+  const subscription = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+  });
 
   const payload = subscription.toJSON();
   const endpoint = payload?.endpoint || '';
