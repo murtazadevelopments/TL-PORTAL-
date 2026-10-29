@@ -6,6 +6,7 @@ import RouteFallback from './components/RouteFallback';
 import AppShell from './layouts/AppShell';
 import SignIn from './pages/SignIn';
 import SuccessPopup from './components/SuccessPopup';
+import { LEAVE_FEATURE_ENABLED } from './utils/permissions';
 import './App.css';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
@@ -85,8 +86,11 @@ function App() {
               <Route
                 path="/admin/leave-requests"
                 element={
-                  // Leave UI hidden for now — flip LEAVE_FEATURE_ENABLED in permissions.js
-                  <Navigate to="/dashboard" replace />
+                  LEAVE_FEATURE_ENABLED ? (
+                    <LeaveRequestsPage />
+                  ) : (
+                    <Navigate to="/dashboard" replace />
+                  )
                 }
               />
               <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance/onsite" replace />} />
