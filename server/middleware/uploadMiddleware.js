@@ -280,5 +280,7 @@ module.exports = {
   lowerStaffUpload,
   leavePrescriptionUpload,
   extFromFile,
+  bufferLooksLikePdf,
+  MAX_CV_FILE_SIZE,
 };
 

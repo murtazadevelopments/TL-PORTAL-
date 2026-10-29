@@ -507,7 +507,7 @@ async function updateProfilePicture(req, res) {
 }
 
 /**
- * PUT /api/users/me/documents
+ * PUT|POST /api/users/me/documents
  * multipart fields (any subset): cnic_front, cnic_back, cv
  */
 async function updateDocuments(req, res) {
@@ -603,6 +603,103 @@ async function updateDocuments(req, res) {
   }
 }
 
+/**
+ * POST /api/users/me/documents/cv
+ * JSON body: { cv_base64: string, filename?: string }
+ * Used when Hostinger/WAF blocks multipart PDF uploads with a bare 403.
+ */
+async function updateCvBase64(req, res) {
+  try {
+    const { bufferLooksLikePdf, MAX_CV_FILE_SIZE } = require('../middleware/uploadMiddleware');
+
+    const raw = String(req.body?.cv_base64 || req.body?.cvBase64 || '').trim();
+    if (!raw) {
+      return res.status(400).json({ message: 'CV file is required.' });
+    }
+    const b64 = raw.replace(/^data:application\/pdf;base64,/i, '').replace(/\s+/g, '');
+    let buffer;
+    try {
+      buffer = Buffer.from(b64, 'base64');
+    } catch {
+      return res.status(400).json({ message: 'CV data is invalid. Please try another PDF.' });
+    }
+    if (!buffer.length) {
+      return res.status(400).json({ message: 'CV file is empty.' });
+    }
+    if (buffer.length > MAX_CV_FILE_SIZE) {
+      return res.status(400).json({ message: 'CV must be a PDF of 8MB or smaller.' });
+    }
+    if (!bufferLooksLikePdf(buffer)) {
+      return res.status(400).json({
+        message:
+          'This file is not a valid PDF. Export/Save As PDF from Word first — renaming .docx to .pdf will not work.',
+      });
+    }
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, employee_id, is_active, cv_url
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [req.user.id]
+    );
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (existing.is_active === false) {
+      return res.status(403).json({
+        message: 'This account has been deactivated. Contact an administrator.',
+      });
+    }
+
+    const filename = String(req.body?.filename || 'cv.pdf').replace(/[^\w.\-]+/g, '_');
+    const safeName = filename.toLowerCase().endsWith('.pdf') ? filename : `${filename}.pdf`;
+    const objectPath = await saveUserFile(existing, 'cv', {
+      buffer,
+      mimetype: 'application/pdf',
+      originalname: safeName,
+    });
+
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET cv_url = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING ${USER_PUBLIC_COLUMNS}
+      `,
+      [objectPath, req.user.id]
+    );
+
+    const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
+    // Trust the write even if disk resolve briefly lags.
+    user.cv_on_file = true;
+    if (!user.cv_url) user.cv_url = `/api/documents/${user.id}/cv`;
+
+    res.json({ message: 'CV updated.', user });
+    void notifyAfterResponse('profile-documents-update', user.id, () =>
+      notifyAdminsEmployeeSelfUpdate(user, ['CV (updated)'])
+    );
+    return;
+  } catch (err) {
+    console.error('updateCvBase64 error:', err);
+    const code = String(err.code || '');
+    if (code === 'ENOSPC') {
+      return res.status(500).json({
+        message: 'Server storage is full. Please contact an administrator.',
+      });
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return res.status(500).json({
+        message: 'Server cannot save files right now. Please contact an administrator.',
+      });
+    }
+    return res.status(500).json({
+      message: 'Unable to save your CV. Please try again with a PDF under 8MB.',
+    });
+  }
+}
+
 async function ackPhotoAlertSeen(req, res) {
   try {
     await ensureProfileAlertColumns();
@@ -667,6 +764,7 @@ module.exports = {
   updateMe,
   updateProfilePicture,
   updateDocuments,
+  updateCvBase64,
   ackPhotoAlertSeen,
   ackExamCongrats,
 };

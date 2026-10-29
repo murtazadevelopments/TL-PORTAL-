@@ -68,6 +68,39 @@ export default function AccountDocuments() {
   const hasCv = hasDoc(profile, 'cv_url', 'cv_on_file');
   const cvSrc = profile?.cv_url || (profile?.id ? `/api/documents/${profile.id}/cv` : null);
 
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Could not read the selected file.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function uploadErrorMessage(err, field) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    const apiMessage =
+      (typeof data?.message === 'string' && data.message.trim()) ||
+      (typeof data?.error === 'string' && data.error.trim()) ||
+      '';
+    if (apiMessage) return apiMessage;
+    if (status === 413) {
+      return field === 'cv'
+        ? 'CV is too large. Use a PDF of 8MB or smaller.'
+        : 'File is too large. Use an image of 5MB or smaller.';
+    }
+    if (status === 403) {
+      return 'Upload was blocked. Sign out, sign in again, and upload a real PDF (not a Word file).';
+    }
+    if (status >= 500) return 'Upload failed on the server. Please try again in a moment.';
+    return err.message || 'Failed to upload document.';
+  }
+
   async function handleDocumentUpload(field, file) {
     if (!file) return;
     setDocError('');
@@ -79,16 +112,23 @@ export default function AccountDocuments() {
         setDocError('CV must be 8MB or smaller. Compress the PDF and try again.');
         return;
       }
-      const body = new FormData();
-      // Keep a .pdf filename in multipart — some mobile browsers omit type/extension.
-      const uploadName =
-        field === 'cv'
-          ? String(file.name || 'cv.pdf').toLowerCase().endsWith('.pdf')
-            ? file.name || 'cv.pdf'
-            : `${String(file.name || 'cv').replace(/\.[^.]+$/, '') || 'cv'}.pdf`
-          : file.name;
-      body.append(field, file, uploadName);
-      const { data } = await api.put('/api/users/me/documents', body);
+
+      let data;
+      if (field === 'cv') {
+        // JSON base64 path — Hostinger/WAF often returns bare 403 on multipart PDF uploads.
+        const cv_base64 = await readFileAsBase64(file);
+        const response = await api.post('/api/users/me/documents/cv', {
+          cv_base64,
+          filename: file.name || 'cv.pdf',
+        });
+        data = response.data;
+      } else {
+        const body = new FormData();
+        body.append(field, file, file.name);
+        const response = await api.post('/api/users/me/documents', body);
+        data = response.data;
+      }
+
       setProfile(data.user || data);
       const next = data.user || data;
       if (locked && missingEmployeePortalFields(next).length === 0) {
@@ -105,22 +145,7 @@ export default function AccountDocuments() {
             : 'CNIC back updated.'
       );
     } catch (err) {
-      const status = err.response?.status;
-      const apiMessage =
-        typeof err.response?.data?.message === 'string' ? err.response.data.message.trim() : '';
-      if (apiMessage) {
-        setDocError(apiMessage);
-      } else if (status === 413) {
-        setDocError(
-          field === 'cv'
-            ? 'CV is too large. Use a PDF of 8MB or smaller.'
-            : 'File is too large. Use an image of 5MB or smaller.'
-        );
-      } else if (status >= 500) {
-        setDocError('Upload failed on the server. Please try again in a moment.');
-      } else {
-        setDocError(err.message || 'Failed to upload document.');
-      }
+      setDocError(uploadErrorMessage(err, field));
     } finally {
       setDocUploading('');
       setBusy(false);
