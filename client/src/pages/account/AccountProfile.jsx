@@ -46,6 +46,28 @@ const EMPTY_FORM = {
   cnic_number: '',
 };
 
+function formFromProfile(data) {
+  if (!data) return { ...EMPTY_FORM };
+  return {
+    name: data.name || '',
+    email: data.email || '',
+    contact_number: data.contact_number || '',
+    address: data.address || '',
+    date_of_birth: data.date_of_birth ? String(data.date_of_birth).slice(0, 10) : '',
+    reference_person_name: data.reference_person_name || '',
+    emergency_contact_name: data.emergency_contact_name || '',
+    emergency_contact_number: data.emergency_contact_number || '',
+    bank_name: data.bank_name || '',
+    account_title: data.account_title || '',
+    iban: data.iban || '',
+    account_number: data.account_number || '',
+    education: data.education || '',
+    last_job_status: data.last_job_status || '',
+    employment_type: data.employment_type || '',
+    cnic_number: data.cnic_number || '',
+  };
+}
+
 export default function AccountProfile() {
   const navigate = useNavigate();
   const { setBusy } = useInactivityGuard();
@@ -71,24 +93,7 @@ export default function AccountProfile() {
         if (!active) return;
         setProfile(data);
         setAvatarBroken(false);
-        setForm({
-          name: data.name || '',
-          email: data.email || '',
-          contact_number: data.contact_number || '',
-          address: data.address || '',
-          date_of_birth: data.date_of_birth ? String(data.date_of_birth).slice(0, 10) : '',
-          reference_person_name: data.reference_person_name || '',
-          emergency_contact_name: data.emergency_contact_name || '',
-          emergency_contact_number: data.emergency_contact_number || '',
-          bank_name: data.bank_name || '',
-          account_title: data.account_title || '',
-          iban: data.iban || '',
-          account_number: data.account_number || '',
-          education: data.education || '',
-          last_job_status: data.last_job_status || '',
-          employment_type: data.employment_type || '',
-          cnic_number: data.cnic_number || '',
-        });
+        setForm(formFromProfile(data));
         const dismissed = sessionStorage.getItem('profileIncompleteDismissed') === '1';
         const missing = missingEmployeePortalFields(data);
         setShowIncompleteBanner(!dismissed && missing.length > 0);
@@ -116,7 +121,7 @@ export default function AccountProfile() {
   );
   const locked = isProfileIncompleteLocked(profile);
   const missingKeys = new Set(missingEmployeeFields.map((field) => field.key));
-  const showField = (key) => !locked || missingKeys.has(key);
+  const fieldRequired = (key) => locked && missingKeys.has(key);
   const missingLabels = missingEmployeeFields.map((field) => field.label);
   const missingDocs = missingEmployeeFields.some((field) => field.document);
   const missingText = missingEmployeeFields.some((field) => !field.document);
@@ -130,17 +135,15 @@ export default function AccountProfile() {
     setError('');
     setSuccess('');
     setSaving(true);
+    // Send every editable field so the server replaces previous values with this form.
     const payload = {};
-    for (const key of EMPLOYEE_EDIT_FIELDS) payload[key] = form[key];
+    for (const key of EMPLOYEE_EDIT_FIELDS) {
+      payload[key] = form[key] == null ? '' : form[key];
+    }
     try {
       const { data } = await api.put('/api/users/me', payload);
       setProfile(data);
-      setForm((prev) => ({
-        ...prev,
-        email: data.email || prev.email,
-        cnic_number: data.cnic_number || '',
-        name: data.name || prev.name,
-      }));
+      setForm(formFromProfile(data));
       setSuccess('Profile updated.');
       const missing = missingEmployeePortalFields(data);
       if (missing.length === 0) {
@@ -149,7 +152,7 @@ export default function AccountProfile() {
         await refreshUser();
         if (locked) navigate('/dashboard');
       } else {
-        refreshUser();
+        await refreshUser();
       }
     } catch (err) {
       if (err.response?.status === 401) {
@@ -213,7 +216,8 @@ export default function AccountProfile() {
           <div className="profile-lock-banner" role="alert">
             <strong>Dashboard locked until missing employee fields are complete.</strong>
             <p className="muted">
-              Only incomplete employee fields are shown. Admin-assigned fields are not required.
+              You can still edit all of your profile details below. Admin-assigned fields are not
+              required.
             </p>
           </div>
         )}
@@ -263,7 +267,6 @@ export default function AccountProfile() {
         {!loading && profile && (
           <>
             <section className="profile-header">
-              {(!locked || missingKeys.has('profile_picture_url')) && (
               <div className="avatar-block">
                 {showAvatar ? (
                   <img
@@ -277,7 +280,6 @@ export default function AccountProfile() {
                     {(profile.name || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
-                {(!locked || missingKeys.has('profile_picture_url')) && (
                 <button
                   type="button"
                   className="btn btn-ghost avatar-edit-btn"
@@ -285,10 +287,7 @@ export default function AccountProfile() {
                 >
                   Change / adjust photo
                 </button>
-                )}
               </div>
-              )}
-              {!locked && (
               <div className="meta">
                 <p>
                   <span className="label">Employee ID</span>
@@ -311,13 +310,14 @@ export default function AccountProfile() {
                   <strong>{profile.role}</strong>
                 </p>
               </div>
-              )}
             </section>
 
             <form id="edit-profile" ref={editSectionRef} onSubmit={handleSave} className="form">
-              <h2>{locked ? 'Missing employee fields' : 'Edit profile'}</h2>
-              {!locked && (
-              <>
+              <h2>Edit profile</h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                You can update your own profile details anytime.
+                {locked ? ' Complete the required fields below to unlock the dashboard.' : ''}
+              </p>
               <label>
                 Name
                 <input
@@ -412,24 +412,18 @@ export default function AccountProfile() {
                   onChange={handleChange}
                 />
               </label>
-              </>
-              )}
-              {showField('reference_person_name') && (
               <label>
                 Reference person
                 <input
                   type="text"
-                    name="reference_person_name"
-                    value={form.reference_person_name}
-                    onChange={handleChange}
-                    required={locked}
-                    data-input-kind="text"
-                  />
+                  name="reference_person_name"
+                  value={form.reference_person_name}
+                  onChange={handleChange}
+                  required={fieldRequired('reference_person_name')}
+                  data-input-kind="text"
+                />
               </label>
-              )}
-              {(showField('emergency_contact_name') || showField('emergency_contact_number')) && (
               <div className="grid-2">
-                {showField('emergency_contact_name') && (
                 <label>
                   Emergency contact name
                   <input
@@ -437,12 +431,10 @@ export default function AccountProfile() {
                     name="emergency_contact_name"
                     value={form.emergency_contact_name}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('emergency_contact_name')}
                     data-input-kind="text"
                   />
                 </label>
-                )}
-                {showField('emergency_contact_number') && (
                 <label>
                   Emergency contact number
                   <input
@@ -450,22 +442,15 @@ export default function AccountProfile() {
                     name="emergency_contact_number"
                     value={form.emergency_contact_number}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('emergency_contact_number')}
                     inputMode="numeric"
                     data-input-kind="integer"
                   />
                 </label>
-                )}
               </div>
-              )}
 
-              {(showField('bank_name') ||
-                showField('account_title') ||
-                showField('iban') ||
-                showField('account_number')) && <h2>Bank details</h2>}
-              {(showField('bank_name') || showField('account_title')) && (
+              <h2>Bank details</h2>
               <div className="grid-2">
-                {showField('bank_name') && (
                 <label>
                   Bank name
                   <input
@@ -473,12 +458,10 @@ export default function AccountProfile() {
                     name="bank_name"
                     value={form.bank_name}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('bank_name')}
                     data-input-kind="text"
                   />
                 </label>
-                )}
-                {showField('account_title') && (
                 <label>
                   Account title
                   <input
@@ -486,16 +469,12 @@ export default function AccountProfile() {
                     name="account_title"
                     value={form.account_title}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('account_title')}
                     data-input-kind="text"
                   />
                 </label>
-                )}
               </div>
-              )}
-              {(showField('iban') || showField('account_number')) && (
               <div className="grid-2">
-                {showField('iban') && (
                 <label>
                   IBAN
                   <input
@@ -503,11 +482,9 @@ export default function AccountProfile() {
                     name="iban"
                     value={form.iban}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('iban')}
                   />
                 </label>
-                )}
-                {showField('account_number') && (
                 <label>
                   Account number
                   <input
@@ -515,14 +492,12 @@ export default function AccountProfile() {
                     name="account_number"
                     value={form.account_number}
                     onChange={handleChange}
-                    required={locked}
+                    required={fieldRequired('account_number')}
                     inputMode="numeric"
                     data-input-kind="integer"
                   />
                 </label>
-                )}
               </div>
-              )}
 
               {locked && missingDocs && (
                 <p className="muted">
@@ -541,11 +516,9 @@ export default function AccountProfile() {
               )}
 
               {error && <p className="error">{error}</p>}
-              {(!locked || missingText) && (
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
-              )}
             </form>
           </>
         )}

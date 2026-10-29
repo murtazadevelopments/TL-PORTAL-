@@ -565,6 +565,20 @@
   width: 100%;
 }
 
+.doc-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.doc-card-actions .btn {
+  margin-top: 0;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 4.5rem;
+}
+
 .doc-card-static a {
   text-decoration: none;
   color: inherit;

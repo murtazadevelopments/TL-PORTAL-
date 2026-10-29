@@ -2,9 +2,10 @@
  * Central download gate for GET /api/documents/:userId/:docType.
  *
  * Rules:
- * - cnic_front / cnic_back: CEO, admin with documents:view, or HR viewing subordinate staff
- *   (streamed in-portal only; query-token links are rejected in the controller)
- * - cv / employment_form: CEO, or admin with documents:view
+ * - cnic_front / cnic_back: owner (self), CEO/manager, admin with documents:view,
+ *   or HR viewing lower-staff files (streamed in-portal only; query-token links rejected)
+ * - cv: owner (self), CEO/manager, or admin with documents:view
+ * - employment_form: CEO/manager, or admin with documents:view (not employee self)
  * - profile (and anything else): existing defaults (self or admin/ceo)
  */
 
@@ -56,6 +57,7 @@ async function canDownloadDocument(documentType, user, context = {}) {
     targetUserId != null && String(user?.id) === String(targetUserId);
 
   if (isCnicDocType(docType)) {
+    if (isSelf) return true;
     if (context.staffKind === 'lower' && (await hasHrAddEmployeePermission(user))) {
       return true;
     }
@@ -69,7 +71,12 @@ async function canDownloadDocument(documentType, user, context = {}) {
     return false;
   }
 
-  if (docType === 'cv' || docType === 'employment_form') {
+  if (docType === 'cv') {
+    if (isSelf) return true;
+    return hasDocumentsViewPermission(user);
+  }
+
+  if (docType === 'employment_form') {
     return hasDocumentsViewPermission(user);
   }
 

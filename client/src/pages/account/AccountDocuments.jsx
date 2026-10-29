@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import api from '../../api/client';
+import CnicProtectedViewer from '../../components/CnicProtectedViewer';
+import EmploymentFormViewer from '../../components/EmploymentFormViewer';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { missingEmployeePortalFields, isProfileIncompleteLocked } from '../../utils/profileCompleteness';
 import '../../components/ProfileIncompleteLock.css';
+
+function hasDoc(profile, urlKey, onFileKey) {
+  if (!profile) return false;
+  if (typeof profile[onFileKey] === 'boolean') return profile[onFileKey];
+  return Boolean(profile[urlKey]);
+}
 
 export default function AccountDocuments() {
   const navigate = useNavigate();
@@ -16,6 +24,8 @@ export default function AccountDocuments() {
   const [docUploading, setDocUploading] = useState('');
   const [docError, setDocError] = useState('');
   const [docSuccess, setDocSuccess] = useState('');
+  const [cnicView, setCnicView] = useState(null);
+  const [cvViewOpen, setCvViewOpen] = useState(false);
   const cnicFrontInputRef = useRef(null);
   const cnicBackInputRef = useRef(null);
   const cvInputRef = useRef(null);
@@ -53,9 +63,10 @@ export default function AccountDocuments() {
     .filter((field) => field.key !== 'profile_picture_url')
     .map((field) => field.label);
   const missingPhoto = missingDocFields.some((field) => field.key === 'profile_picture_url');
-  const showCnicFront = !locked || missingDocFields.some((field) => field.key === 'cnic_front_url');
-  const showCnicBack = !locked || missingDocFields.some((field) => field.key === 'cnic_back_url');
-  const showCv = !locked || missingDocFields.some((field) => field.key === 'cv_url');
+  const hasCnicFront = hasDoc(profile, 'cnic_front_url', 'cnic_front_on_file');
+  const hasCnicBack = hasDoc(profile, 'cnic_back_url', 'cnic_back_on_file');
+  const hasCv = hasDoc(profile, 'cv_url', 'cv_on_file');
+  const cvSrc = profile?.cv_url || (profile?.id ? `/api/documents/${profile.id}/cv` : null);
 
   async function handleDocumentUpload(field, file) {
     if (!file) return;
@@ -94,7 +105,7 @@ export default function AccountDocuments() {
     <main className="card wide page-panel">
       <h1>My Documents</h1>
       <p className="muted">
-        Upload or replace your CNIC images and CV. Downloads of these files are restricted for
+        Upload, replace, or view your CNIC images and CV. Downloads of these files are restricted for
         security.
       </p>
       {loading && <p className="muted">Loading…</p>}
@@ -106,7 +117,8 @@ export default function AccountDocuments() {
         <div className="profile-lock-banner" role="alert">
           <strong>Dashboard locked until missing employee documents are uploaded.</strong>
           <p className="muted">
-            Only incomplete files are shown. Admin-assigned fields are not required.
+            You can upload or replace any of your documents below. Admin-assigned fields are not
+            required.
           </p>
         </div>
       )}
@@ -135,9 +147,8 @@ export default function AccountDocuments() {
       {!loading && profile && (
         <section className="docs">
           <div className="doc-grid">
-            {showCnicFront && (
             <div className="doc-card doc-card-static">
-              <span>{profile.cnic_front_url ? 'On file' : 'No CNIC front'}</span>
+              <span>{hasCnicFront ? 'On file' : 'No CNIC front'}</span>
               <span>CNIC front</span>
               <input
                 ref={cnicFrontInputRef}
@@ -150,24 +161,39 @@ export default function AccountDocuments() {
                   handleDocumentUpload('cnic_front', file);
                 }}
               />
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={Boolean(docUploading)}
-                onClick={() => cnicFrontInputRef.current?.click()}
-              >
-                {docUploading === 'cnic_front'
-                  ? 'Uploading…'
-                  : profile.cnic_front_url
-                    ? 'Change'
-                    : 'Upload'}
-              </button>
+              <div className="doc-card-actions">
+                {hasCnicFront && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() =>
+                      setCnicView({
+                        docType: 'cnic_front',
+                        title: 'CNIC front',
+                      })
+                    }
+                  >
+                    View
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={Boolean(docUploading)}
+                  onClick={() => cnicFrontInputRef.current?.click()}
+                >
+                  {docUploading === 'cnic_front'
+                    ? 'Uploading…'
+                    : hasCnicFront
+                      ? 'Change'
+                      : 'Upload'}
+                </button>
+              </div>
             </div>
-            )}
 
-            {showCnicBack && (
             <div className="doc-card doc-card-static">
-              <span>{profile.cnic_back_url ? 'On file' : 'No CNIC back'}</span>
+              <span>{hasCnicBack ? 'On file' : 'No CNIC back'}</span>
               <span>CNIC back</span>
               <input
                 ref={cnicBackInputRef}
@@ -180,24 +206,39 @@ export default function AccountDocuments() {
                   handleDocumentUpload('cnic_back', file);
                 }}
               />
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={Boolean(docUploading)}
-                onClick={() => cnicBackInputRef.current?.click()}
-              >
-                {docUploading === 'cnic_back'
-                  ? 'Uploading…'
-                  : profile.cnic_back_url
-                    ? 'Change'
-                    : 'Upload'}
-              </button>
+              <div className="doc-card-actions">
+                {hasCnicBack && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() =>
+                      setCnicView({
+                        docType: 'cnic_back',
+                        title: 'CNIC back',
+                      })
+                    }
+                  >
+                    View
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={Boolean(docUploading)}
+                  onClick={() => cnicBackInputRef.current?.click()}
+                >
+                  {docUploading === 'cnic_back'
+                    ? 'Uploading…'
+                    : hasCnicBack
+                      ? 'Change'
+                      : 'Upload'}
+                </button>
+              </div>
             </div>
-            )}
 
-            {showCv && (
             <div className="doc-card doc-card-static">
-              <span className="pdf-badge">{profile.cv_url ? 'On file' : 'No CV'}</span>
+              <span className="pdf-badge">{hasCv ? 'On file' : 'No CV'}</span>
               <span>CV</span>
               <input
                 ref={cvInputRef}
@@ -210,16 +251,27 @@ export default function AccountDocuments() {
                   handleDocumentUpload('cv', file);
                 }}
               />
-              <button
-                type="button"
-                className="btn btn-ghost"
-                disabled={Boolean(docUploading)}
-                onClick={() => cvInputRef.current?.click()}
-              >
-                {docUploading === 'cv' ? 'Uploading…' : profile.cv_url ? 'Change' : 'Upload'}
-              </button>
+              <div className="doc-card-actions">
+                {hasCv && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={Boolean(docUploading)}
+                    onClick={() => setCvViewOpen(true)}
+                  >
+                    View
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={Boolean(docUploading)}
+                  onClick={() => cvInputRef.current?.click()}
+                >
+                  {docUploading === 'cv' ? 'Uploading…' : hasCv ? 'Change' : 'Upload'}
+                </button>
+              </div>
             </div>
-            )}
           </div>
           {locked && missingPhoto && (
             <p className="muted" style={{ marginTop: '1rem' }}>
@@ -228,6 +280,23 @@ export default function AccountDocuments() {
           )}
         </section>
       )}
+
+      <CnicProtectedViewer
+        open={Boolean(cnicView) && Boolean(profile?.id)}
+        userId={profile?.id}
+        docType={cnicView?.docType}
+        title={cnicView?.title}
+        viewerLabel={profile?.username || profile?.name || 'employee'}
+        subjectLabel={profile?.name}
+        onClose={() => setCnicView(null)}
+      />
+
+      <EmploymentFormViewer
+        open={cvViewOpen && hasCv && Boolean(cvSrc)}
+        src={cvSrc}
+        title={`${profile?.name || 'My'} — CV`}
+        onClose={() => setCvViewOpen(false)}
+      />
     </main>
   );
 }

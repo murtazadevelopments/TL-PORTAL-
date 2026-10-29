@@ -27,7 +27,6 @@ const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 const { blockedLoginMessage } = require('../utils/accountStatus');
-const { findIdentityConflict } = require('../utils/identityUniqueness');
 const { managerPermissionKeys } = require('../constants/permissionsCatalog');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const {
@@ -327,16 +326,17 @@ async function updateMe(req, res) {
 
     const current = existingRows[0];
 
+    // Submitted fields replace previous DB values (empty string clears optional fields).
     function nextText(key) {
-      if (updates[key] === undefined) return current[key];
-      if (updates[key] === null) return null;
+      if (!Object.prototype.hasOwnProperty.call(updates, key)) return current[key] ?? null;
+      if (updates[key] === null || updates[key] === undefined) return null;
       const value = String(updates[key]).trim();
       return value === '' ? null : value;
     }
 
     const next = {
-      name: nextText('name') ?? current.name,
-      email: nextText('email') ?? current.email,
+      name: nextText('name') || current.name,
+      email: nextText('email') || current.email,
       contact_number: nextText('contact_number'),
       address: nextText('address'),
       reference_person_name: nextText('reference_person_name'),
@@ -350,10 +350,12 @@ async function updateMe(req, res) {
       last_job_status: nextText('last_job_status'),
       cnic_number: nextText('cnic_number'),
       date_of_birth:
-        updates.date_of_birth !== undefined
-          ? updates.date_of_birth === null || updates.date_of_birth === ''
+        Object.prototype.hasOwnProperty.call(updates, 'date_of_birth')
+          ? updates.date_of_birth === null ||
+            updates.date_of_birth === undefined ||
+            String(updates.date_of_birth).trim() === ''
             ? null
-            : updates.date_of_birth
+            : String(updates.date_of_birth).trim().slice(0, 10)
           : current.date_of_birth,
     };
 
@@ -375,15 +377,8 @@ async function updateMe(req, res) {
       next.cnic_number = String(next.cnic_number).trim();
     }
 
-    const identityConflict = await findIdentityConflict({
-      email: next.email,
-      contactNumber: next.contact_number,
-      cnicNumber: next.cnic_number,
-      excludeUserId: req.user.id,
-    });
-    if (identityConflict) {
-      return res.status(409).json({ message: identityConflict.message });
-    }
+    // Identity uniqueness (email / contact / CNIC) is enforced at signup only.
+    // Profile self-edit always overwrites the user's own fields.
 
     const { rows } = await pool.query(
       `

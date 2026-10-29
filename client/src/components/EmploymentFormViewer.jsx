@@ -259,7 +259,7 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
         ref={stageRef}
         className={`ef-viewer-stage${zoom > 1 ? ' is-zoomed' : ''}`}
       >
-        {status === 'loading' && <p className="ef-viewer-status">Opening form…</p>}
+        {status === 'loading' && <p className="ef-viewer-status">Opening document…</p>}
         {status === 'error' && <p className="ef-viewer-status error">{error}</p>}
         <canvas
           ref={canvasRef}
