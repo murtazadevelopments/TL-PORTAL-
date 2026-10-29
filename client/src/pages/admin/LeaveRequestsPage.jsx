@@ -212,6 +212,13 @@ export default function LeaveRequestsPage() {
                 )}
               </div>
 
+              {row.reason ? (
+                <p style={{ marginTop: '0.75rem' }}>
+                  <span className="label">Reason</span>
+                  <strong style={{ display: 'block' }}>{row.reason}</strong>
+                </p>
+              ) : null}
+
               {row.admin_remarks ? (
                 <p style={{ marginTop: '0.75rem' }}>
                   <span className="label">Remarks</span>
@@ -227,10 +234,16 @@ export default function LeaveRequestsPage() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    View prescription
+                    {row.leave_type === 'annual' || row.document_label === 'Supporting document'
+                      ? 'View document'
+                      : 'View prescription'}
                   </a>
                 ) : (
-                  <span className="muted">No prescription on file</span>
+                  <span className="muted">
+                    {row.leave_type === 'annual'
+                      ? 'No supporting document'
+                      : 'No prescription on file'}
+                  </span>
                 )}
               </div>
 

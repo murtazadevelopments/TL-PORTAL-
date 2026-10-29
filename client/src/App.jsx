@@ -82,7 +82,13 @@ function App() {
               <Route path="/admin/attendance/remote" element={<AttendanceAdminPage mode="remote" />} />
               <Route path="/admin/attendance/face-checks" element={<FaceCheckCapturesPage />} />
               <Route path="/admin/attendance/export" element={<AttendanceExportPage />} />
-              <Route path="/admin/leave-requests" element={<LeaveRequestsPage />} />
+              <Route
+                path="/admin/leave-requests"
+                element={
+                  // Leave UI hidden for now — flip LEAVE_FEATURE_ENABLED in permissions.js
+                  <Navigate to="/dashboard" replace />
+                }
+              />
               <Route path="/admin/attendance/biometric" element={<Navigate to="/admin/attendance/onsite" replace />} />
               <Route path="/admin/messages" element={<ComposeMessagePage />} />
               <Route path="/admin/locked" element={<LockedAccountsPage />} />

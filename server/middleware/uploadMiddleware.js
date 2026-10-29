@@ -260,14 +260,14 @@ function leavePrescriptionUpload(req, res, next) {
       if (mime === 'application/pdf' || mime.startsWith('image/')) {
         return cb(null, true);
       }
-      return cb(new Error('Prescription must be an image or PDF.'));
+      return cb(new Error('Document must be an image or PDF.'));
     },
   });
 
   leaveUpload.single('prescription')(req, res, (err) => {
     // Annual leave may omit the file; multer still parses the multipart body.
     if (!err) return next();
-    return sendUploadError(res, err, 'Prescription must be 5MB or smaller.');
+    return sendUploadError(res, err, 'Document must be 5MB or smaller.');
   });
 }
 

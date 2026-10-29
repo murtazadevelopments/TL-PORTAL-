@@ -7,6 +7,7 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
   const [leaveType, setLeaveType] = useState('sick');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [reason, setReason] = useState('');
   const [fileName, setFileName] = useState('');
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -17,6 +18,7 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
     setLeaveType('sick');
     setStartDate('');
     setEndDate('');
+    setReason('');
     setFile(null);
     setFileName('');
     setError('');
@@ -26,7 +28,9 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
 
   if (!open) return null;
 
-  const needsPrescription = leaveType === 'sick';
+  const isSick = leaveType === 'sick';
+  const isAnnual = leaveType === 'annual';
+  const needsPrescription = isSick;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,6 +47,10 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
       setError('To date must be on or after from date.');
       return;
     }
+    if (isAnnual && String(reason || '').trim().length < 3) {
+      setError('Please enter a reason for annual leave.');
+      return;
+    }
     if (needsPrescription && !file) {
       setError('Upload a doctor prescription (image or PDF).');
       return;
@@ -54,7 +62,8 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
       body.append('leave_type', leaveType);
       body.append('start_date', startDate);
       body.append('end_date', endDate);
-      if (needsPrescription && file) body.append('prescription', file);
+      body.append('reason', String(reason || '').trim());
+      if (file) body.append('prescription', file);
       const { data } = await api.post('/api/leave-requests', body);
       onSubmitted?.(data?.leave || null);
       onClose?.();
@@ -87,8 +96,8 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
         </div>
         <form className="form edit-box" onSubmit={handleSubmit} style={{ padding: '0 1.25rem 1.25rem' }}>
           <p className="muted" style={{ marginTop: 0 }}>
-            Choose leave type and dates. Sick leave needs a doctor prescription. HR will review your
-            request.
+            Sick leave needs a doctor prescription. Annual leave needs a reason; a supporting document
+            is optional. HR will review your request.
           </p>
           <label>
             Leave type <span className="req-star" aria-hidden="true">*</span>
@@ -97,11 +106,9 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
               onChange={(e) => {
                 const next = e.target.value === 'annual' ? 'annual' : 'sick';
                 setLeaveType(next);
-                if (next === 'annual') {
-                  setFile(null);
-                  setFileName('');
-                  if (fileRef.current) fileRef.current.value = '';
-                }
+                setFile(null);
+                setFileName('');
+                if (fileRef.current) fileRef.current.value = '';
               }}
               required
               disabled={busy}
@@ -131,7 +138,20 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
               disabled={busy}
             />
           </label>
-          {needsPrescription && (
+          {isAnnual && (
+            <label>
+              Reason <span className="req-star" aria-hidden="true">*</span>
+              <textarea
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value.slice(0, 1000))}
+                placeholder="Why do you need this leave?"
+                required
+                disabled={busy}
+              />
+            </label>
+          )}
+          {isSick && (
             <label>
               Doctor prescription <span className="req-star" aria-hidden="true">*</span>
               <input
@@ -161,6 +181,40 @@ export default function ApplyLeaveModal({ open, onClose, onSubmitted }) {
               ) : (
                 <span className="muted" style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.85rem' }}>
                   Image or PDF, required for sick leave.
+                </span>
+              )}
+            </label>
+          )}
+          {isAnnual && (
+            <label>
+              Supporting document <span className="muted">(optional)</span>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                hidden
+                onChange={(e) => {
+                  const next = e.target.files?.[0] || null;
+                  setFile(next);
+                  setFileName(next ? next.name : '');
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={() => fileRef.current?.click()}
+                style={{ marginTop: '0.35rem' }}
+              >
+                {fileName ? 'Change file' : 'Upload document'}
+              </button>
+              {fileName ? (
+                <span className="muted" style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.85rem' }}>
+                  {fileName}
+                </span>
+              ) : (
+                <span className="muted" style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.85rem' }}>
+                  Image or PDF. Optional for annual leave.
                 </span>
               )}
             </label>

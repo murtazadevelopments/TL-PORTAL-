@@ -112,8 +112,12 @@ export function canManageSalesTargets(role) {
   return isCeo(role);
 }
 
+/** Flip to true when leave requests should show in the portal UI again. */
+export const LEAVE_FEATURE_ENABLED = false;
+
 /** Leave request review: CEO, manager, or HR (follow-up / add-employee). */
 export function canReviewLeaveRequests(role, permissions) {
+  if (!LEAVE_FEATURE_ENABLED) return false;
   if (isCeoOrManager(role)) return true;
   return (
     hasPermission(permissions, 'hr:followup', role) ||

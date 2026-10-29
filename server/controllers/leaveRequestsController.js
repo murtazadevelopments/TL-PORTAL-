@@ -52,6 +52,7 @@ function serializeLeave(row) {
     leave_type_label: leaveTypeLabel(leaveType),
     start_date: row.start_date ? String(row.start_date).slice(0, 10) : null,
     end_date: row.end_date ? String(row.end_date).slice(0, 10) : null,
+    reason: row.reason || null,
     status: row.status,
     admin_remarks: row.admin_remarks || null,
     reviewed_by: row.reviewed_by || null,
@@ -62,6 +63,7 @@ function serializeLeave(row) {
     prescription_url: row.prescription_path
       ? `/api/leave-requests/${row.id}/prescription`
       : null,
+    document_label: leaveType === 'annual' ? 'Supporting document' : 'Prescription',
     employee_name: row.employee_name || null,
     employee_username: row.employee_username || null,
     employee_id_code: row.employee_id_code || null,
@@ -88,8 +90,8 @@ async function loadApplicant(userId) {
 
 /**
  * POST /api/leave-requests
- * multipart: leave_type (sick|annual), start_date, end_date,
- * prescription required for sick leave (image or PDF)
+ * multipart: leave_type (sick|annual), start_date, end_date, reason,
+ * prescription/document: required for sick, optional for annual (image or PDF)
  */
 async function createLeaveRequest(req, res) {
   try {
@@ -119,6 +121,16 @@ async function createLeaveRequest(req, res) {
       return res.status(400).json({ message: 'To date must be on or after from date.' });
     }
 
+    const reason = String(req.body?.reason || '')
+      .trim()
+      .slice(0, 1000);
+    if (leaveType === 'annual' && reason.length < 3) {
+      return res.status(400).json({ message: 'Please enter a reason for annual leave (at least 3 characters).' });
+    }
+    if (leaveType === 'sick' && reason && reason.length < 3) {
+      return res.status(400).json({ message: 'Reason is too short.' });
+    }
+
     const file = req.file;
     let relativePath = null;
     let mime = null;
@@ -127,11 +139,19 @@ async function createLeaveRequest(req, res) {
       if (!file?.buffer) {
         return res.status(400).json({ message: 'Doctor prescription is required for sick leave.' });
       }
+    }
+
+    if (file?.buffer) {
       mime = String(file.mimetype || '').toLowerCase();
       const isPdf = mime === 'application/pdf';
       const isImage = mime.startsWith('image/');
       if (!isPdf && !isImage) {
-        return res.status(400).json({ message: 'Prescription must be an image or PDF.' });
+        return res.status(400).json({
+          message:
+            leaveType === 'annual'
+              ? 'Supporting document must be an image or PDF.'
+              : 'Prescription must be an image or PDF.',
+        });
       }
       const ext =
         path.extname(file.originalname || '').toLowerCase() ||
@@ -142,21 +162,26 @@ async function createLeaveRequest(req, res) {
         `${randomUUID()}${ext}`
       );
       await writeRelativeFile(relativePath, file.buffer);
-    } else if (file?.buffer) {
-      // Annual leave: ignore optional uploads rather than failing.
-      mime = null;
-      relativePath = null;
     }
 
     const { rows } = await pool.query(
       `
         INSERT INTO leave_requests (
-          user_id, leave_type, start_date, end_date, prescription_path, prescription_mime, status
+          user_id, leave_type, start_date, end_date, reason,
+          prescription_path, prescription_mime, status
         )
-        VALUES ($1, $2, $3::date, $4::date, $5, $6, 'pending')
+        VALUES ($1, $2, $3::date, $4::date, $5, $6, $7, 'pending')
         RETURNING *
       `,
-      [req.user.id, leaveType, startDate, endDate, relativePath, mime]
+      [
+        req.user.id,
+        leaveType,
+        startDate,
+        endDate,
+        reason || null,
+        relativePath,
+        mime,
+      ]
     );
 
     return res.status(201).json({

@@ -66,6 +66,10 @@ async function ensureLeaveRequestsSchema() {
     /* already nullable */
   }
   await pool.query(`
+    ALTER TABLE leave_requests
+      ADD COLUMN IF NOT EXISTS reason TEXT
+  `);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS leave_requests_status_created_idx
       ON leave_requests (status, created_at DESC)
   `);

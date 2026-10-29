@@ -6,6 +6,7 @@ import { useAuthUser } from '../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../utils/documentUrls';
 import { missingEmployeePortalFields } from '../utils/profileCompleteness';
 import RemoteBreakCard from '../components/RemoteBreakCard';
+import { LEAVE_FEATURE_ENABLED } from '../utils/permissions';
 import { useFlashSuccess } from '../utils/successPopup';
 
 function leaveStatusLabel(status) {
@@ -41,7 +42,8 @@ export default function DashboardHome() {
   useFlashSuccess(leaveSuccess);
 
   const canApplyLeave =
-    user?.employment_type === 'remote' || user?.employment_type === 'onsite';
+    LEAVE_FEATURE_ENABLED &&
+    (user?.employment_type === 'remote' || user?.employment_type === 'onsite');
 
   const loadMyLeaves = useCallback(async () => {
     if (!canApplyLeave) {
@@ -275,6 +277,12 @@ export default function DashboardHome() {
                             <p className="muted" style={{ margin: '0.4rem 0 0' }}>
                               {formatLeaveDate(row.start_date)} → {formatLeaveDate(row.end_date)}
                             </p>
+                            {row.reason ? (
+                              <p style={{ margin: '0.4rem 0 0' }}>
+                                <span className="label">Reason</span>
+                                <strong style={{ display: 'block' }}>{row.reason}</strong>
+                              </p>
+                            ) : null}
                             {row.admin_remarks ? (
                               <p style={{ margin: '0.4rem 0 0' }}>
                                 <span className="label">HR remarks</span>
