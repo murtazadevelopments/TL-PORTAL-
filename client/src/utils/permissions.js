@@ -111,3 +111,12 @@ export function canViewTeamAttendance(role, permissions) {
 export function canManageSalesTargets(role) {
   return isCeo(role);
 }
+
+/** Leave request review: CEO, manager, or HR (follow-up / add-employee). */
+export function canReviewLeaveRequests(role, permissions) {
+  if (isCeoOrManager(role)) return true;
+  return (
+    hasPermission(permissions, 'hr:followup', role) ||
+    hasPermission(permissions, 'hr:add_employee', role)
+  );
+}

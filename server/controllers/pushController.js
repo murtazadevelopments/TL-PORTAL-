@@ -5,7 +5,8 @@ const {
 } = require('../services/pushNotifications');
 
 /**
- * GET /api/push/vapid-public-key
+ * GET /api/push/public-key
+ * Returns the derived VAPID public key (source of truth from the private key).
  */
 function getPublicKey(req, res) {
   if (!isPushConfigured()) {
@@ -14,9 +15,12 @@ function getPublicKey(req, res) {
       message: 'Push notifications are not configured on the server.',
     });
   }
+  const key = getVapidPublicKey();
   return res.json({
+    key,
+    // Legacy field — older clients; prefer `key`.
+    publicKey: key,
     configured: true,
-    publicKey: getVapidPublicKey(),
   });
 }
 

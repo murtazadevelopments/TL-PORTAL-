@@ -582,8 +582,23 @@ async function updateDocuments(req, res) {
     return;
   } catch (err) {
     console.error('updateDocuments error:', err);
+    const code = String(err.code || '');
+    if (code === 'ENOSPC') {
+      return res.status(500).json({
+        message: 'Server storage is full. Please contact an administrator.',
+      });
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return res.status(500).json({
+        message: 'Server cannot save files right now. Please contact an administrator.',
+      });
+    }
+    if (err.status === 400 && err.message) {
+      return res.status(400).json({ message: err.message });
+    }
     return res.status(err.status || 500).json({
-      message: 'Unable to update documents. Check your internet connection and try again.',
+      message:
+        'Unable to save your document. Please try again with a PDF under 8MB. If it keeps failing, contact an administrator.',
     });
   }
 }

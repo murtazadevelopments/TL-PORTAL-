@@ -61,6 +61,7 @@ const EMPTY_EDIT = {
   employment_type: 'onsite',
   work_start_hour: 9,
   work_end_hour: 18,
+  cnic_number: '',
 };
 
 const EMPTY_ADD = {
@@ -70,6 +71,7 @@ const EMPTY_ADD = {
   password: '',
   contact_number: '',
   address: '',
+  cnic_number: '',
   employee_id: '',
   status: 'inactive',
   department: '',
@@ -1467,6 +1469,7 @@ function EmployeesPage() {
         employment_type: data.employment_type === 'remote' ? 'remote' : 'onsite',
         work_start_hour: data.work_start_hour ?? 9,
         work_end_hour: data.work_end_hour ?? 18,
+        cnic_number: data.cnic_number ? String(data.cnic_number).replace(/\D/g, '').slice(0, 13) : '',
       });
       setShowAddTeam(false);
       setNewTeamName('');
@@ -1502,6 +1505,19 @@ function EmployeesPage() {
 
   function handleEditChange(e) {
     const { name, value } = e.target;
+    if (name === 'cnic_number') {
+      setEditForm((prev) => ({
+        ...prev,
+        cnic_number: String(value || '').replace(/\D/g, '').slice(0, 13),
+      }));
+      setFieldErrors((prev) => {
+        if (!prev.cnic_number) return prev;
+        const next = { ...prev };
+        delete next.cnic_number;
+        return next;
+      });
+      return;
+    }
     if (name === 'status' && value === 'resigned') {
       if (isResignedAccount(detail) || editForm.status === 'resigned') {
         setEditForm((prev) => ({ ...prev, status: 'resigned' }));
@@ -1693,6 +1709,14 @@ function EmployeesPage() {
     setSaveError('');
     setSaveSuccess('');
 
+    const cnicDigits = String(editForm.cnic_number || '').replace(/\D/g, '').slice(0, 13);
+    if (cnicDigits && cnicDigits.length !== 13) {
+      setFieldErrors((prev) => ({ ...prev, cnic_number: 'CNIC must be exactly 13 digits.' }));
+      setSaveError('CNIC must be exactly 13 digits when provided.');
+      setSaveSuccess('');
+      return;
+    }
+
     const payload = {
       employee_id: editForm.employee_id.trim(),
       status: editForm.status,
@@ -1704,11 +1728,18 @@ function EmployeesPage() {
       employment_type: editForm.employment_type === 'remote' ? 'remote' : 'onsite',
       work_start_hour: Number(editForm.work_start_hour),
       work_end_hour: Number(editForm.work_end_hour),
+      cnic_number: cnicDigits || null,
     };
 
     try {
       const { data } = await api.put(`/api/admin/employees/${selectedId}`, payload);
       setDetail(data);
+      setEditForm((prev) => ({
+        ...prev,
+        cnic_number: data.cnic_number
+          ? String(data.cnic_number).replace(/\D/g, '').slice(0, 13)
+          : '',
+      }));
       setSaveSuccess('Changes saved.');
 
       setEmployees((prev) =>
@@ -1724,6 +1755,7 @@ function EmployeesPage() {
                 shift: data.shift,
                 date_of_joining: data.date_of_joining,
                 employment_type: data.employment_type,
+                cnic_number: data.cnic_number,
                 profile_picture_url: data.profile_picture_url || row.profile_picture_url,
               }
             : row
@@ -1739,6 +1771,13 @@ function EmployeesPage() {
 
   function handleAddChange(e) {
     const { name, value } = e.target;
+    if (name === 'cnic_number') {
+      setAddForm((prev) => ({
+        ...prev,
+        cnic_number: String(value || '').replace(/\D/g, '').slice(0, 13),
+      }));
+      return;
+    }
     setAddForm((prev) => ({
       ...prev,
       [name]: name === 'username' || name === 'email' ? value.toLowerCase() : value,
@@ -1760,6 +1799,12 @@ function EmployeesPage() {
     }
     setAdding(true);
     setAddError('');
+    const addCnic = String(addForm.cnic_number || '').replace(/\D/g, '').slice(0, 13);
+    if (addCnic && addCnic.length !== 13) {
+      setAddError('CNIC must be exactly 13 digits when provided.');
+      setAdding(false);
+      return;
+    }
     const payload = {
       username: addForm.username.trim().toLowerCase(),
       name: addForm.name.trim(),
@@ -1767,6 +1812,7 @@ function EmployeesPage() {
       password: addForm.password,
       contact_number: addForm.contact_number.trim(),
       address: addForm.address.trim() || undefined,
+      cnic_number: addCnic || undefined,
       employee_id: addForm.employee_id.trim(),
       status: addForm.status,
       department: addForm.department.trim(),
@@ -3575,6 +3621,27 @@ function EmployeesPage() {
                 )}
                 <form className="edit-box" onSubmit={handleSave} noValidate>
                   <fieldset disabled={!canEditEmploymentType(detail.employment_type)}>
+                  <label className={fieldErrors.cnic_number ? 'has-error' : ''}>
+                    CNIC number
+                    <input
+                      type="text"
+                      name="cnic_number"
+                      value={editForm.cnic_number}
+                      onChange={handleEditChange}
+                      placeholder="13-digit CNIC"
+                      inputMode="numeric"
+                      data-input-kind="integer"
+                      maxLength={13}
+                      autoComplete="off"
+                    />
+                    {fieldErrors.cnic_number ? (
+                      <span className="field-error">{fieldErrors.cnic_number}</span>
+                    ) : (
+                      <span className="muted" style={{ fontSize: '0.8rem' }}>
+                        Optional. Admin can enter or correct the employee CNIC manually.
+                      </span>
+                    )}
+                  </label>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
                     Employee ID <span className="req-star" aria-hidden="true">*</span>
                     <input
@@ -4281,6 +4348,19 @@ function EmployeesPage() {
                 <label>
                   Address
                   <input name="address" value={addForm.address} onChange={handleAddChange} />
+                </label>
+                <label>
+                  CNIC number
+                  <input
+                    name="cnic_number"
+                    value={addForm.cnic_number}
+                    onChange={handleAddChange}
+                    placeholder="13-digit CNIC"
+                    inputMode="numeric"
+                    data-input-kind="integer"
+                    maxLength={13}
+                    autoComplete="off"
+                  />
                 </label>
                 <label>
                   Employee ID <span className="req-star" aria-hidden="true">*</span>

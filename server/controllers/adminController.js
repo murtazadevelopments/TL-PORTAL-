@@ -114,6 +114,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'employment_type',
   'work_start_hour',
   'work_end_hour',
+  'cnic_number',
 ];
 
 const REQUIRED_ADMIN_FIELDS = [
@@ -765,11 +766,17 @@ async function createEmployee(req, res) {
     }
 
     const hours = normalizeWorkHours(body.work_start_hour, body.work_end_hour);
+    const cnicNumber = String(body.cnic_number || '').replace(/\D/g, '').slice(0, 13) || null;
+    if (cnicNumber && !/^\d{13}$/.test(cnicNumber)) {
+      return res.status(400).json({
+        message: 'CNIC must be exactly 13 digits when provided.',
+      });
+    }
     const identityConflict = await findIdentityConflict({
       username,
       email,
       contactNumber,
-      cnicNumber: body.cnic_number,
+      cnicNumber,
       employeeId,
     });
     if (identityConflict) {
@@ -822,7 +829,7 @@ async function createEmployee(req, res) {
         hashedPassword,
         contactNumber,
         String(body.address || '').trim() || null,
-        String(body.cnic_number || '').trim() || null,
+        cnicNumber,
         department,
         catalogDesignation,
         status,
@@ -909,7 +916,7 @@ async function updateEmployee(req, res) {
     const rejected = keys.filter((key) => !ALLOWED_UPDATE_FIELDS.includes(key));
     if (rejected.length > 0) {
       return res.status(400).json({
-        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, date_of_joining, employment_type, and working hours can be updated.`,
+        message: `Field(s) not allowed: ${rejected.join(', ')}. Only employee_id, status, department, designation, branch, shift, date_of_joining, employment_type, working hours, and cnic_number can be updated.`,
       });
     }
 
@@ -972,6 +979,12 @@ async function updateEmployee(req, res) {
         body.employment_type === undefined || String(body.employment_type).trim() === ''
           ? before.employment_type || 'onsite'
           : normalizeEmploymentType(body.employment_type),
+      cnic_number:
+        body.cnic_number === undefined
+          ? before.cnic_number
+          : body.cnic_number === null || String(body.cnic_number).trim() === ''
+            ? null
+            : String(body.cnic_number).replace(/\D/g, '').slice(0, 13) || null,
     };
     const hours = normalizeWorkHours(
       body.work_start_hour ?? before.work_start_hour,
@@ -1016,12 +1029,21 @@ async function updateEmployee(req, res) {
     if (!next.employee_id) {
       return res.status(400).json({ message: 'Employee ID is required.' });
     }
-    const employeeIdConflict = await findIdentityConflict({
+    if (next.cnic_number && !/^\d{13}$/.test(next.cnic_number)) {
+      return res.status(400).json({
+        message: 'CNIC must be exactly 13 digits when provided.',
+      });
+    }
+
+    const beforeCnicDigits = String(before.cnic_number || '').replace(/\D/g, '');
+    const nextCnicDigits = String(next.cnic_number || '').replace(/\D/g, '');
+    const identityConflict = await findIdentityConflict({
       employeeId: next.employee_id,
+      cnicNumber: nextCnicDigits && nextCnicDigits !== beforeCnicDigits ? next.cnic_number : undefined,
       excludeUserId: id,
     });
-    if (employeeIdConflict) {
-      return res.status(409).json({ message: employeeIdConflict.message });
+    if (identityConflict) {
+      return res.status(409).json({ message: identityConflict.message });
     }
 
     if (!next.employment_type) {
@@ -1055,8 +1077,9 @@ async function updateEmployee(req, res) {
           employment_type = $9,
           work_start_hour = $10,
           work_end_hour = $11,
+          cnic_number = $12,
           updated_at = NOW()
-        WHERE id = $12 AND is_active = true
+        WHERE id = $13 AND is_active = true
         RETURNING ${DETAIL_COLUMNS}
       `,
       [
@@ -1071,6 +1094,7 @@ async function updateEmployee(req, res) {
         next.employment_type,
         next.work_start_hour,
         next.work_end_hour,
+        next.cnic_number,
         id,
       ]
     );

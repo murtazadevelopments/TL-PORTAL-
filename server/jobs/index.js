@@ -61,6 +61,25 @@ function startScheduledJobs() {
     console.error(`[cron] Invalid BIRTHDAY_CRON expression: ${birthdayExpression}`);
   }
 
+  // Retry failed midnight sends (SMTP/push outages) without double-sending successes.
+  const birthdayCatchUpExpression = process.env.BIRTHDAY_CATCHUP_CRON || '15 * * * *';
+  if (cron.validate(birthdayCatchUpExpression)) {
+    cron.schedule(
+      birthdayCatchUpExpression,
+      () => {
+        runBirthdayEmailsLocked({ catchUp: true }).catch((err) => {
+          console.error('[birthday-job] catch-up failed:', err.message || err);
+        });
+      },
+      { timezone: tz }
+    );
+    console.log(`[cron] Birthday catch-up scheduled: "${birthdayCatchUpExpression}" (${tz})`);
+  }
+
+  runBirthdayEmailsLocked({ catchUp: true }).catch((err) => {
+    console.error('[birthday-job] startup catch-up failed:', err.message || err);
+  });
+
   if (cron.validate(pruneExpression)) {
     cron.schedule(
       pruneExpression,

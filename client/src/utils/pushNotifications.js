@@ -118,8 +118,9 @@ export async function enablePushNotifications(options = {}) {
     throw new Error(notificationBlockedHelp());
   }
 
-  const { data: keyData } = await api.get('/api/push/vapid-public-key');
-  if (!keyData?.publicKey) {
+  const { data: keyData } = await api.get('/api/push/public-key');
+  const vapidKey = keyData?.key || keyData?.publicKey;
+  if (!vapidKey) {
     throw new Error(keyData?.message || 'Server push is not configured.');
   }
 
@@ -135,7 +136,7 @@ export async function enablePushNotifications(options = {}) {
   }
   const subscription = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+    applicationServerKey: urlBase64ToUint8Array(vapidKey),
   });
 
   const payload = subscription.toJSON();

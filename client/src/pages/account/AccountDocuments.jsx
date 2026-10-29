@@ -75,8 +75,19 @@ export default function AccountDocuments() {
     setDocUploading(field);
     setBusy(true);
     try {
+      if (field === 'cv' && file.size > 8 * 1024 * 1024) {
+        setDocError('CV must be 8MB or smaller. Compress the PDF and try again.');
+        return;
+      }
       const body = new FormData();
-      body.append(field, file);
+      // Keep a .pdf filename in multipart — some mobile browsers omit type/extension.
+      const uploadName =
+        field === 'cv'
+          ? String(file.name || 'cv.pdf').toLowerCase().endsWith('.pdf')
+            ? file.name || 'cv.pdf'
+            : `${String(file.name || 'cv').replace(/\.[^.]+$/, '') || 'cv'}.pdf`
+          : file.name;
+      body.append(field, file, uploadName);
       const { data } = await api.put('/api/users/me/documents', body);
       setProfile(data.user || data);
       const next = data.user || data;
@@ -94,7 +105,22 @@ export default function AccountDocuments() {
             : 'CNIC back updated.'
       );
     } catch (err) {
-      setDocError(err.response?.data?.message || 'Failed to upload document.');
+      const status = err.response?.status;
+      const apiMessage =
+        typeof err.response?.data?.message === 'string' ? err.response.data.message.trim() : '';
+      if (apiMessage) {
+        setDocError(apiMessage);
+      } else if (status === 413) {
+        setDocError(
+          field === 'cv'
+            ? 'CV is too large. Use a PDF of 8MB or smaller.'
+            : 'File is too large. Use an image of 5MB or smaller.'
+        );
+      } else if (status >= 500) {
+        setDocError('Upload failed on the server. Please try again in a moment.');
+      } else {
+        setDocError(err.message || 'Failed to upload document.');
+      }
     } finally {
       setDocUploading('');
       setBusy(false);
@@ -240,10 +266,13 @@ export default function AccountDocuments() {
             <div className="doc-card doc-card-static">
               <span className="pdf-badge">{hasCv ? 'On file' : 'No CV'}</span>
               <span>CV</span>
+              <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.8rem' }}>
+                PDF only · max 8MB
+              </p>
               <input
                 ref={cvInputRef}
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,.pdf"
                 hidden
                 onChange={(e) => {
                   const file = e.target.files?.[0];

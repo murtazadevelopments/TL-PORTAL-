@@ -51,7 +51,9 @@ async function main() {
   );
   const employee = await notifyBirthday(user);
   const ceo = await notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson: true });
-  console.log(`Employee email: ${employee ? 'sent' : 'failed/skipped'}`);
+  console.log(
+    `Employee: email=${employee?.emailOk ? 'sent' : 'failed/skipped'} push=${employee?.pushOk ? 'sent' : 'failed/skipped'}`
+  );
   console.log(`CEO reminder: ${ceo ? 'sent' : 'failed/skipped'}`);
 }
 

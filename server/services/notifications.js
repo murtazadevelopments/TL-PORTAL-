@@ -560,14 +560,29 @@ function birthdayEmailWrap(inner) {
   `;
 }
 
+function calendarYearNow() {
+  try {
+    return Number(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: process.env.APP_TIMEZONE || 'Asia/Karachi',
+        year: 'numeric',
+      }).format(new Date())
+    );
+  } catch {
+    return new Date().getFullYear();
+  }
+}
+
 /**
- * Employee birthday email — sent at 12:00 AM on the birthday (Asia/Karachi).
+ * Employee birthday — email + push at 12:00 AM Asia/Karachi on the day.
  */
 async function notifyBirthday(user) {
   const who = firstName(user?.name);
-  let result = null;
+  const year = calendarYearNow();
+  let emailResult = null;
   if (user?.email) {
-    result = await sendEmailSafe({
+    emailResult = await sendEmailSafe({
+      emailType: 'birthday',
       to: user.email,
       subject: `Happy Birthday, ${who}! 🎉`,
       html: birthdayEmailWrap(`
@@ -578,32 +593,36 @@ async function notifyBirthday(user) {
       <p style="margin:0;color:#3dff7a;"><strong>— Textured Lab</strong></p>
     `),
     });
-
-    await logEmail({
-      emailType: 'birthday',
-      recipient: user.email,
-      meta: { userId: user.id, ok: Boolean(result) },
-    });
   }
 
+  let pushResult = { sent: 0 };
   if (user?.id) {
-    await notifyApp(user.id, {
+    pushResult = await notifyApp(user.id, {
       title: `Happy Birthday, ${who}!`,
       body: 'The Textured Lab family is celebrating you today.',
       url: '/account',
-      tag: 'birthday',
+      tag: `birthday-${year}`,
+      collapse: true,
     });
   }
 
-  return result;
+  const emailOk = Boolean(emailResult);
+  const pushOk = Number(pushResult?.sent) > 0;
+  return {
+    ok: emailOk || pushOk,
+    emailOk,
+    pushOk,
+    email: emailResult,
+    push: pushResult,
+  };
 }
 
 /**
- * CEO reminder — sent 24 hours before (midnight the day before).
+ * CEO reminder — sent 24 hours before (midnight the day before, Asia/Karachi).
  */
-async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
+async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson, to: toOverride } = {}) {
   const selfEmail = String(user?.email || '').trim().toLowerCase();
-  let to = await getCeoEmails();
+  let to = Array.isArray(toOverride) ? [...toOverride] : await getCeoEmails();
   if (!includeBirthdayPerson) {
     to = to.filter((email) => email && email !== selfEmail);
   }
@@ -613,7 +632,8 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
   }
 
   const who = user?.name || user?.username || `Employee ${user?.id}`;
-  const result = await sendEmailSafe({
+  return sendEmailSafe({
+    emailType: 'birthday_ceo_preview',
     to,
     subject: `Tomorrow is ${who}'s birthday`,
     html: birthdayEmailWrap(`
@@ -629,14 +649,6 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson } = {}) {
       <p style="margin:0;color:#8b97ad;">They will receive their birthday email from Textured Lab at 12:00 AM on the day.</p>
     `),
   });
-
-  await logEmail({
-    emailType: 'birthday_ceo_preview',
-    recipient: to.join(','),
-    meta: { userId: user?.id, ok: Boolean(result) },
-  });
-
-  return result;
 }
 
 function remoteFaceEvent(challenge = {}) {

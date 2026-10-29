@@ -1846,3 +1846,49 @@ tr.lower-staff-row-editing td {
     grid-template-columns: 1fr;
   }
 }
+
+.leave-review-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.leave-remarks-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--cyan-soft);
+}
+
+.leave-remarks-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(6, 12, 24, 0.65);
+  color: var(--text-h);
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+}
+
+.leave-remarks-field textarea:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--glow-green);
+}
+
+.leave-remarks-field textarea::placeholder {
+  color: var(--muted);
+}
+
+.leave-review-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

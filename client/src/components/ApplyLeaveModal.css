@@ -1,0 +1,55 @@
+.apply-leave-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 4, 10, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  animation: apply-leave-fade 0.18s ease;
+}
+
+.apply-leave-panel {
+  width: min(480px, calc(100% - 2rem));
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  background: var(--card, #0d1322);
+  border: 1px solid var(--border, rgba(148, 163, 184, 0.28));
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 1.25rem 0 0.5rem;
+  animation: apply-leave-fade 0.18s ease;
+}
+
+.apply-leave-panel .modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 1.25rem 0.85rem;
+}
+
+.apply-leave-panel .modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  color: var(--text-h, #e8eaef);
+}
+
+.apply-leave-panel .modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+@keyframes apply-leave-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

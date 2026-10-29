@@ -11,6 +11,7 @@ import {
   canManageSalesTargets,
   canUseFaceCheck,
   canAssignRoles,
+  canReviewLeaveRequests,
 } from '../utils/permissions';
 
 /**
@@ -125,6 +126,9 @@ export function buildSidebarGroups(
     }
     if (hasPermission(permissions, 'employees:deactivate', role)) {
       employeeItems.push({ to: '/admin/deactivated', label: 'Deactivated' });
+    }
+    if (canReviewLeaveRequests(role, permissions)) {
+      employeeItems.push({ to: '/admin/leave-requests', label: 'Leave requests' });
     }
     if (employeeItems.length) {
       groups.push({ id: 'employees', label: 'Employees', items: employeeItems });

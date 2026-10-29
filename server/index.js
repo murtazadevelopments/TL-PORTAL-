@@ -3,6 +3,9 @@ const path = require('path');
 // override: true so newly added keys (e.g. VAPID_*) win over stale process/injected env
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 
+// Strict VAPID — mismatched / invalid keys crash the process (no silent repair).
+require('./config/vapid');
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -191,6 +194,7 @@ try {
   app.use('/api/sales-targets', require('./routes/salesTargetsRoutes'));
   app.use('/api/messages', require('./routes/messagesRoutes'));
   app.use('/api/push', require('./routes/pushRoutes'));
+  app.use('/api/leave-requests', require('./routes/leaveRequestsRoutes'));
 } catch (err) {
   apiBootError = err;
   console.error('API failed to load (check Hostinger env vars):', err.message);
@@ -319,20 +323,8 @@ function startHttpServer() {
       console.error('[mailer] status check failed:', err.message || err);
     }
     try {
-      const {
-        configureVapid,
-        isPushConfigured,
-        getPushConfigError,
-      } = require('./services/pushNotifications');
-      configureVapid();
-      if (isPushConfigured()) {
-        console.log('[push] Web Push configured (VAPID ready)');
-      } else {
-        const why = getPushConfigError() || 'missing_or_invalid_vapid';
-        console.log(
-          `[push] Web Push OFF (${why}). Set full VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY in Hostinger env (no quotes).`
-        );
-      }
+      const { publicKey } = require('./config/vapid');
+      console.log(`[push] Web Push configured (VAPID ready, public key ${publicKey.length} chars)`);
     } catch (err) {
       console.error('[push] status check failed:', err.message || err);
     }
