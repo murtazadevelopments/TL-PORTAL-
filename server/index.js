@@ -276,12 +276,20 @@ function startHttpServer() {
       console.error('[mailer] status check failed:', err.message || err);
     }
     try {
-      const { isPushConfigured } = require('./services/pushNotifications');
-      console.log(
-        isPushConfigured()
-          ? '[push] Web Push configured (VAPID ready)'
-          : '[push] Web Push OFF — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in server/.env'
-      );
+      const {
+        configureVapid,
+        isPushConfigured,
+        getPushConfigError,
+      } = require('./services/pushNotifications');
+      configureVapid();
+      if (isPushConfigured()) {
+        console.log('[push] Web Push configured (VAPID ready)');
+      } else {
+        const why = getPushConfigError() || 'missing_or_invalid_vapid';
+        console.log(
+          `[push] Web Push OFF (${why}). Set full VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY in Hostinger env (no quotes).`
+        );
+      }
     } catch (err) {
       console.error('[push] status check failed:', err.message || err);
     }
