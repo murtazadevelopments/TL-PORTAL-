@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-CRAcnSIF.js";import{t}from"./AccountRecovery-DJoYQCXP.js";var n=e();function r(){return(0,n.jsx)(t,{mode:`username`})}export{r as default};

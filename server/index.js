@@ -65,7 +65,7 @@ app.use((req, res, next) => {
   res.setHeader('Critical-CH', 'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Arch');
   res.setHeader(
     'Permissions-Policy',
-    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self "https://texturedlab.org" "https://www.texturedlab.org"), notifications=(self), push=(self)'
+    'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self "https://texturedlab.org" "https://www.texturedlab.org")'
   );
   next();
 });
@@ -79,6 +79,34 @@ const spaDir = fs.existsSync(path.join(clientDistDir, 'index.html'))
 const spaIndex = path.join(spaDir, 'index.html');
 const spaEnabled = fs.existsSync(spaIndex);
 
+function readBuildInfo() {
+  const candidates = [
+    path.join(spaDir, 'build-info.json'),
+    path.join(__dirname, 'build-info.json'),
+    path.join(publicDir, 'build-info.json'),
+  ];
+  for (const file of candidates) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return {
+        commit: String(raw.commit || 'unknown'),
+        builtAt: String(raw.builtAt || ''),
+        clientBundle: raw.clientBundle ? String(raw.clientBundle) : null,
+        swBuildId: raw.swBuildId ? String(raw.swBuildId) : null,
+      };
+    } catch {
+      /* try next */
+    }
+  }
+  return {
+    commit: process.env.GIT_COMMIT || process.env.COMMIT_SHA || 'unknown',
+    builtAt: '',
+    clientBundle: null,
+    swBuildId: null,
+  };
+}
+
 function healthPayload() {
   return {
     status: 'ok',
@@ -87,6 +115,16 @@ function healthPayload() {
 
 app.get('/api/health', (req, res) => {
   res.json(healthPayload());
+});
+
+/** Public deploy marker — no auth, no secrets. */
+app.get('/api/version', (req, res) => {
+  const info = readBuildInfo();
+  res.json({
+    commit: info.commit,
+    builtAt: info.builtAt,
+    clientBundle: info.clientBundle,
+  });
 });
 
 /**
@@ -268,7 +306,12 @@ function startHttpServer() {
   global.__tlPortalListening = true;
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on 0.0.0.0:${PORT}`);
+    const buildInfo = readBuildInfo();
+    console.log(
+      `Server running on 0.0.0.0:${PORT} (commit ${buildInfo.commit}${
+        buildInfo.builtAt ? `, built ${buildInfo.builtAt}` : ''
+      })`
+    );
     console.log('CORS origins:', allowedOrigins.join(', '));
     try {
       require('./lib/mailer').logMailerStatus();

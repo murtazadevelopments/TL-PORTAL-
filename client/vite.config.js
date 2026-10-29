@@ -1,12 +1,22 @@
+import { createRequire } from 'module';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-/** Bump when SW routing/caching rules change — forces clients onto a new worker URL. */
-const SW_BUILD_ID = '20261029b';
+const require = createRequire(import.meta.url);
+const { getBuildMeta } = require('../scripts/build-meta.js');
+
+const buildMeta = getBuildMeta();
+/** Changes every build so Workbox cache names + SW filename invalidate old PWAs. */
+const SW_BUILD_ID = buildMeta.swBuildId;
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_COMMIT__: JSON.stringify(buildMeta.commit),
+    __APP_BUILT_AT__: JSON.stringify(buildMeta.builtAt),
+    __APP_SW_BUILD_ID__: JSON.stringify(SW_BUILD_ID),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -140,7 +150,7 @@ export default defineConfig({
       'Accept-CH':
         'Sec-CH-UA-Model, Sec-CH-UA-Platform, Sec-CH-UA-Platform-Version, Sec-CH-UA-Mobile, Sec-CH-UA-Arch, Sec-CH-UA-Form-Factors',
       'Permissions-Policy':
-        'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self), notifications=(self), push=(self)',
+        'ch-ua-model=*, ch-ua-platform=*, ch-ua-platform-version=*, ch-ua-arch=*, ch-ua-form-factors=*, geolocation=(self)',
     },
     proxy: {
       // Forward /api/* to the Express backend during local development

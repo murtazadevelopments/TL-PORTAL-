@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import InstallAppButton from '../components/InstallAppButton';
 import HardRefreshButton from '../components/HardRefreshButton';
+import api from '../api/client';
+import { getClientAppVersion } from '../utils/appVersion';
 import {
   canUseMobilePushUi,
   currentNotificationPermission,
@@ -12,6 +14,8 @@ import {
 } from '../utils/pushNotifications';
 
 export default function SettingsPage() {
+  const clientVersion = getClientAppVersion();
+  const [serverVersion, setServerVersion] = useState(null);
   const [pushStatus, setPushStatus] = useState(null);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
@@ -20,6 +24,21 @@ export default function SettingsPage() {
   const [browserPermission, setBrowserPermission] = useState(() =>
     canUseMobilePushUi() ? currentNotificationPermission() : 'default'
   );
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get('/api/version')
+      .then(({ data }) => {
+        if (active) setServerVersion(data || null);
+      })
+      .catch(() => {
+        if (active) setServerVersion(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!showPush) return undefined;
@@ -185,6 +204,18 @@ export default function SettingsPage() {
           <HardRefreshButton />
         </div>
       </section>
+
+      <footer
+        className="muted"
+        style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid rgba(0,0,0,0.08)', fontSize: '0.8rem' }}
+      >
+        Build {serverVersion?.commit || clientVersion.commit}
+        {serverVersion?.builtAt
+          ? ` · ${new Date(serverVersion.builtAt).toLocaleString()}`
+          : clientVersion.builtAt
+            ? ` · ${new Date(clientVersion.builtAt).toLocaleString()}`
+            : ''}
+      </footer>
     </div>
   );
 }

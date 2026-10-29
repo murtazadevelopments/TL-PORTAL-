@@ -492,10 +492,28 @@ export default function TeamLeaderDashboard() {
       setLoading(true);
       setError('');
       try {
-        const { data } = await api.get('/api/tl-dashboard', {
+        // Locked / wrong PIN returns 403 with TL_VIEW_PIN_* — treat as expected, not axios error.
+        const response = await api.get('/api/tl-dashboard', {
           params: { section },
           headers: { 'X-Tl-View-Pin': pin },
+          validateStatus: (status) =>
+            (status >= 200 && status < 300) || status === 403,
         });
+        const data = response.data || {};
+        const code = data.code;
+        if (
+          response.status === 403 ||
+          code === 'TL_VIEW_PIN_INVALID' ||
+          code === 'TL_VIEW_PIN_REQUIRED' ||
+          code === 'TL_VIEW_PIN_NOT_SET'
+        ) {
+          storeTlViewPin('');
+          setUnlockedViewPin('');
+          if (code === 'TL_VIEW_PIN_NOT_SET') setViewPinConfigured(false);
+          setViewPinError(data.message || 'Enter your dashboard PIN.');
+          setCategories([]);
+          return false;
+        }
         setCategories(normalizeCategories(data.categories));
         setCanManage(Boolean(data.canManage));
         setDirty(false);
@@ -518,19 +536,7 @@ export default function TeamLeaderDashboard() {
         }
         return true;
       } catch (err) {
-        const code = err.response?.data?.code;
-        if (
-          code === 'TL_VIEW_PIN_INVALID' ||
-          code === 'TL_VIEW_PIN_REQUIRED' ||
-          code === 'TL_VIEW_PIN_NOT_SET'
-        ) {
-          storeTlViewPin('');
-          setUnlockedViewPin('');
-          if (code === 'TL_VIEW_PIN_NOT_SET') setViewPinConfigured(false);
-          setViewPinError(err.response?.data?.message || 'Enter your dashboard PIN.');
-        } else {
-          setError(err.response?.data?.message || 'Failed to load dashboard.');
-        }
+        setError(err.response?.data?.message || 'Failed to load dashboard.');
         setCategories([]);
         return false;
       } finally {
