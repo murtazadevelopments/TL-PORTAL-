@@ -53,19 +53,17 @@ export default function SettingsPage() {
     if (autoEnableAttempted.current) return undefined;
     autoEnableAttempted.current = true;
     let active = true;
-    ensurePushSubscription({ silent: true, throttle: false })
+    ensurePushSubscription({ silent: true })
       .then(async (result) => {
-        if (!active || !result?.ok) {
-          if (!result?.ok) autoEnableAttempted.current = false;
-          return;
-        }
+        if (!active || !result?.ok) return;
         const data = await fetchPushStatus();
+        if (!active) return;
         setPushStatus(data);
         setPushError('');
         setPushSuccess('Notifications enabled on this device.');
       })
       .catch(() => {
-        autoEnableAttempted.current = false;
+        /* one attempt per Settings mount — do not reset and loop */
       });
     return () => {
       active = false;

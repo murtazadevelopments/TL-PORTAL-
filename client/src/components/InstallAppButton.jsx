@@ -37,7 +37,7 @@ function InstallAppButton() {
       const choice = await promptInstallApp();
       if (choice?.outcome === 'accepted') {
         setInstalled(true);
-        await ensurePushSubscription({ silent: true, throttle: false });
+        await ensurePushSubscription({ silent: true });
         return;
       }
       if (choice?.outcome === 'unavailable') {

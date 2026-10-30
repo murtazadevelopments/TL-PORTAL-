@@ -149,11 +149,12 @@ function ShellInner() {
 
   useEffect(() => {
     if (!user?.id) return undefined;
-    ensurePushSubscription({ silent: true, throttle: false });
-    const onInstalled = () => ensurePushSubscription({ silent: true, throttle: false });
+    // Stable dep: user.id only. Throttle defaults on — avoids re-POST / resubscribe loops.
+    ensurePushSubscription({ silent: true });
+    const onInstalled = () => ensurePushSubscription({ silent: true });
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
-        ensurePushSubscription({ silent: true, throttle: true });
+        ensurePushSubscription({ silent: true });
       }
     };
     window.addEventListener('appinstalled', onInstalled);
