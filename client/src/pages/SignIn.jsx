@@ -91,7 +91,7 @@ function SignIn() {
       });
       localStorage.setItem('token', data.token);
       const { ensurePushSubscription } = await import('../utils/pushNotifications');
-      // Login: allow one ensure now; subscribeAndSave still reuses existing endpoint.
+      // Login: one ensure; locks + 6h sync + 10m fail/resub guards prevent thrash.
       ensurePushSubscription({ silent: true, throttle: false });
       navigate('/dashboard');
     } catch (err) {

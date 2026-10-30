@@ -1,17 +1,28 @@
 import api from '../api/client';
 import { isIosDevice, isStandalonePwa } from '../pwaInstall';
 import { showError } from './successPopup';
+import {
+  applicationServerKeyMatches,
+  keyToB64u,
+  normalizeVapidKey,
+  urlBase64ToUint8Array,
+} from './pushKeyCodec';
+
+export { keyToB64u, applicationServerKeyMatches, normalizeVapidKey, urlBase64ToUint8Array };
 
 const PUSH_OPT_OUT_KEY = 'tl-push-opt-out';
 const LAST_VAPID_KEY = 'tl-push-vapid-key';
 const ENSURE_AT_KEY = 'tl-push-ensure-at';
 const SYNC_AT_KEY = 'tl-push-sync-at';
+const LAST_ENDPOINT_KEY = 'tl-push-last-endpoint';
 const RESUBSCRIBE_AT_KEY = 'tl-push-resub-at';
+const FAIL_AT_KEY = 'tl-push-fail-at';
 const BANNER_DISMISS_UNTIL_KEY = 'tl-push-banner-dismiss-until';
 const HOUR_MS = 60 * 60 * 1000;
 const SIX_HOURS_MS = 6 * HOUR_MS;
 const TEN_MIN_MS = 10 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const PUSH_ENSURE_LOCK = 'tl-push-ensure';
 
 let ensureInflight = null;
 let lastSyncedEndpoint = null;
@@ -45,50 +56,6 @@ export function setPushOptOut(optedOut) {
     else localStorage.removeItem(PUSH_OPT_OUT_KEY);
   } catch {
     /* ignore */
-  }
-}
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (String(base64String || '') + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  const output = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
-  return output;
-}
-
-function arrayBufferToUrlBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-}
-
-/** Normalize VAPID public key to base64url without padding for comparisons. */
-function normalizeVapidKey(value) {
-  return String(value || '')
-    .replace(/\s+/g, '')
-    .replace(/=+$/g, '');
-}
-
-/**
- * Compare subscription.options.applicationServerKey (ArrayBuffer) to the
- * server VAPID public key. Both sides are base64url without padding.
- *
- * Missing/unreadable key → treat as match (do not force unsubscribe).
- * Only an explicit mismatched key returns false.
- */
-function applicationServerKeyMatches(subscription, vapidPublicKey) {
-  try {
-    const expected = normalizeVapidKey(vapidPublicKey);
-    if (!expected) return false;
-    const key = subscription?.options?.applicationServerKey;
-    if (!key) return true;
-    const byteLength = key.byteLength ?? key.length;
-    if (!byteLength) return true;
-    return arrayBufferToUrlBase64(key) === expected;
-  } catch {
-    return true;
   }
 }
 
@@ -143,6 +110,34 @@ function lastResubscribeAt() {
 
 function canResubscribeNow() {
   return Date.now() - lastResubscribeAt() >= TEN_MIN_MS;
+}
+
+function markFailNow() {
+  writeStoredMs(FAIL_AT_KEY);
+}
+
+function lastFailAt() {
+  return readStoredMs(FAIL_AT_KEY);
+}
+
+function inFailureBackoff() {
+  return Date.now() - lastFailAt() < TEN_MIN_MS;
+}
+
+function rememberEndpoint(endpoint) {
+  try {
+    localStorage.setItem(LAST_ENDPOINT_KEY, String(endpoint || ''));
+  } catch {
+    /* ignore */
+  }
+}
+
+function rememberedEndpoint() {
+  try {
+    return localStorage.getItem(LAST_ENDPOINT_KEY) || '';
+  } catch {
+    return '';
+  }
 }
 
 export function isPushBannerDismissed() {
@@ -250,13 +245,8 @@ async function syncSubscriptionToServer(subscription, { force = false } = {}) {
   const payload = subscription.toJSON();
   const endpoint = payload?.endpoint || '';
   if (!force && endpoint) {
-    let remembered = '';
-    try {
-      remembered = localStorage.getItem('tl-push-last-endpoint') || '';
-    } catch {
-      remembered = '';
-    }
-    const sameEndpoint = remembered === endpoint || lastSyncedEndpoint === endpoint;
+    const sameEndpoint =
+      rememberedEndpoint() === endpoint || lastSyncedEndpoint === endpoint;
     if (sameEndpoint && Date.now() - lastSyncAt() < SIX_HOURS_MS) {
       lastSyncedEndpoint = endpoint;
       return { endpoint, skipped: true };
@@ -273,11 +263,7 @@ async function syncSubscriptionToServer(subscription, { force = false } = {}) {
   );
   lastSyncedEndpoint = endpoint;
   markSyncNow();
-  try {
-    localStorage.setItem('tl-push-last-endpoint', endpoint);
-  } catch {
-    /* ignore */
-  }
+  rememberEndpoint(endpoint);
   setPushOptOut(false);
   return { endpoint, skipped: false };
 }
@@ -317,6 +303,7 @@ async function subscribeAndSave(vapidKey) {
   let subscription = await reg.pushManager.getSubscription();
 
   if (subscription && applicationServerKeyMatches(subscription, vapidKey)) {
+    // Key matches — never unsubscribe/resubscribe; re-POST only if >6h since last sync.
     await syncSubscriptionToServer(subscription);
     rememberVapidKey(vapidKey);
     return subscription;
@@ -325,7 +312,6 @@ async function subscribeAndSave(vapidKey) {
   // Existing sub with an explicit key mismatch — guarded unsubscribe + subscribe.
   if (subscription) {
     if (!guardResubscribe('vapid-key-mismatch')) {
-      // Keep serving the existing endpoint; do not thrash.
       await syncSubscriptionToServer(subscription);
       return subscription;
     }
@@ -353,6 +339,67 @@ async function subscribeAndSave(vapidKey) {
   return subscription;
 }
 
+async function runEnsureBody({ silent, throttle }) {
+  if (typeof window === 'undefined') return { ok: false, reason: 'ssr' };
+  if (!localStorage.getItem('token')) return { ok: false, reason: 'anon' };
+  if (hasPushOptOut() && silent) return { ok: false, reason: 'opt-out' };
+
+  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return { ok: false, reason: 'unsupported' };
+  }
+
+  // Persisted 1-hour throttle (visibility / AppShell remount / reload).
+  if (throttle && Date.now() - lastEnsureAt() < HOUR_MS) {
+    return { ok: true, reason: 'throttled' };
+  }
+
+  if (inFailureBackoff()) {
+    return { ok: false, reason: 'fail-backoff' };
+  }
+
+  const permission = currentNotificationPermission();
+  if (permission !== 'granted') {
+    return { ok: false, reason: permission };
+  }
+
+  try {
+    const { data: keyData } = await api.get('/api/push/public-key');
+    const vapidKey = keyData?.key || keyData?.publicKey;
+    if (!vapidKey) {
+      throw new Error(keyData?.message || 'Server push is not configured.');
+    }
+    await subscribeAndSave(vapidKey);
+    markEnsureNow();
+    return { ok: true };
+  } catch (err) {
+    markFailNow();
+    if (!silent) {
+      showError(formatPushError(err));
+    }
+    return { ok: false, reason: 'error', error: err };
+  }
+}
+
+/**
+ * Cross-tab lock: only one browsing context runs ensure at a time.
+ * ifAvailable → skip silently when another tab holds the lock.
+ */
+async function withPushEnsureLock(fn) {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : null;
+  if (!locks || typeof locks.request !== 'function') {
+    return fn();
+  }
+  try {
+    return await locks.request(PUSH_ENSURE_LOCK, { ifAvailable: true }, async (lock) => {
+      if (!lock) return { ok: true, reason: 'lock-busy' };
+      return fn();
+    });
+  } catch {
+    // Locks API quirks — fall back to unlocked ensure.
+    return fn();
+  }
+}
+
 /**
  * Keep this device's Web Push subscription in sync with the server.
  * - granted: reuse matching subscription (or resubscribe), then upsert.
@@ -364,43 +411,10 @@ export async function ensurePushSubscription(options = {}) {
   // Default throttle on; callers may opt out for a user-initiated enable.
   const throttle = options.throttle !== false;
 
-  // Single-flight: SignIn, AppShell, and visibility share one in-flight promise.
+  // In-tab single-flight.
   if (ensureInflight) return ensureInflight;
 
-  ensureInflight = (async () => {
-    if (typeof window === 'undefined') return { ok: false, reason: 'ssr' };
-    if (!localStorage.getItem('token')) return { ok: false, reason: 'anon' };
-    if (hasPushOptOut() && silent) return { ok: false, reason: 'opt-out' };
-
-    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-      return { ok: false, reason: 'unsupported' };
-    }
-
-    if (throttle && Date.now() - lastEnsureAt() < HOUR_MS) {
-      return { ok: true, reason: 'throttled' };
-    }
-
-    const permission = currentNotificationPermission();
-    if (permission !== 'granted') {
-      return { ok: false, reason: permission };
-    }
-
-    try {
-      const { data: keyData } = await api.get('/api/push/public-key');
-      const vapidKey = keyData?.key || keyData?.publicKey;
-      if (!vapidKey) {
-        throw new Error(keyData?.message || 'Server push is not configured.');
-      }
-      await subscribeAndSave(vapidKey);
-      markEnsureNow();
-      return { ok: true };
-    } catch (err) {
-      if (!silent) {
-        showError(formatPushError(err));
-      }
-      return { ok: false, reason: 'error', error: err };
-    }
-  })().finally(() => {
+  ensureInflight = withPushEnsureLock(() => runEnsureBody({ silent, throttle })).finally(() => {
     ensureInflight = null;
   });
 
@@ -427,7 +441,7 @@ export async function enablePushNotifications(options = {}) {
 
   setPushOptOut(false);
   const result = await ensurePushSubscription({ silent: false, throttle: false });
-  if (!result?.ok) {
+  if (!result?.ok && result?.reason !== 'lock-busy' && result?.reason !== 'throttled') {
     throw result?.error || new Error('Could not enable notifications.');
   }
   return true;
@@ -454,7 +468,7 @@ export async function enablePushNotificationsSafe() {
 export async function clearDevicePushSubscription({ timeoutMs = 2500 } = {}) {
   lastSyncedEndpoint = null;
   try {
-    localStorage.removeItem('tl-push-last-endpoint');
+    localStorage.removeItem(LAST_ENDPOINT_KEY);
     localStorage.removeItem(SYNC_AT_KEY);
   } catch {
     /* ignore */
@@ -497,7 +511,7 @@ export async function disablePushNotifications() {
   setPushOptOut(true);
   lastSyncedEndpoint = null;
   try {
-    localStorage.removeItem('tl-push-last-endpoint');
+    localStorage.removeItem(LAST_ENDPOINT_KEY);
     localStorage.removeItem(SYNC_AT_KEY);
   } catch {
     /* ignore */

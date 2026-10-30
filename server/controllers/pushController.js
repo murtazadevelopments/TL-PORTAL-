@@ -133,9 +133,9 @@ async function subscribe(req, res) {
       [req.user.id, endpoint, p256dh, auth, userAgent || null]
     );
 
-    // Keep only the newest few endpoints per user — thrashing clients used to
+    // Keep only the newest 5 endpoints per user — thrashing clients used to
     // orphan hundreds of dead FCM tokens and break delivery.
-    await pool.query(
+    const pruned = await pool.query(
       `
         DELETE FROM push_subscriptions
         WHERE user_id = $1
@@ -146,9 +146,13 @@ async function subscribe(req, res) {
             ORDER BY updated_at DESC NULLS LAST, id DESC
             LIMIT 5
           )
+        RETURNING id
       `,
       [req.user.id]
     );
+    if (pruned.rowCount > 0) {
+      console.log(`[push] pruned user=${req.user.id} removed=${pruned.rowCount}`);
+    }
 
     await pool.query(
       `
