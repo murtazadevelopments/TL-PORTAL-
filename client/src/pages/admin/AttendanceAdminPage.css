@@ -697,6 +697,11 @@
   font-weight: 700;
 }
 
+.face-check-delete {
+  margin-top: 0.25rem;
+  align-self: flex-start;
+}
+
 @media (max-width: 900px) {
   .attendance-admin .attendance-summary,
   .attendance-admin .attendance-filters {

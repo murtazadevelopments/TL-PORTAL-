@@ -9,6 +9,9 @@ const {
   deleteRelativeFile,
 } = require('../services/localStorage');
 
+/** Flip to true when face check photo capture/review should run again. */
+const FACE_CHECK_FEATURE_ENABLED = false;
+
 let ensured = false;
 let ensurePromise = null;
 
@@ -53,11 +56,21 @@ async function ensureFaceCheckCapture() {
   await ensurePromise;
 }
 
+function isFaceCheckFeatureEnabled() {
+  return FACE_CHECK_FEATURE_ENABLED === true;
+}
+
 function userFaceCheckCapture(user) {
+  if (!isFaceCheckFeatureEnabled()) return false;
   return user?.face_check_capture === true;
 }
 
 async function setUserFaceCheckCapture(userId, enabled) {
+  if (!isFaceCheckFeatureEnabled()) {
+    const err = new Error('Face check photos are disabled.');
+    err.status = 403;
+    throw err;
+  }
   await ensureFaceCheckCapture();
   const { rows } = await pool.query(
     `
@@ -86,6 +99,7 @@ function parseSnapshot(raw) {
 }
 
 async function saveCheckInSnapshot(userId, log, snapshotRaw) {
+  if (!isFaceCheckFeatureEnabled()) return null;
   if (!log?.id) return null;
   const input = parseSnapshot(snapshotRaw);
   if (!input) return null;
@@ -179,6 +193,29 @@ async function listCapturesForUserMonth(userId, monthKey) {
   return byDate;
 }
 
+async function deleteFaceCheckCaptureById(captureId) {
+  await ensureFaceCheckCapture();
+  const id = Number(captureId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const { rows } = await pool.query(
+    `
+      DELETE FROM face_check_captures
+      WHERE id = $1
+      RETURNING id, user_id, image_path, hour_key, status, captured_at
+    `,
+    [id]
+  );
+  const row = rows[0] || null;
+  if (row?.image_path) {
+    try {
+      await deleteRelativeFile(row.image_path);
+    } catch (err) {
+      console.error('face check file delete:', err.message || err);
+    }
+  }
+  return row;
+}
+
 async function deleteAllFaceCheckCaptures() {
   await ensureFaceCheckCapture();
   const { rows } = await pool.query(`SELECT image_path FROM face_check_captures`);
@@ -190,6 +227,8 @@ async function deleteAllFaceCheckCaptures() {
 }
 
 module.exports = {
+  FACE_CHECK_FEATURE_ENABLED,
+  isFaceCheckFeatureEnabled,
   ensureFaceCheckCapture,
   userFaceCheckCapture,
   setUserFaceCheckCapture,
@@ -197,5 +236,6 @@ module.exports = {
   captureFilePath,
   streamCaptureImage,
   listCapturesForUserMonth,
+  deleteFaceCheckCaptureById,
   deleteAllFaceCheckCaptures,
 };

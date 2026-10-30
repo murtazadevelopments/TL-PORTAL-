@@ -108,6 +108,7 @@ const {
   putUserAttendanceEnabled,
   putUserFaceCheckCapture,
   listFaceCheckCaptures,
+  deleteFaceCheckCapture,
   putUserFlexibleHours,
   putUserBreaksEnabled,
   putUserAutoReminder,
@@ -459,6 +460,11 @@ router.get(
 );
 
 router.get('/attendance/face-checks', requireRole('ceo'), listFaceCheckCaptures);
+router.delete(
+  '/attendance/face-checks/:captureId',
+  requireRole('ceo'),
+  deleteFaceCheckCapture
+);
 router.put('/attendance/:userId/face-capture', requireRole('ceo'), putUserFaceCheckCapture);
 router.put(
   '/attendance/:userId/enabled',

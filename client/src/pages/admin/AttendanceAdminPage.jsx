@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router';
 import api from '../../api/client';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import ClockHourSelect from '../../components/ClockHourSelect';
 import PhotoLightbox from '../../components/PhotoLightbox';
-import { FaceCheckShot } from './FaceCheckCapturesPage';
 import { useAuthUser } from '../../context/AuthUserContext';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import {
@@ -304,19 +302,6 @@ function workDaysFromRow(row) {
   return days;
 }
 
-function EmployeePictureSwitch({ row, busy, onToggle }) {
-  return (
-    <EmployeePowerSwitch
-      label="Picture"
-      name={row.name}
-      on={row.face_check_capture === true}
-      busy={busy}
-      disabled={false}
-      onToggle={() => onToggle(row)}
-    />
-  );
-}
-
 function toKarachiDatetimeLocal(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -483,8 +468,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const [togglingReminderId, setTogglingReminderId] = useState(null);
   const [daysEdit, setDaysEdit] = useState(null);
   const [savingDays, setSavingDays] = useState(false);
-  const [togglingPictureId, setTogglingPictureId] = useState(null);
-  const [dayFaceChecks, setDayFaceChecks] = useState(null);
   const { today: todayKey, yesterday: yesterdayKey } = attendanceDateWindow();
 
   async function load(dateOverride, { silent = false } = {}) {
@@ -1001,40 +984,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
     saveWorkDays(days);
   }
 
-  async function toggleEmployeePicture(row) {
-    if (!ceo || !row?.id) return;
-    const next = row.face_check_capture !== true;
-    setTogglingPictureId(row.id);
-    setError('');
-    setNotice('');
-    try {
-      const { data: payload } = await api.put(`/api/admin/attendance/${row.id}/face-capture`, {
-        enabled: next,
-      });
-      const enabled = Boolean(payload.enabled);
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              employees: (prev.employees || []).map((item) =>
-                item.id === row.id ? { ...item, face_check_capture: enabled } : item
-              ),
-            }
-          : prev
-      );
-      setNotice(
-        payload?.message ||
-          (enabled
-            ? `Picture capture is on for ${row.name}.`
-            : `Picture capture is off for ${row.name}.`)
-      );
-    } catch (err) {
-      setError(err.response?.data?.message || 'Could not update picture capture.');
-    } finally {
-      setTogglingPictureId(null);
-    }
-  }
-
   async function sendCheckInRequest(row) {
     if (row.attendance_enabled === false || !row?.id || row.can_check_in_request === false) {
       return;
@@ -1079,15 +1028,8 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
           <p className="muted">
             {mode === 'onsite'
               ? 'Office check-in for onsite employees. Visible to CEO, HR, and people the CEO assigns attendance access.'
-              : 'Face checks per shift for remote employees. Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
+              : 'Remote check-ins per shift. Check count is set per employee. Only the CEO and people granted Remote employees can open this.'}
           </p>
-        </div>
-        <div className="attendance-hero-tools">
-        {ceo && mode === 'remote' ? (
-          <Link className="btn btn-ghost attendance-face-link" to="/admin/attendance/face-checks">
-            Face check photos
-          </Link>
-        ) : null}
         </div>
       </div>
 
@@ -1341,13 +1283,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                     >
                       Days
                     </button>
-                    {ceo ? (
-                      <EmployeePictureSwitch
-                        row={row}
-                        busy={togglingPictureId === row.id}
-                        onToggle={toggleEmployeePicture}
-                      />
-                    ) : null}
                   </div>
                   <span className={`badge ${row.live_status || row.row_status}`}>
                     {liveStatusLabel(row)}
@@ -1374,9 +1309,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                 <p className="muted">Check-in paused for this employee. Manual mark still works.</p>
               ) : row.live_status === 'holiday' || row.row_status === 'holiday' ? (
                 <p className="muted">Day off — this weekday is turned off. No checks today.</p>
-              ) : null}
-              {ceo && row.face_check_capture ? (
-                <p className="muted">Picture capture is on — check-in photos are saved for review.</p>
               ) : null}
               <div className="attendance-mini-slots">
                 {[...row.slots]
@@ -1672,10 +1604,7 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
       {history && (
         <div
           className="modal-backdrop modal-backdrop-stack"
-          onClick={() => {
-            setDayFaceChecks(null);
-            setHistory(null);
-          }}
+          onClick={() => setHistory(null)}
         >
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
             <h2>
@@ -1711,25 +1640,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                   <li key={day.date} className={`attendance-day-detail ${day.status}`}>
                     <div className="attendance-day-detail-head">
                       <span className="attendance-day-date">{day.date}</span>
-                      {ceo ? (
-                        history.employee?.face_check_capture ? (
-                          <button
-                            type="button"
-                            className="btn btn-ghost attendance-time-edit"
-                            onClick={() =>
-                              setDayFaceChecks({
-                                date: day.date,
-                                name: history.employee?.name || '',
-                                captures: day.face_checks || [],
-                              })
-                            }
-                          >
-                            Face check
-                          </button>
-                        ) : (
-                          <span className="muted attendance-no-face">No face detection</span>
-                        )
-                      ) : null}
                       <span className="attendance-day-status">{dayStatusLabel(day.status)}</span>
                       {day.work_label ? (
                         <span className="muted"> · work {day.work_label}</span>
@@ -1815,47 +1725,8 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => {
-                  setDayFaceChecks(null);
-                  setHistory(null);
-                }}
+                onClick={() => setHistory(null)}
               >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {ceo && dayFaceChecks && (
-        <div
-          className="modal-backdrop modal-backdrop-stack"
-          onClick={() => setDayFaceChecks(null)}
-        >
-          <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
-            <h2>Face check — {dayFaceChecks.date}</h2>
-            <p className="muted">{dayFaceChecks.name || 'Remote employee'}</p>
-            {(dayFaceChecks.captures || []).length === 0 ? (
-              <p className="muted">No face check photos for this day.</p>
-            ) : (
-              <div className="face-check-grid">
-                {dayFaceChecks.captures.map((shot) => (
-                  <article key={shot.id} className="face-check-card">
-                    <FaceCheckShot
-                      captureId={shot.id}
-                      cacheKey={shot.captured_at || shot.id}
-                      name={dayFaceChecks.name}
-                      onOpen={setPhotoPreview}
-                    />
-                    <div className="face-check-meta">
-                      <span className={`badge ${shot.status || ''}`}>{shot.status || 'saved'}</span>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-            <div className="modal-actions">
-              <button type="button" className="btn btn-primary" onClick={() => setDayFaceChecks(null)}>
                 Close
               </button>
             </div>

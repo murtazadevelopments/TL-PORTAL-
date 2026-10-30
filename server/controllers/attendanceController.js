@@ -44,11 +44,13 @@ const {
   setUserWorkDays,
 } = require('../utils/workDays');
 const {
+  isFaceCheckFeatureEnabled,
   userFaceCheckCapture,
   setUserFaceCheckCapture,
   saveCheckInSnapshot,
   streamCaptureImage,
   listCapturesForUserMonth,
+  deleteFaceCheckCaptureById,
 } = require('../utils/faceCheckCapture');
 const { notifyRemoteAttendanceOpened } = require('../utils/attendanceReviewEmail');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
@@ -1468,6 +1470,9 @@ async function putUserAttendanceEnabled(req, res) {
 async function putUserFaceCheckCapture(req, res) {
   try {
     await ensureAttendanceTables();
+    if (!isFaceCheckFeatureEnabled()) {
+      return res.status(403).json({ message: 'Face check photos are disabled.' });
+    }
     if (!isCeoRole(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO can turn picture capture on or off.' });
     }
@@ -1510,6 +1515,9 @@ async function putUserFaceCheckCapture(req, res) {
 async function listFaceCheckCaptures(req, res) {
   try {
     await ensureAttendanceTables();
+    if (!isFaceCheckFeatureEnabled()) {
+      return res.status(403).json({ message: 'Face check photos are disabled.' });
+    }
     if (!isCeoRole(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO can review face check photos.' });
     }
@@ -1573,6 +1581,9 @@ async function listFaceCheckCaptures(req, res) {
 async function streamFaceCheckCapture(req, res) {
   try {
     await ensureAttendanceTables();
+    if (!isFaceCheckFeatureEnabled()) {
+      return res.status(403).json({ message: 'Face check photos are disabled.' });
+    }
     const { rows: me } = await pool.query(`SELECT role FROM users WHERE id = $1 LIMIT 1`, [req.user.id]);
     if (!isCeoRole(me[0]?.role)) {
       return res.status(403).json({ message: 'Only the CEO can view face check photos.' });
@@ -1594,6 +1605,64 @@ async function streamFaceCheckCapture(req, res) {
   } catch (err) {
     console.error('streamFaceCheckCapture error:', err);
     return res.status(500).json({ message: 'Server error reading face check photo.' });
+  }
+}
+
+/**
+ * DELETE /api/admin/attendance/face-checks/:captureId
+ * CEO only — permanently removes the capture row and stored image.
+ */
+async function deleteFaceCheckCapture(req, res) {
+  try {
+    await ensureAttendanceTables();
+    if (!isFaceCheckFeatureEnabled()) {
+      return res.status(403).json({ message: 'Face check photos are disabled.' });
+    }
+    if (!isCeoRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO can delete face check photos.' });
+    }
+    const captureId = Number(req.params.captureId);
+    if (!Number.isFinite(captureId) || captureId <= 0) {
+      return res.status(400).json({ message: 'Invalid photo.' });
+    }
+
+    const { rows: existing } = await pool.query(
+      `
+        SELECT c.id, c.user_id, c.hour_key, c.captured_at, c.image_path,
+               u.name, u.username, u.employee_id
+        FROM face_check_captures c
+        JOIN users u ON u.id = c.user_id
+        WHERE c.id = $1
+        LIMIT 1
+      `,
+      [captureId]
+    );
+    if (!existing[0]) {
+      return res.status(404).json({ message: 'Photo not found.' });
+    }
+
+    const deleted = await deleteFaceCheckCaptureById(captureId);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Photo not found.' });
+    }
+
+    const person = existing[0];
+    await writeAuditLog({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: 'attendance.face_capture_delete',
+      targetTable: 'face_check_captures',
+      targetId: captureId,
+      reason: `Permanently deleted face check photo for ${person.name || person.username} (${person.employee_id || person.user_id})${person.hour_key ? ` · ${person.hour_key}` : ''}`,
+    });
+
+    return res.json({
+      message: 'Face check photo permanently deleted.',
+      id: captureId,
+    });
+  } catch (err) {
+    console.error('deleteFaceCheckCapture error:', err);
+    return res.status(500).json({ message: 'Server error deleting face check photo.' });
   }
 }
 
@@ -2433,6 +2502,7 @@ module.exports = {
   putUserFaceCheckCapture,
   listFaceCheckCaptures,
   streamFaceCheckCapture,
+  deleteFaceCheckCapture,
   putUserFlexibleHours,
   putUserBreaksEnabled,
   putUserAutoReminder,

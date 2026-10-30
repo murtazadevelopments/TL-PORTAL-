@@ -89,7 +89,9 @@ export default function FaceCheckCapturesPage() {
   const [captures, setCaptures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [preview, setPreview] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const load = useCallback(async (filters) => {
     setLoading(true);
@@ -114,6 +116,29 @@ export default function FaceCheckCapturesPage() {
     return undefined;
   }, [ceo, applied, load]);
 
+  async function deleteCapture(row) {
+    const label = row.name || row.employee_id || 'this photo';
+    const when = formatWhen(row.captured_at);
+    const ok = window.confirm(
+      `Permanently delete the face check photo for ${label} (${when})?\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+
+    setDeletingId(row.id);
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.delete(`/api/admin/attendance/face-checks/${row.id}`);
+      setCaptures((prev) => prev.filter((item) => item.id !== row.id));
+      if (preview) setPreview(null);
+      setSuccess(data?.message || 'Face check photo permanently deleted.');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not delete face check photo.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   if (authLoading) return null;
   if (!ceo) return <Navigate to="/dashboard" replace />;
 
@@ -124,7 +149,7 @@ export default function FaceCheckCapturesPage() {
           <h1>Face check photos</h1>
           <p className="muted">
             Cross-check who appeared on camera at remote face check-in. Photos are saved only when
-            Picture is on for that employee.
+            Picture is on for that employee. You can permanently delete any photo.
           </p>
         </div>
         <Link className="btn btn-ghost" to="/admin/attendance/remote">
@@ -171,6 +196,7 @@ export default function FaceCheckCapturesPage() {
       </form>
 
       {error ? <p className="error">{error}</p> : null}
+      {success ? <p className="success">{success}</p> : null}
       {!loading && !error && captures.length === 0 ? (
         <p className="muted">No check-in photos yet. Turn Picture on for a remote employee, then wait for a face check-in.</p>
       ) : null}
@@ -178,6 +204,7 @@ export default function FaceCheckCapturesPage() {
       <div className="face-check-grid">
         {captures.map((row) => {
           const profile = withAuthDocumentUrl(row.profile_picture_url, row.user_id);
+          const busy = deletingId === row.id;
           return (
             <article key={row.id} className="face-check-card">
               <FaceCheckShot
@@ -199,6 +226,14 @@ export default function FaceCheckCapturesPage() {
                 </div>
                 <p className="muted">{formatWhen(row.captured_at)}</p>
                 <span className={`badge ${row.status || ''}`}>{row.status || 'saved'}</span>
+                <button
+                  type="button"
+                  className="btn btn-danger face-check-delete"
+                  disabled={busy || deletingId != null}
+                  onClick={() => deleteCapture(row)}
+                >
+                  {busy ? 'Deleting…' : 'Delete photo'}
+                </button>
               </div>
             </article>
           );

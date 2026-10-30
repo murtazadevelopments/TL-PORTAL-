@@ -22,8 +22,12 @@ export function isCeoOrManager(role) {
   return isCeo(role) || isManager(role);
 }
 
+/** Flip to true when face check photos should show again. */
+export const FACE_CHECK_FEATURE_ENABLED = false;
+
 /** Face-check capture, photos, and per-day review — CEO only. */
 export function canUseFaceCheck(role) {
+  if (!FACE_CHECK_FEATURE_ENABLED) return false;
   return isCeo(role);
 }
 
