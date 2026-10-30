@@ -72,6 +72,10 @@ async function runBirthdayEmails(now = new Date(), { catchUp = false } = {}) {
   const todayKey = birthdayKey(now);
   const tomorrowPeople = await findTomorrowBirthdayUsers(now);
   const todayPeople = await findBirthdayUsers(now);
+  console.log(
+    `[birthday-job] fired ${new Date().toISOString()}${catchUp ? ' catch-up' : ''} ` +
+      `processed users tomorrow=${tomorrowPeople.length} today=${todayPeople.length}`
+  );
   let ceoSent = 0;
   let ceoSkipped = 0;
   let employeeSent = 0;

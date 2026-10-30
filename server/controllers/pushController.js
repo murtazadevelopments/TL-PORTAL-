@@ -2,7 +2,22 @@ const pool = require('../config/db');
 const {
   getVapidPublicKey,
   isPushConfigured,
+  endpointHost,
 } = require('../services/pushNotifications');
+
+function ensureEndpointUnique() {
+  return pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'push_subscriptions_endpoint_unique'
+      ) THEN
+        ALTER TABLE push_subscriptions
+          ADD CONSTRAINT push_subscriptions_endpoint_unique UNIQUE (endpoint);
+      END IF;
+    END $$
+  `);
+}
 
 /**
  * GET /api/push/public-key
@@ -89,6 +104,7 @@ async function subscribe(req, res) {
       0,
       500
     );
+    const endpointHostName = endpointHost(endpoint);
 
     if (!endpoint || !p256dh || !auth) {
       return res.status(400).json({
@@ -96,6 +112,13 @@ async function subscribe(req, res) {
       });
     }
 
+    try {
+      await ensureEndpointUnique();
+    } catch (err) {
+      console.warn('[push] ensure unique endpoint:', err.message || err);
+    }
+
+    // Upsert by endpoint. If another user owned this endpoint (shared device), reassign.
     await pool.query(
       `
         INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, updated_at)
@@ -136,10 +159,59 @@ async function subscribe(req, res) {
       [req.user.id]
     );
 
+    console.log(`[push] save user=${req.user.id} host=${endpointHostName} result=ok`);
     return res.json({ message: 'Notifications enabled on this device.', enabled: true });
   } catch (err) {
+    const endpoint = String(req.body?.subscription?.endpoint || req.body?.endpoint || '').trim();
+    console.error(
+      `[push] save user=${req.user?.id || '?'} host=${endpointHost(endpoint)} result=error`
+    );
     console.error('push subscribe error:', err);
     return res.status(500).json({ message: 'Server error saving subscription.' });
+  }
+}
+
+/**
+ * DELETE /api/push/subscription
+ * Body: { endpoint } — remove this device endpoint for the current user (logout).
+ */
+async function deleteSubscription(req, res) {
+  try {
+    const endpoint = String(req.body?.endpoint || req.query?.endpoint || '').trim();
+    if (!endpoint) {
+      return res.status(400).json({ message: 'endpoint is required.' });
+    }
+    const host = endpointHost(endpoint);
+    const deleted = await pool.query(
+      `DELETE FROM push_subscriptions WHERE endpoint = $1 AND user_id = $2`,
+      [endpoint, req.user.id]
+    );
+    console.log(
+      `[push] save user=${req.user.id} host=${host} result=deleted count=${deleted.rowCount || 0}`
+    );
+
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM push_subscriptions WHERE user_id = $1`,
+      [req.user.id]
+    );
+    if (!(rows[0]?.count > 0)) {
+      await pool.query(
+        `
+          UPDATE users
+          SET push_notifications_enabled = FALSE, updated_at = NOW()
+          WHERE id = $1
+        `,
+        [req.user.id]
+      );
+    }
+
+    return res.json({
+      message: 'Device subscription removed.',
+      enabled: Boolean(rows[0]?.count > 0),
+    });
+  } catch (err) {
+    console.error('push deleteSubscription error:', err);
+    return res.status(500).json({ message: 'Server error removing subscription.' });
   }
 }
 
@@ -219,5 +291,6 @@ module.exports = {
   getStatus,
   subscribe,
   unsubscribe,
+  deleteSubscription,
   setPreferences,
 };

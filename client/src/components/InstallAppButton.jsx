@@ -5,7 +5,7 @@ import {
   promptInstallApp,
   subscribeInstallPrompt,
 } from '../pwaInstall';
-import { enablePushNotificationsSafe } from '../utils/pushNotifications';
+import { ensurePushSubscription } from '../utils/pushNotifications';
 import './InstallAppButton.css';
 
 function InstallAppButton() {
@@ -37,7 +37,7 @@ function InstallAppButton() {
       const choice = await promptInstallApp();
       if (choice?.outcome === 'accepted') {
         setInstalled(true);
-        await enablePushNotificationsSafe();
+        await ensurePushSubscription({ silent: true, throttle: false });
         return;
       }
       if (choice?.outcome === 'unavailable') {

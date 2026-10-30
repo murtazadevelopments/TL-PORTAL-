@@ -40,6 +40,16 @@
   margin-left: 0.15rem;
 }
 
+.portal-success-popup.is-error {
+  background: rgba(28, 12, 14, 0.94);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 24px rgba(248, 113, 113, 0.25);
+}
+
+.portal-success-popup.is-error .portal-success-popup-icon {
+  background: rgba(248, 113, 113, 0.16);
+  color: #f87171;
+}
+
 @keyframes portal-success-in {
   from {
     opacity: 0;

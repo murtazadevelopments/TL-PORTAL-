@@ -54,11 +54,27 @@ export function AuthUserProvider({ children }) {
     };
   }, [refreshUser]);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setPermissions([]);
-    navigate('/', { replace: true });
+  /**
+   * @param {{ clearPush?: boolean }} [options]
+   * clearPush: only for explicit user Logout — never for inactivity / 401 / expiry.
+   */
+  const logout = useCallback((options = {}) => {
+    const clearPush = options.clearPush === true;
+    void (async () => {
+      if (clearPush) {
+        try {
+          const { clearDevicePushSubscription } = await import('../utils/pushNotifications');
+          // DELETE runs before token clear; short timeout; never blocks logout.
+          await clearDevicePushSubscription({ timeoutMs: 2500 });
+        } catch {
+          /* ignore */
+        }
+      }
+      localStorage.removeItem('token');
+      setUser(null);
+      setPermissions([]);
+      navigate('/', { replace: true });
+    })();
   }, [navigate]);
 
   const value = useMemo(

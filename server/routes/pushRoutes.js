@@ -5,6 +5,7 @@ const {
   getStatus,
   subscribe,
   unsubscribe,
+  deleteSubscription,
   setPreferences,
 } = require('../controllers/pushController');
 
@@ -18,6 +19,7 @@ router.get('/vapid-public-key', getPublicKey); // legacy alias
 router.get('/status', getStatus);
 router.post('/subscribe', subscribe);
 router.delete('/subscribe', unsubscribe);
+router.delete('/subscription', deleteSubscription);
 router.put('/preferences', setPreferences);
 
 module.exports = router;

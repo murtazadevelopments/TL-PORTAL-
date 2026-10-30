@@ -6,13 +6,15 @@ const SHOW_MS = 3500;
 
 export default function SuccessPopup() {
   const [message, setMessage] = useState('');
+  const [tone, setTone] = useState('success');
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     let hideTimer;
-    const unsubscribe = subscribeSuccessPopup((next) => {
+    const unsubscribe = subscribeSuccessPopup((next, nextTone) => {
       if (!next) return;
       setMessage(next);
+      setTone(nextTone === 'error' ? 'error' : 'success');
       setVisible(true);
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(() => setVisible(false), SHOW_MS);
@@ -26,9 +28,13 @@ export default function SuccessPopup() {
   if (!visible || !message) return null;
 
   return (
-    <div className="portal-success-popup" role="status" aria-live="polite">
+    <div
+      className={`portal-success-popup${tone === 'error' ? ' is-error' : ''}`}
+      role={tone === 'error' ? 'alert' : 'status'}
+      aria-live="polite"
+    >
       <span className="portal-success-popup-icon" aria-hidden="true">
-        ✓
+        {tone === 'error' ? '!' : '✓'}
       </span>
       <p>{message}</p>
       <button

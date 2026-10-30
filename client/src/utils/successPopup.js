@@ -5,7 +5,13 @@ const EVENT = 'tl-success-popup';
 export function showSuccess(message) {
   const text = String(message || '').trim();
   if (!text || typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: { message: text } }));
+  window.dispatchEvent(new CustomEvent(EVENT, { detail: { message: text, tone: 'success' } }));
+}
+
+export function showError(message) {
+  const text = String(message || '').trim();
+  if (!text || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(EVENT, { detail: { message: text, tone: 'error' } }));
 }
 
 export function useFlashSuccess(message) {
@@ -15,7 +21,8 @@ export function useFlashSuccess(message) {
 }
 
 export function subscribeSuccessPopup(handler) {
-  const onEvent = (event) => handler(event.detail?.message || '');
+  const onEvent = (event) =>
+    handler(event.detail?.message || '', event.detail?.tone || 'success');
   window.addEventListener(EVENT, onEvent);
   return () => window.removeEventListener(EVENT, onEvent);
 }

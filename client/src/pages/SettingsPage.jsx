@@ -6,6 +6,7 @@ import {
   currentNotificationPermission,
   disablePushNotifications,
   enablePushNotifications,
+  ensurePushSubscription,
   fetchPushStatus,
   isInstalledPwa,
   notificationBlockedHelp,
@@ -52,16 +53,18 @@ export default function SettingsPage() {
     if (autoEnableAttempted.current) return undefined;
     autoEnableAttempted.current = true;
     let active = true;
-    enablePushNotifications({ silent: true })
-      .then(async () => {
-        if (!active) return;
+    ensurePushSubscription({ silent: true, throttle: false })
+      .then(async (result) => {
+        if (!active || !result?.ok) {
+          if (!result?.ok) autoEnableAttempted.current = false;
+          return;
+        }
         const data = await fetchPushStatus();
         setPushStatus(data);
         setPushError('');
         setPushSuccess('Notifications enabled on this device.');
       })
       .catch(() => {
-        // Allow one retry later if this attempt failed before a subscription landed.
         autoEnableAttempted.current = false;
       });
     return () => {
@@ -141,9 +144,11 @@ export default function SettingsPage() {
             </p>
           )}
 
-          {browserPermission === 'denied' && !pushStatus?.enabled && (
-            <p className="error" style={{ marginTop: '0.75rem' }}>
-              {notificationBlockedHelp()}
+          {browserPermission === 'denied' && (
+            <p className="muted" style={{ marginTop: '0.75rem' }}>
+              {notificationBlockedHelp()} Nothing is shown automatically while notifications stay
+              blocked — change the permission in browser or phone settings, then return here and tap
+              Enable.
             </p>
           )}
           {pushError && pushError !== notificationBlockedHelp() && (

@@ -152,7 +152,7 @@ export default function SalesDailyTargetsPage({ agentView = false }) {
     release();
     storeSalesPin('');
     if (action?.type === 'logout') {
-      logout();
+      logout({ clearPush: true });
       return;
     }
     navigate('/dashboard', { replace: true });

@@ -12,7 +12,7 @@ import {
   portalAlertSeenKey,
 } from '../utils/profileCompleteness';
 import api from '../api/client';
-import { enablePushNotificationsSafe } from '../utils/pushNotifications';
+import { ensurePushSubscription } from '../utils/pushNotifications';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
 import PortalAlertModal from '../components/PortalAlertModal';
@@ -20,6 +20,7 @@ import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
 import HardRefreshButton from '../components/HardRefreshButton';
 import InstallAppButton from '../components/InstallAppButton';
+import PushEnableBanner from '../components/PushEnableBanner';
 import { SalesLeaveGuardProvider, useSalesLeaveGuard } from '../context/SalesLeaveGuard';
 import './AppShell.css';
 
@@ -148,11 +149,18 @@ function ShellInner() {
 
   useEffect(() => {
     if (!user?.id) return undefined;
-    enablePushNotificationsSafe();
-    const onInstalled = () => enablePushNotificationsSafe();
+    ensurePushSubscription({ silent: true, throttle: false });
+    const onInstalled = () => ensurePushSubscription({ silent: true, throttle: false });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        ensurePushSubscription({ silent: true, throttle: true });
+      }
+    };
     window.addEventListener('appinstalled', onInstalled);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('appinstalled', onInstalled);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [user?.id]);
 
@@ -293,7 +301,7 @@ function ShellInner() {
             className="btn btn-ghost sidebar-logout"
             onClick={() => {
               if (!trySalesLeave({ type: 'logout' })) return;
-              logout();
+              logout({ clearPush: true });
             }}
           >
             Logout
@@ -325,6 +333,7 @@ function ShellInner() {
             </div>
           </div>
         )}
+        {user ? <PushEnableBanner /> : null}
         {user?.profile_alert_at &&
           !profileLocked &&
           !showPortalAlert &&
