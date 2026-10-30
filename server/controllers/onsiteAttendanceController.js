@@ -24,6 +24,23 @@ const {
   rejectIfUserAttendanceStopped,
 } = require('../utils/attendanceEnabled');
 
+function hasFullAttendanceDays(role, permissions) {
+  if (isCeoOrManagerRole(role)) return true;
+  const keys = Array.isArray(permissions) ? permissions : [];
+  return keys.includes('*') || keys.includes('attendance:month');
+}
+
+async function canUseFullAttendanceDays(req) {
+  if (hasFullAttendanceDays(req.user?.role, req.user?.permissions)) return true;
+  try {
+    const access = await loadAdminPermissionAccess(req.user.id);
+    if (req.user) req.user.permissions = access.permissions;
+    return hasFullAttendanceDays(req.user?.role, access.permissions);
+  } catch {
+    return false;
+  }
+}
+
 const ONSITE_SELECT = `
   id, user_id, work_date, checked_in_at, status, method,
   branch_name, shift_name, marked_by, note, status_overridden, previous_status,
@@ -649,6 +666,7 @@ async function adminGetOnsiteMonth(req, res) {
       return res.status(400).json({ message: 'month must look like YYYY-MM.' });
     }
 
+    const fullDays = await canUseFullAttendanceDays(req);
     const bounds = monthDateBounds(month);
     const { rows } = await pool.query(
       `
@@ -670,11 +688,13 @@ async function adminGetOnsiteMonth(req, res) {
       const pub = publicRow(row);
       if (pub) days.push(pub);
     }
-    const mergedDays = withSundayHolidays(
-      days,
-      month,
-      isCeoOrManagerRole(req.user?.role) ? null : parts.dateKey
-    );
+    let mergedDays = withSundayHolidays(days, month, fullDays ? null : parts.dateKey);
+    if (!fullDays) {
+      const yesterday = addDaysToDateKey(parts.dateKey, -1);
+      mergedDays = mergedDays.filter(
+        (d) => d.work_date === parts.dateKey || d.work_date === yesterday
+      );
+    }
     for (const day of mergedDays) {
       if (totals[day.status] != null) totals[day.status] += 1;
     }
@@ -690,7 +710,8 @@ async function adminGetOnsiteMonth(req, res) {
       },
       days: mergedDays,
       totals,
-      recorded: days.length,
+      recorded: mergedDays.filter((d) => d.status !== 'holiday').length,
+      recent_only: !fullDays,
     });
   } catch (err) {
     console.error('adminGetOnsiteMonth error:', err);
@@ -713,7 +734,8 @@ async function adminManualOnsite(req, res) {
       return res.status(400).json({ message: 'Enter a valid check-in time.' });
     }
     const workDateOverride = String(req.body?.work_date || req.body?.workDate || '').slice(0, 10);
-    if (workDateOverride && !isCeoOrManagerRole(req.user?.role)) {
+    const fullDays = await canUseFullAttendanceDays(req);
+    if (workDateOverride && !fullDays) {
       assertManualWorkDate(workDateOverride);
     }
 
@@ -729,8 +751,6 @@ async function adminManualOnsite(req, res) {
     if (!employeeMatchesScope(user, editScope)) {
       return res.status(403).json({ message: 'This employee is outside your attendance edit scope.' });
     }
-
-    const fullDays = isCeoOrManagerRole(req.user?.role);
     try {
       const { row, calc } = await insertOnsiteRecord({
         user,

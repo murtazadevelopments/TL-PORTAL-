@@ -8,6 +8,7 @@ import TeamFilterSelect from '../../components/TeamFilterSelect';
 import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
+  canViewFullAttendanceHistory,
   isCeo,
   isCeoOrManager,
 } from '../../utils/permissions';
@@ -430,8 +431,8 @@ function AttendancePhoto({ row, onOpen }) {
 export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const { user, permissions, loading: authLoading } = useAuthUser();
   const ceo = isCeo(user?.role);
-  const fullDays = isCeoOrManager(user?.role);
-  const canDeleteAttendance = fullDays;
+  const fullDays = canViewFullAttendanceHistory(user?.role, permissions);
+  const canDeleteAttendance = isCeoOrManager(user?.role);
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);
   const canOnsite = canViewOnsiteTeamAttendance(user?.role, permissions);
   const mode = forcedMode === 'remote' ? 'remote' : 'onsite';
@@ -1218,9 +1219,15 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                         {deletingId === `onsite-${row.record.id}` ? 'Deleting…' : 'Delete attendance'}
                       </button>
                     )}
-                    <button type="button" className="btn btn-ghost" onClick={() => openOnsiteMonth(row)}>
-                      This month
-                    </button>
+                    {fullDays ? (
+                      <button type="button" className="btn btn-ghost" onClick={() => openOnsiteMonth(row)}>
+                        This month
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-ghost" onClick={() => openOnsiteMonth(row)}>
+                        Yesterday & today
+                      </button>
+                    )}
                     {!row.can_manual && !row.can_override && !row.record && (
                       <p className="muted">Out of your edit scope</p>
                     )}
@@ -1341,11 +1348,13 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
                     Set hours
                   </button>
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'detail')}>
-                    Daily records
+                    {fullDays ? 'Daily records' : 'Yesterday & today'}
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
-                    This month
-                  </button>
+                  {fullDays && (
+                    <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
+                      This month
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -1381,11 +1390,13 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
               ) : (
                 <div className="attendance-admin-actions">
                   <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'detail')}>
-                    Daily records
+                    {fullDays ? 'Daily records' : 'Yesterday & today'}
                   </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
-                    This month
-                  </button>
+                  {fullDays && (
+                    <button type="button" className="btn btn-ghost" onClick={() => openHistory(row, 'summary')}>
+                      This month
+                    </button>
+                  )}
                   <RemoteDeleteButtons
                     row={row}
                     canDelete={canDeleteAttendance}
@@ -1551,7 +1562,10 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
       {onsiteMonth && (
         <div className="modal-backdrop modal-backdrop-stack" onClick={() => setOnsiteMonth(null)}>
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
-            <h2>{onsiteMonth.employee?.name || 'This month'}</h2>
+            <h2>
+              {onsiteMonth.employee?.name || 'Attendance'}
+              {onsiteMonth.recent_only ? ' — yesterday & today' : ' — this month'}
+            </h2>
             <p className="muted">{onsiteMonth.month} summary</p>
             <div className="attendance-month-summary">
               <div className="attendance-stat">
@@ -1609,7 +1623,11 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
           <div className="modal-card history-card" onClick={(e) => e.stopPropagation()}>
             <h2>
               {history.employee?.name || 'Attendance'}
-              {historyMode === 'summary' ? ' — this month' : ' — daily records'}
+              {history.recent_only
+                ? ' — yesterday & today'
+                : historyMode === 'summary'
+                  ? ' — this month'
+                  : ' — daily records'}
             </h2>
             <p className="muted">{history.month}</p>
             <div className="attendance-month-summary">

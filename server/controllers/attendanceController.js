@@ -69,8 +69,21 @@ function pick(obj, name) {
 
 const writeAuditLog = pick(audit, 'writeauditlog');
 
-function hasFullAttendanceDays(role) {
-  return Boolean(isCeoOrManagerRole(role) || isCeoRole(role) || isManagerRole(role));
+function hasFullAttendanceDays(role, permissions) {
+  if (isCeoOrManagerRole(role) || isCeoRole(role) || isManagerRole(role)) return true;
+  const keys = Array.isArray(permissions) ? permissions : [];
+  return keys.includes('*') || keys.includes('attendance:month');
+}
+
+async function canUseFullAttendanceDays(req) {
+  if (hasFullAttendanceDays(req.user?.role, req.user?.permissions)) return true;
+  try {
+    const access = await loadAdminPermissionAccess(req.user.id);
+    if (req.user) req.user.permissions = access.permissions;
+    return hasFullAttendanceDays(req.user?.role, access.permissions);
+  } catch {
+    return false;
+  }
 }
 const employeeMatchesScope = pick(employeeScope, 'employeematchesscope');
 const scopeWhereClause = pick(employeeScope, 'scopewhereclause');
@@ -101,6 +114,7 @@ const slotsForUser = pick(attendanceDays, 'slotsforuser');
 const isLateCheckIn = pick(attendanceDays, 'islatecheckin');
 const refreshAttendanceDay = pick(attendanceDays, 'refreshattendanceday');
 const monthHistory = pick(attendanceDays, 'monthhistory');
+const tallyDays = pick(attendanceDays, 'tallydays') || attendanceDays.tallyDays;
 const upsertAttendanceDay = pick(attendanceDays, 'upsertattendanceday');
 const formatDurationMinutes = pick(attendanceDays, 'formatdurationminutes');
 
@@ -1134,7 +1148,7 @@ async function adminManualMark(req, res) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(stampDay)) {
       return res.status(400).json({ message: 'Manual attendance needs a valid date.' });
     }
-    if (!hasFullAttendanceDays(req.user?.role)) {
+    if (!(await canUseFullAttendanceDays(req))) {
       if (stampDay > today || stampDay < yesterday) {
         return res.status(400).json({
           message: 'Manual attendance can only be saved for today or yesterday.',
@@ -2120,7 +2134,7 @@ async function adminUpdateCheckTime(req, res) {
     const yesterdayKey = addDaysKey(todayKey, -1);
     const tomorrowKey = addDaysKey(todayKey, 1);
     if (
-      !hasFullAttendanceDays(req.user?.role) &&
+      !(await canUseFullAttendanceDays(req)) &&
       shiftDate !== yesterdayKey &&
       shiftDate !== todayKey &&
       shiftDate !== tomorrowKey
@@ -2209,7 +2223,7 @@ async function adminEmployeeDays(req, res) {
     }
     const parts = zonedParts();
     const month = String(req.query.month || parts.dateKey.slice(0, 7)).slice(0, 7);
-    const fullDays = hasFullAttendanceDays(req.user?.role);
+    const fullDays = await canUseFullAttendanceDays(req);
     const history = await monthHistory(target, month, new Date(), {
       throughDate: fullDays ? null : undefined,
     });
@@ -2217,9 +2231,16 @@ async function adminEmployeeDays(req, res) {
       history.days = await attachBreakSummaries(target.id, history.days || []);
     }
     const ceoView = isCeoRole(req.user?.role);
-    const days = ceoView
+    let days = ceoView
       ? await attachDayFaceChecks(target.id, month, history.days || [])
       : history.days || [];
+    if (!fullDays) {
+      const yesterday = addDaysKey(parts.dateKey, -1);
+      days = days.filter((d) => {
+        const key = String(d.date || '').slice(0, 10);
+        return key === parts.dateKey || key === yesterday;
+      });
+    }
     res.json({
       employee: {
         id: target.id,
@@ -2232,6 +2253,8 @@ async function adminEmployeeDays(req, res) {
       },
       ...history,
       days,
+      totals: typeof tallyDays === 'function' ? tallyDays(days) : history.totals,
+      recent_only: !fullDays,
     });
     if (
       (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
@@ -2313,7 +2336,7 @@ async function reopenRemoteChallenges(userId, dateKey, hourKey = null) {
  */
 async function adminDeleteRemoteLast(req, res) {
   try {
-    if (!hasFullAttendanceDays(req.user?.role)) {
+    if (!isCeoOrManagerRole(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();
@@ -2394,7 +2417,7 @@ async function adminDeleteRemoteLast(req, res) {
  */
 async function adminDeleteRemoteDay(req, res) {
   try {
-    if (!hasFullAttendanceDays(req.user?.role)) {
+    if (!isCeoOrManagerRole(req.user?.role)) {
       return res.status(403).json({ message: 'Only the CEO or a manager can delete attendance.' });
     }
     await ensureAttendanceTables();

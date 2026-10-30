@@ -111,6 +111,16 @@ export function canViewTeamAttendance(role, permissions) {
   );
 }
 
+/**
+ * Whole-month / any-date attendance history.
+ * Without this grant, admins with attendance access only see yesterday + today.
+ * CEO and manager always have full history.
+ */
+export function canViewFullAttendanceHistory(role, permissions) {
+  if (isCeoOrManager(role)) return true;
+  return hasPermission(permissions, 'attendance:month', role);
+}
+
 /** Sales supervisor board is CEO-only. */
 export function canManageSalesTargets(role) {
   return isCeo(role);

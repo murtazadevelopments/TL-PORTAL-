@@ -253,7 +253,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
                       : key === 'employees:remote'
                       ? 'Remote employees'
                       : key === 'attendance:view'
-                        ? 'View attendance'
+                        ? 'View attendance (yesterday & today)'
                           : 'Edit attendance'
             }, choose All, or pick at least one branch/team.`
           );

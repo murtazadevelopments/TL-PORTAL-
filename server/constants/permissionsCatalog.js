@@ -41,15 +41,21 @@ const PERMISSIONS_CATALOG = [
   },
   {
     key: 'attendance:view',
-    label: 'View attendance',
+    label: 'View attendance (yesterday & today)',
     description:
-      'See onsite attendance for the assigned scope (all, a branch, or a team). Does not include remote employees.',
+      'See onsite attendance for the assigned scope (all, a branch, or a team), limited to yesterday and today unless Full month attendance is also granted. Does not include remote employees.',
   },
   {
     key: 'attendance:edit',
     label: 'Edit attendance',
     description:
-      'Mark and override onsite attendance for the assigned scope. Remote attendance is only for people granted Remote employees.',
+      'Mark and override onsite attendance for the assigned scope (yesterday & today unless Full month attendance is also granted). Remote attendance is only for people granted Remote employees.',
+  },
+  {
+    key: 'attendance:month',
+    label: 'Full month attendance',
+    description:
+      'See whole-month attendance history and pick any date. Without this, attendance viewers/editors are limited to yesterday and today. CEO and manager always have full history.',
   },
   {
     key: 'employees:deactivate',
