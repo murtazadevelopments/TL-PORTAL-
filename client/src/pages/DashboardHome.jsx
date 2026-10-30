@@ -392,15 +392,17 @@ export default function DashboardHome() {
             </nav>
           </section>
 
-          <ApplyLeaveModal
-            open={leaveOpen}
-            onClose={() => setLeaveOpen(false)}
-            onSubmitted={() => {
-              setLeaveSuccess('Leave request submitted. Waiting for HR approval.');
-              setShowLeaveStatus(true);
-              loadMyLeaves();
-            }}
-          />
+          {canApplyLeave ? (
+            <ApplyLeaveModal
+              open={leaveOpen}
+              onClose={() => setLeaveOpen(false)}
+              onSubmitted={() => {
+                setLeaveSuccess('Leave request submitted. Waiting for HR approval.');
+                setShowLeaveStatus(true);
+                loadMyLeaves();
+              }}
+            />
+          ) : null}
         </>
       )}
     </div>
