@@ -444,7 +444,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const [branch, setBranch] = useState('all');
   const [branchOptions, setBranchOptions] = useState([]);
   const [team, setTeam] = useState('all');
-  const [teamOptions, setTeamOptions] = useState([]);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -486,7 +485,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         setOnsite(payload);
         setData(null);
         if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
-        if (Array.isArray(payload?.teams)) setTeamOptions(payload.teams);
       } else {
         const { data: payload } = await api.get('/api/admin/attendance', {
           params,
@@ -494,7 +492,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
         setData(payload);
         setOnsite(null);
         if (Array.isArray(payload?.branches)) setBranchOptions(payload.branches);
-        if (Array.isArray(payload?.teams)) setTeamOptions(payload.teams);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load attendance.');
@@ -1117,7 +1114,6 @@ export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
           <TeamFilterSelect
             value={team}
             onChange={setTeam}
-            extraNames={teamOptions}
             className=""
           />
         </label>

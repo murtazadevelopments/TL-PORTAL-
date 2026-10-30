@@ -415,7 +415,6 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
               <TeamFilterSelect
                 value={teamFilter}
                 onChange={setTeamFilter}
-                extraNames={employees}
                 allLabel="Team: All"
               />
               <input

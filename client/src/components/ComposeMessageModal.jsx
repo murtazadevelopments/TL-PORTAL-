@@ -347,7 +347,6 @@ export default function ComposeMessageModal({
                       <TeamFilterSelect
                         value={personTeam}
                         onChange={setPersonTeam}
-                        extraNames={recipients}
                         allLabel="Team: All"
                       />
                       <input

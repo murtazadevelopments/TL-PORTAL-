@@ -154,7 +154,6 @@ export default function DeactivatedEmployeesPage() {
         <TeamFilterSelect
           value={team}
           onChange={setTeam}
-          extraNames={users}
           allLabel="Team: All"
         />
       </div>

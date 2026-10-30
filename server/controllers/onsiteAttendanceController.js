@@ -23,6 +23,7 @@ const {
   userAttendanceEnabled,
   rejectIfUserAttendanceStopped,
 } = require('../utils/attendanceEnabled');
+const { listManagedTeamNames } = require('../utils/managedTeams');
 
 function hasFullAttendanceDays(role, permissions) {
   if (isCeoOrManagerRole(role)) return true;
@@ -577,13 +578,7 @@ async function adminListOnsite(req, res) {
           .filter(Boolean)
       ),
     ].sort((a, b) => a.localeCompare(b));
-    const teams = [
-      ...new Set(
-        people
-          .map((p) => String(p.department || '').trim())
-          .filter(Boolean)
-      ),
-    ].sort((a, b) => a.localeCompare(b));
+    const teams = await listManagedTeamNames();
 
     const employees = [];
     const sundayHoliday = isSundayDateKey(dateKey);

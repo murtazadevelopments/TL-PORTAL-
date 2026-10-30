@@ -23,19 +23,21 @@ try {
 }
 
 const ATTENDANCE_SUMMARY_COLUMNS = [
-  { key: 'employee_id', label: 'Employee ID', width: 80 },
-  { key: 'name', label: 'Name', width: 130 },
-  { key: 'department', label: 'Team', width: 95 },
-  { key: 'branch', label: 'Branch', width: 90 },
-  { key: 'shift', label: 'Shift', width: 75 },
-  { key: 'total_days', label: 'Total Days', width: 60 },
-  { key: 'working_days', label: 'Working Days', width: 70 },
-  { key: 'present_days', label: 'Present / On Time', width: 85 },
-  { key: 'late_days', label: 'Late', width: 55 },
-  { key: 'absent_days', label: 'Absent', width: 60 },
-  { key: 'leave_days', label: 'Leave', width: 55 },
-  { key: 'holiday_days', label: 'Holidays', width: 60 },
-  { key: 'attendance_rate', label: 'Attendance %', width: 75 },
+  { key: 'employee_id', label: 'Employee ID', width: 75 },
+  { key: 'name', label: 'Name', width: 120 },
+  { key: 'designation', label: 'Designation', width: 100 },
+  { key: 'date_of_joining', label: 'Date of Joining', width: 85 },
+  { key: 'department', label: 'Team', width: 90 },
+  { key: 'branch', label: 'Branch', width: 85 },
+  { key: 'shift', label: 'Shift', width: 70 },
+  { key: 'total_days', label: 'Total Days', width: 55 },
+  { key: 'working_days', label: 'Working Days', width: 65 },
+  { key: 'present_days', label: 'Present / On Time', width: 80 },
+  { key: 'late_days', label: 'Late', width: 50 },
+  { key: 'absent_days', label: 'Absent', width: 55 },
+  { key: 'leave_days', label: 'Leave', width: 50 },
+  { key: 'holiday_days', label: 'Holidays', width: 55 },
+  { key: 'attendance_rate', label: 'Attendance %', width: 70 },
 ];
 
 function xmlEscape(value) {
@@ -90,6 +92,8 @@ function displayAttendanceRows(records) {
     id: row.id,
     employee_id: row.employee_id || '—',
     name: row.name || '—',
+    designation: row.designation || '—',
+    date_of_joining: row.date_of_joining || '—',
     department: row.department || '—',
     branch: row.branch || '—',
     shift: row.shift || '—',
@@ -148,10 +152,12 @@ function buildAttendanceExcelXml(records, daysInMonth = [], meta = {}) {
 
   // Sheet 2: Daily Muster Roll Grid
   const dailyColDefs = [
-    '<Column ss:Width="75"/>',  // Emp ID
-    '<Column ss:Width="120"/>', // Name
-    '<Column ss:Width="85"/>',  // Team
-    '<Column ss:Width="80"/>',  // Branch
+    '<Column ss:Width="70"/>',  // Emp ID
+    '<Column ss:Width="110"/>', // Name
+    '<Column ss:Width="95"/>',  // Designation
+    '<Column ss:Width="80"/>',  // Date of Joining
+    '<Column ss:Width="80"/>',  // Team
+    '<Column ss:Width="75"/>',  // Branch
     ...daysInMonth.map(() => '<Column ss:Width="36"/>'),
     '<Column ss:Width="55"/>',  // Total Present
     '<Column ss:Width="50"/>',  // Total Late
@@ -163,6 +169,8 @@ function buildAttendanceExcelXml(records, daysInMonth = [], meta = {}) {
   const dailyHeaderCells = [
     '<Cell ss:StyleID="Header"><Data ss:Type="String">Emp ID</Data></Cell>',
     '<Cell ss:StyleID="Header"><Data ss:Type="String">Name</Data></Cell>',
+    '<Cell ss:StyleID="Header"><Data ss:Type="String">Designation</Data></Cell>',
+    '<Cell ss:StyleID="Header"><Data ss:Type="String">Date of Joining</Data></Cell>',
     '<Cell ss:StyleID="Header"><Data ss:Type="String">Team</Data></Cell>',
     '<Cell ss:StyleID="Header"><Data ss:Type="String">Branch</Data></Cell>',
     ...daysInMonth.map((d) => {
@@ -176,16 +184,17 @@ function buildAttendanceExcelXml(records, daysInMonth = [], meta = {}) {
     '<Cell ss:StyleID="Header"><Data ss:Type="String">Rate %</Data></Cell>',
   ].join('');
 
-  const dailyTotalColsCount = 4 + daysInMonth.length + 5;
+  const dailyTotalColsCount = 6 + daysInMonth.length + 5;
 
   const dailyBodyRows = rows
     .map((row) => {
       const baseCells = [
         `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.employee_id)}</Data></Cell>`,
         `<Cell ss:StyleID="TextCellBold"><Data ss:Type="String">${xmlEscape(row.name)}</Data></Cell>`,
+        `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.designation)}</Data></Cell>`,
+        `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.date_of_joining)}</Data></Cell>`,
         `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.department)}</Data></Cell>`,
-        `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.branch)}</Data></Cell>`,
-      ];
+        `<Cell ss:StyleID="TextCell"><Data ss:Type="String">${xmlEscape(row.branch)}</Data></Cell>`,      ];
 
       const dayCells = daysInMonth.map((d) => {
         const code = row.daily_codes?.[d.dateKey] || (d.isSunday ? 'H' : '-');
@@ -416,19 +425,21 @@ async function buildAttendancePdf(records, daysInMonth = [], meta = {}) {
   const rowStripe = rgb(0.965, 0.975, 0.985);
   const rule = rgb(0.85, 0.88, 0.92);
 
-  // Table columns without Type (fits innerWidth = 786)
+  // Table columns (fits innerWidth = 786)
   const cols = [
-    { key: 'employee_id', label: 'Emp ID', width: 68, align: 'left' },
-    { key: 'name', label: 'Employee Name', width: 145, align: 'left' },
-    { key: 'department', label: 'Team', width: 95, align: 'left' },
-    { key: 'branch', label: 'Branch', width: 90, align: 'left' },
-    { key: 'shift', label: 'Shift', width: 70, align: 'left' },
-    { key: 'working_days', label: 'Work Days', width: 55, align: 'right' },
-    { key: 'present_days', label: 'Present', width: 55, align: 'right' },
-    { key: 'late_days', label: 'Late', width: 48, align: 'right' },
-    { key: 'absent_days', label: 'Absent', width: 48, align: 'right' },
-    { key: 'leave_days', label: 'Leave', width: 48, align: 'right' },
-    { key: 'attendance_rate', label: 'Rate %', width: 58, align: 'right' },
+    { key: 'employee_id', label: 'Emp ID', width: 55, align: 'left' },
+    { key: 'name', label: 'Employee Name', width: 110, align: 'left' },
+    { key: 'designation', label: 'Designation', width: 85, align: 'left' },
+    { key: 'date_of_joining', label: 'DOJ', width: 70, align: 'left' },
+    { key: 'department', label: 'Team', width: 75, align: 'left' },
+    { key: 'branch', label: 'Branch', width: 70, align: 'left' },
+    { key: 'shift', label: 'Shift', width: 55, align: 'left' },
+    { key: 'working_days', label: 'Work Days', width: 48, align: 'right' },
+    { key: 'present_days', label: 'Present', width: 48, align: 'right' },
+    { key: 'late_days', label: 'Late', width: 40, align: 'right' },
+    { key: 'absent_days', label: 'Absent', width: 45, align: 'right' },
+    { key: 'leave_days', label: 'Leave', width: 40, align: 'right' },
+    { key: 'attendance_rate', label: 'Rate %', width: 45, align: 'right' },
   ];
 
   let page = null;

@@ -112,7 +112,6 @@ function HrPeoplePicker({ onSaved }) {
         <TeamFilterSelect
           value={team}
           onChange={setTeam}
-          extraNames={people}
           allLabel="Team: All"
         />
       </div>

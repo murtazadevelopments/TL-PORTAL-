@@ -58,6 +58,7 @@ const {
   rejectIfRemoteProfileIncomplete,
   PROFILE_INCOMPLETE_ATTENDANCE_MESSAGE,
 } = require('../utils/profileCompleteness');
+const { listManagedTeamNames } = require('../utils/managedTeams');
 
 function pick(obj, name) {
   const want = String(name).toLowerCase().replace(/_/g, '');
@@ -1093,13 +1094,7 @@ async function adminOverview(req, res) {
           .filter(Boolean)
       ),
     ].sort((a, b) => a.localeCompare(b));
-    const teams = [
-      ...new Set(
-        people
-          .map((p) => String(p.department || '').trim())
-          .filter(Boolean)
-      ),
-    ].sort((a, b) => a.localeCompare(b));
+    const teams = await listManagedTeamNames();
 
     return res.json({
       date: dateKey,

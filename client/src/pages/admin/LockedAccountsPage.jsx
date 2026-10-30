@@ -157,7 +157,6 @@ export default function LockedAccountsPage() {
         <TeamFilterSelect
           value={team}
           onChange={setTeam}
-          extraNames={lockedAccounts}
           allLabel="Team: All"
         />
       </div>

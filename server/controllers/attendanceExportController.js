@@ -15,6 +15,7 @@ const {
   buildAttendanceBaseName,
   displayAttendanceRows,
 } = require('../utils/attendanceExportFiles');
+const { listTeamNamesForScope } = require('../utils/managedTeams');
 
 function isCeo(req) {
   const role = String(req.user?.role || '').toLowerCase();
@@ -204,7 +205,7 @@ async function loadAttendanceData(scope, filters) {
     i += 1;
   }
   if (filters.team) {
-    sql += ` AND COALESCE(TRIM(department), '') = $${i}`;
+    sql += ` AND LOWER(COALESCE(TRIM(department), '')) = LOWER($${i})`;
     params.push(filters.team);
     i += 1;
   }
@@ -434,6 +435,8 @@ async function loadAttendanceData(scope, filters) {
       id: person.id,
       employee_id: person.employee_id || '—',
       name: person.name || person.username || '—',
+      designation: person.designation || '—',
+      date_of_joining: person.date_of_joining || '—',
       department: person.department || '—',
       branch: person.branch || '—',
       shift: person.shift || '—',
@@ -483,39 +486,38 @@ async function getAttendanceExportOptions(req, res) {
     }
     monthsList.sort((a, b) => b.value.localeCompare(a.value));
 
-    // Get branches, teams, shifts from active employees
+    // Branches/shifts from active employees; teams only from managed teams table
     const scoped = scopeWhereClause(scope, 1);
-    const distinct = await pool.query(
-      `
-        SELECT
-          NULLIF(TRIM(branch), '') AS branch,
-          NULLIF(TRIM(department), '') AS team,
-          NULLIF(TRIM(shift), '') AS shift
-        FROM users
-        WHERE is_active = true
-          AND COALESCE(staff_kind, 'portal') <> 'lower'
-          ${scoped.sql}
-      `,
-      scoped.params
-    );
+    const [distinct, managedTeams] = await Promise.all([
+      pool.query(
+        `
+          SELECT
+            NULLIF(TRIM(branch), '') AS branch,
+            NULLIF(TRIM(shift), '') AS shift
+          FROM users
+          WHERE is_active = true
+            AND COALESCE(staff_kind, 'portal') <> 'lower'
+            ${scoped.sql}
+        `,
+        scoped.params
+      ),
+      listTeamNamesForScope(scope),
+    ]);
 
     const branches = new Set();
-    const teams = new Set();
     const shifts = new Set();
     for (const row of distinct.rows) {
       if (row.branch) branches.add(row.branch);
-      if (row.team) teams.add(row.team);
       if (row.shift) shifts.add(row.shift);
     }
     if (scope.type === 'branch') scope.values.forEach((v) => branches.add(v));
-    if (scope.type === 'team') scope.values.forEach((v) => teams.add(v));
 
     return res.json({
       scope,
       ceo: isCeo(req),
       months: monthsList,
       branches: [...branches].sort((a, b) => a.localeCompare(b)),
-      teams: [...teams].sort((a, b) => a.localeCompare(b)),
+      teams: managedTeams,
       shifts: [...shifts].sort((a, b) => a.localeCompare(b)),
     });
   } catch (err) {

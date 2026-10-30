@@ -6,6 +6,7 @@ const {
   employeeMatchesScope,
 } = require('../utils/employeeScope');
 const { buildExcelXml, buildEmployeePdf, displayRows, EXPORT_COLUMNS } = require('../utils/employeeExportFiles');
+const { listTeamNamesForScope } = require('../utils/managedTeams');
 
 const EXPORT_COLUMNS_SQL = `
   employee_id, username, name, email, contact_number, address, cnic_number,
@@ -61,7 +62,7 @@ function buildQuery(scope, filters, startIndex = 1) {
     i += 1;
   }
   if (filters.team) {
-    sql += ` AND COALESCE(TRIM(department), '') = $${i}`;
+    sql += ` AND LOWER(COALESCE(TRIM(department), '')) = LOWER($${i})`;
     params.push(filters.team);
     i += 1;
   }
@@ -275,31 +276,30 @@ async function getExportOptions(req, res) {
   try {
     const scope = exportScope(req);
     const { sql, params } = buildQuery(scope, {});
-    const distinct = await pool.query(
-      `
-        SELECT
-          NULLIF(TRIM(branch), '') AS branch,
-          NULLIF(TRIM(department), '') AS team,
-          NULLIF(TRIM(shift), '') AS shift
-        ${sql}
-      `,
-      params
-    );
+    const [distinct, managedTeams] = await Promise.all([
+      pool.query(
+        `
+          SELECT
+            NULLIF(TRIM(branch), '') AS branch,
+            NULLIF(TRIM(shift), '') AS shift
+          ${sql}
+        `,
+        params
+      ),
+      listTeamNamesForScope(scope),
+    ]);
     const branches = new Set();
-    const teams = new Set();
     const shifts = new Set();
     for (const row of distinct.rows) {
       if (row.branch) branches.add(row.branch);
-      if (row.team) teams.add(row.team);
       if (row.shift) shifts.add(row.shift);
     }
     if (scope.type === 'branch') scope.values.forEach((v) => branches.add(v));
-    if (scope.type === 'team') scope.values.forEach((v) => teams.add(v));
     return res.json({
       scope,
       ceo: isCeo(req),
       branches: [...branches].sort((a, b) => a.localeCompare(b)),
-      teams: [...teams].sort((a, b) => a.localeCompare(b)),
+      teams: managedTeams,
       shifts: [...shifts].sort((a, b) => a.localeCompare(b)),
     });
   } catch (err) {

@@ -1713,7 +1713,6 @@ export default function TeamLeaderDashboard() {
               <TeamFilterSelect
                 value={assignTeam}
                 onChange={setAssignTeam}
-                extraNames={assignableUsers}
                 allLabel="Team: All"
               />
               {visibleAssignable.length === 0 && (

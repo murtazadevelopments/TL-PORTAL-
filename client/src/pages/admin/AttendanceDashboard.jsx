@@ -104,7 +104,6 @@ export default function AttendanceDashboard() {
         <TeamFilterSelect
           value={team}
           onChange={setTeam}
-          extraNames={logs}
           allLabel="Team: All"
         />
       </div>
