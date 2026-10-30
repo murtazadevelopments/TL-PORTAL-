@@ -110,6 +110,23 @@ async function subscribe(req, res) {
       [req.user.id, endpoint, p256dh, auth, userAgent || null]
     );
 
+    // Keep only the newest few endpoints per user — thrashing clients used to
+    // orphan hundreds of dead FCM tokens and break delivery.
+    await pool.query(
+      `
+        DELETE FROM push_subscriptions
+        WHERE user_id = $1
+          AND id NOT IN (
+            SELECT id
+            FROM push_subscriptions
+            WHERE user_id = $1
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 5
+          )
+      `,
+      [req.user.id]
+    );
+
     await pool.query(
       `
         UPDATE users

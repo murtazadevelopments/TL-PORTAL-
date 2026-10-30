@@ -147,14 +147,14 @@ function ShellInner() {
   }, [location.pathname, refreshUser]);
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user?.id) return undefined;
     enablePushNotificationsSafe();
     const onInstalled = () => enablePushNotificationsSafe();
     window.addEventListener('appinstalled', onInstalled);
     return () => {
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return undefined;

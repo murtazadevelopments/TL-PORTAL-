@@ -13,7 +13,6 @@ import {
   averageDescriptors,
   pickLivenessAction,
   waitForVideo,
-  videoFrameJpeg,
   sleep,
   SAMPLE_COUNT,
   ALIGN_MS,
@@ -173,7 +172,6 @@ export default function AttendancePage() {
   const [profileIncompleteMessage, setProfileIncompleteMessage] = useState('');
   const [checksPerShift, setChecksPerShift] = useState(5);
   const [flexibleHours, setFlexibleHours] = useState(false);
-  const [faceCheckCapture, setFaceCheckCapture] = useState(false);
   const [durationLabel, setDurationLabel] = useState('');
   const [shiftHours, setShiftHours] = useState(null);
   const [onBreak, setOnBreak] = useState(false);
@@ -232,7 +230,6 @@ export default function AttendancePage() {
         'Complete your profile before attendance can be marked.'
     );
     setFlexibleHours(Boolean(att.flexible_hours));
-    setFaceCheckCapture(Boolean(att.face_check_capture));
     setDurationLabel(att.work_label || att.duration_label || '');
     setOnBreak(Boolean(att.on_break));
     setBreaksEnabled(Boolean(att.breaks_enabled));
@@ -533,14 +530,12 @@ export default function AttendancePage() {
       setHint('Checking');
       setDetail('Matching your enrolled face');
       setProgress(55);
-      const snapshot = faceCheckCapture ? videoFrameJpeg(videoRef.current) : null;
       const shot = await grabDescriptor(Date.now() + VERIFY_MS);
       const payload = {
         embedding: Array.from(shot.descriptor),
         liveness_passed: true,
         liveness_action: action.id,
       };
-      if (snapshot) payload.snapshot = snapshot;
       const { data } = await api.post('/api/attendance/check-in', payload);
       setRing('success');
       setProgress(100);

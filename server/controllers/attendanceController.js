@@ -47,7 +47,6 @@ const {
   isFaceCheckFeatureEnabled,
   userFaceCheckCapture,
   setUserFaceCheckCapture,
-  saveCheckInSnapshot,
   streamCaptureImage,
   listCapturesForUserMonth,
   deleteFaceCheckCaptureById,
@@ -560,20 +559,7 @@ async function checkIn(req, res) {
       [req.user.id, hourKey, distance, status, suspicious ? 'flagged_similar_score' : null]
     );
 
-    if (userFaceCheckCapture(user)) {
-      try {
-        const saved = await saveCheckInSnapshot(req.user.id, rows[0], req.body?.snapshot);
-        if (!saved) {
-          console.warn('face check capture skipped: no usable snapshot on check-in', {
-            userId: req.user.id,
-            logId: rows[0].id,
-            hasSnapshot: Boolean(req.body?.snapshot),
-          });
-        }
-      } catch (err) {
-        console.error('face check capture:', err.message || err);
-      }
-    }
+    // Face check photo capture is disabled — never persist attendance snapshots.
 
     if (matched) {
       await remoteChallenges.markChallengeResult(challenge, status, rows[0].id);

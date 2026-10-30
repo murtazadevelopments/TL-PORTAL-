@@ -2,6 +2,7 @@ import api from '../api/client';
 import { isStandalonePwa } from '../pwaInstall';
 
 const PUSH_OPT_OUT_KEY = 'tl-push-opt-out';
+const LAST_VAPID_KEY = 'tl-push-vapid-key';
 
 let enableInflight = null;
 let lastSyncedEndpoint = null;
@@ -40,11 +41,44 @@ export function setPushOptOut(optedOut) {
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const base64 = (String(base64String || '') + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);
   const output = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i += 1) output[i] = raw.charCodeAt(i);
   return output;
+}
+
+function arrayBufferToUrlBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function applicationServerKeyMatches(subscription, vapidPublicKey) {
+  try {
+    const key = subscription?.options?.applicationServerKey;
+    if (!key || !vapidPublicKey) return false;
+    return arrayBufferToUrlBase64(key) === String(vapidPublicKey).replace(/\s+/g, '');
+  } catch {
+    return false;
+  }
+}
+
+function rememberVapidKey(vapidKey) {
+  try {
+    localStorage.setItem(LAST_VAPID_KEY, String(vapidKey || ''));
+  } catch {
+    /* ignore */
+  }
+}
+
+function storedVapidKey() {
+  try {
+    return localStorage.getItem(LAST_VAPID_KEY) || '';
+  } catch {
+    return '';
+  }
 }
 
 export function currentNotificationPermission() {
@@ -99,52 +133,9 @@ export async function requestPushPermission() {
   });
 }
 
-/**
- * Subscribe this device to Web Push and register with the API.
- * Works in the installed app and in a mobile/desktop browser that supports push.
- */
-export async function enablePushNotifications(options = {}) {
-  if (typeof window === 'undefined') {
-    throw new Error('Not available in this environment.');
-  }
-  if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-    throw new Error('Push notifications are not supported in this browser.');
-  }
-
-  const permission = options.silent
-    ? currentNotificationPermission()
-    : await requestPushPermission();
-  if (permission !== 'granted') {
-    throw new Error(notificationBlockedHelp());
-  }
-
-  const { data: keyData } = await api.get('/api/push/public-key');
-  const vapidKey = keyData?.key || keyData?.publicKey;
-  if (!vapidKey) {
-    throw new Error(keyData?.message || 'Server push is not configured.');
-  }
-
-  const reg = await navigator.serviceWorker.ready;
-  // Always refresh the browser subscription so a new VAPID key pair takes effect.
-  const existing = await reg.pushManager.getSubscription();
-  if (existing) {
-    try {
-      await existing.unsubscribe();
-    } catch {
-      /* ignore */
-    }
-  }
-  const subscription = await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidKey),
-  });
-
+async function syncSubscriptionToServer(subscription) {
   const payload = subscription.toJSON();
   const endpoint = payload?.endpoint || '';
-  if (options.silent && lastSyncedEndpoint && lastSyncedEndpoint === endpoint) {
-    return true;
-  }
-
   await api.post(
     '/api/push/subscribe',
     {
@@ -155,8 +146,75 @@ export async function enablePushNotifications(options = {}) {
   );
   lastSyncedEndpoint = endpoint;
   setPushOptOut(false);
+  return endpoint;
+}
 
-  return true;
+/**
+ * Subscribe this device to Web Push and register with the API.
+ * Reuses an existing browser subscription whenever the VAPID key still matches —
+ * repeatedly unsubscribe/resubscribe orphans FCM endpoints and breaks delivery.
+ */
+export async function enablePushNotifications(options = {}) {
+  if (enableInflight) return enableInflight;
+
+  enableInflight = (async () => {
+    if (typeof window === 'undefined') {
+      throw new Error('Not available in this environment.');
+    }
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      throw new Error('Push notifications are not supported in this browser.');
+    }
+
+    const permission = options.silent
+      ? currentNotificationPermission()
+      : await requestPushPermission();
+    if (permission !== 'granted') {
+      throw new Error(notificationBlockedHelp());
+    }
+
+    const { data: keyData } = await api.get('/api/push/public-key');
+    const vapidKey = keyData?.key || keyData?.publicKey;
+    if (!vapidKey) {
+      throw new Error(keyData?.message || 'Server push is not configured.');
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    let subscription = await reg.pushManager.getSubscription();
+    const keyChanged =
+      Boolean(options.force) ||
+      (subscription && !applicationServerKeyMatches(subscription, vapidKey)) ||
+      (storedVapidKey() && storedVapidKey() !== vapidKey);
+
+    if (subscription && keyChanged) {
+      try {
+        await subscription.unsubscribe();
+      } catch {
+        /* ignore */
+      }
+      subscription = null;
+    }
+
+    if (!subscription) {
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+    }
+
+    const endpoint = subscription?.endpoint || '';
+    if (options.silent && lastSyncedEndpoint && lastSyncedEndpoint === endpoint) {
+      rememberVapidKey(vapidKey);
+      return true;
+    }
+
+    await syncSubscriptionToServer(subscription);
+    rememberVapidKey(vapidKey);
+    return true;
+  })().finally(() => {
+    enableInflight = null;
+  });
+
+  return enableInflight;
 }
 
 /**
@@ -164,22 +222,16 @@ export async function enablePushNotifications(options = {}) {
  * Skips if the user turned notifications off in Settings.
  */
 export async function enablePushNotificationsSafe() {
-  if (enableInflight) return enableInflight;
-  enableInflight = (async () => {
-    try {
-      if (hasPushOptOut()) return false;
-      if (!localStorage.getItem('token')) return false;
-      if (!('Notification' in window) || Notification.permission !== 'granted') return false;
-      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-      await enablePushNotifications({ silent: true });
-      return true;
-    } catch {
-      return false;
-    } finally {
-      enableInflight = null;
-    }
-  })();
-  return enableInflight;
+  try {
+    if (hasPushOptOut()) return false;
+    if (!localStorage.getItem('token')) return false;
+    if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    await enablePushNotifications({ silent: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function disablePushNotifications() {

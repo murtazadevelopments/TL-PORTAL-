@@ -9,7 +9,6 @@ import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
   canManageSalesTargets,
-  canUseFaceCheck,
   canAssignRoles,
   canReviewLeaveRequests,
 } from '../utils/permissions';
@@ -111,9 +110,6 @@ export function buildSidebarGroups(
     }
     if (canViewRemoteTeamAttendance(role, permissions)) {
       employeeItems.push({ to: '/admin/attendance/remote', label: 'Remote Attendance', end: true });
-    }
-    if (canUseFaceCheck(role)) {
-      employeeItems.push({ to: '/admin/attendance/face-checks', label: 'Face check photos' });
     }
     if (hasPermission(permissions, 'attendance:export', role)) {
       employeeItems.push({ to: '/admin/attendance/export', label: 'Export attendance' });

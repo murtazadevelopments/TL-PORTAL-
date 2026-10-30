@@ -6,7 +6,7 @@ import RouteFallback from './components/RouteFallback';
 import AppShell from './layouts/AppShell';
 import SignIn from './pages/SignIn';
 import SuccessPopup from './components/SuccessPopup';
-import { FACE_CHECK_FEATURE_ENABLED, LEAVE_FEATURE_ENABLED } from './utils/permissions';
+import { LEAVE_FEATURE_ENABLED } from './utils/permissions';
 import './App.css';
 
 const SignUp = lazy(() => import('./pages/SignUp'));
@@ -37,7 +37,6 @@ const ComposeMessagePage = lazy(() => import('./pages/admin/ComposeMessagePage')
 const AttendancePage = lazy(() => import('./pages/attendance/AttendancePage'));
 const AttendanceAdminPage = lazy(() => import('./pages/admin/AttendanceAdminPage'));
 const AttendanceAdminRedirect = lazy(() => import('./pages/admin/AttendanceAdminRedirect'));
-const FaceCheckCapturesPage = lazy(() => import('./pages/admin/FaceCheckCapturesPage'));
 const LeaveRequestsPage = lazy(() => import('./pages/admin/LeaveRequestsPage'));
 const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
 const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
@@ -83,13 +82,7 @@ function App() {
               <Route path="/admin/attendance/remote" element={<AttendanceAdminPage mode="remote" />} />
               <Route
                 path="/admin/attendance/face-checks"
-                element={
-                  FACE_CHECK_FEATURE_ENABLED ? (
-                    <FaceCheckCapturesPage />
-                  ) : (
-                    <Navigate to="/dashboard" replace />
-                  )
-                }
+                element={<Navigate to="/dashboard" replace />}
               />
               <Route path="/admin/attendance/export" element={<AttendanceExportPage />} />
               <Route
