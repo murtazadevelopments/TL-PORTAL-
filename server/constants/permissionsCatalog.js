@@ -100,7 +100,7 @@ const PERMISSIONS_CATALOG = [
     key: 'branches:create',
     label: 'Manage branches',
     description:
-      'Add or delete offices/branches. Office IPs for onsite check-in can only be viewed and edited by the CEO.',
+      'Add or delete offices/branches. Office IPs for onsite check-in can be viewed and edited by the CEO or a manager.',
   },
   {
     key: 'accounts:unlock',

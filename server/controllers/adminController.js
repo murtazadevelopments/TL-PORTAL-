@@ -266,16 +266,45 @@ async function listEmployees(req, res) {
     const nextIndex = filter.params.length + 1;
     const canSeeLower = canManageLowerStaff(req);
 
+    // Optional pagination: ?page=&limit= (default limit 50 when page/limit present).
+    // Omitting both keeps the legacy full-array response for EmployeesPage tab counts.
+    const pageRaw = req.query.page;
+    const limitRaw = req.query.limit;
+    const paged = pageRaw != null || limitRaw != null;
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(200, Math.max(1, Number(limitRaw) || 50));
+    const offset = (page - 1) * limit;
+
+    const whereSql = `
+        WHERE is_active = true
+        ${filter.sql}
+        AND (COALESCE(staff_kind, 'portal') <> 'lower' OR $${nextIndex}::boolean)
+    `;
+    const baseParams = [...filter.params, canSeeLower];
+
+    let total = null;
+    if (paged) {
+      const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM users ${whereSql}`,
+        baseParams
+      );
+      total = countRows[0]?.total || 0;
+    }
+
+    const listParams = paged ? [...baseParams, limit, offset] : baseParams;
+    const limitSql = paged
+      ? `LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}`
+      : '';
+
     const { rows } = await pool.query(
       `
         SELECT ${LIST_COLUMNS}
         FROM users
-        WHERE is_active = true
-        ${filter.sql}
-        AND (COALESCE(staff_kind, 'portal') <> 'lower' OR $${nextIndex}::boolean)
+        ${whereSql}
         ORDER BY created_at DESC NULLS LAST, id DESC
+        ${limitSql}
       `,
-      [...filter.params, canSeeLower]
+      listParams
     );
 
     const employees = await Promise.all(
@@ -298,7 +327,20 @@ async function listEmployees(req, res) {
         return redactSalary(withUrls, isLowerStaff(row) && canSeeLower);
       })
     );
-    return res.json(employees);
+
+    if (!paged) {
+      return res.json(employees);
+    }
+
+    return res.json({
+      employees,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil((total || 0) / limit)),
+      },
+    });
   } catch (err) {
     console.error('listEmployees error:', err);
     return res.status(500).json({ message: 'Server error fetching employees.' });

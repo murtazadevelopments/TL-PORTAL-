@@ -202,7 +202,10 @@ async function listMyLeaveRequests(req, res) {
     await ensureLeaveRequestsSchema();
     const { rows } = await pool.query(
       `
-        SELECT *
+        SELECT
+          id, user_id, leave_type, start_date, end_date, reason, status,
+          admin_remarks, reviewed_by, reviewed_at, created_at, updated_at,
+          prescription_path
         FROM leave_requests
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -238,7 +241,9 @@ async function listLeaveRequests(req, res) {
     const { rows } = await pool.query(
       `
         SELECT
-          lr.*,
+          lr.id, lr.user_id, lr.leave_type, lr.start_date, lr.end_date, lr.reason, lr.status,
+          lr.admin_remarks, lr.reviewed_by, lr.reviewed_at, lr.created_at, lr.updated_at,
+          lr.prescription_path,
           u.name AS employee_name,
           u.username AS employee_username,
           u.employee_id AS employee_id_code,
@@ -342,7 +347,15 @@ async function decideLeaveRequest(req, res, decision) {
         : String(remarksRaw).trim().slice(0, 1000);
 
     const { rows: existing } = await pool.query(
-      `SELECT * FROM leave_requests WHERE id = $1 LIMIT 1`,
+      `
+        SELECT
+          id, user_id, leave_type, start_date, end_date, reason, status,
+          admin_remarks, reviewed_by, reviewed_at, created_at, updated_at,
+          prescription_path, prescription_mime
+        FROM leave_requests
+        WHERE id = $1
+        LIMIT 1
+      `,
       [id]
     );
     if (!existing[0]) {

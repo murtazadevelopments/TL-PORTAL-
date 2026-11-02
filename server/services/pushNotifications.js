@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const { publicKey, webpush } = require('../config/vapid');
+const { withOutboundTimeout } = require('../utils/hangDiagnostics');
 
 function endpointHost(endpoint) {
   try {
@@ -67,16 +68,18 @@ async function sendPushToUser(userId, payload, opts = {}) {
   for (const sub of subs) {
     const host = endpointHost(sub.endpoint);
     try {
-      const response = await webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.p256dh, auth: sub.auth },
-        },
-        body,
-        {
-          TTL: Number.isFinite(opts.ttl) ? opts.ttl : 60 * 60 * 12,
-          urgency: opts.urgency || 'high',
-        }
+      const response = await withOutboundTimeout('push', () =>
+        webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth },
+          },
+          body,
+          {
+            TTL: Number.isFinite(opts.ttl) ? opts.ttl : 60 * 60 * 12,
+            urgency: opts.urgency || 'high',
+          }
+        )
       );
       sent += 1;
       const okStatus = Number(response?.statusCode) || 201;

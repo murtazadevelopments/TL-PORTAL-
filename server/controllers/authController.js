@@ -39,6 +39,23 @@ const USER_PUBLIC_COLUMNS = `
   date_joined, created_at, updated_at
 `;
 
+/** Login / token user row — explicit columns (no SELECT *). Includes password for bcrypt. */
+const USER_AUTH_COLUMNS = `
+  id, employee_id, username, name, email, contact_number,
+  address, cnic_number, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url,
+  role, department, designation, status, branch, shift, salary,
+  education, last_job_status, employment_type, staff_kind, date_of_birth,
+  date_of_joining, date_joined, created_at, updated_at, is_active,
+  work_start_hour, work_end_hour,
+  bank_name, account_title, iban, account_number,
+  emergency_contact_name, emergency_contact_number,
+  reference_person AS reference_person_name,
+  failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
+  terminated_at, exit_remarks,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
+  password
+`;
+
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 
 const LAST_JOB_STATUSES = new Set([
@@ -322,7 +339,7 @@ async function login(req, res) {
     const normalizedUsername = String(username).trim().toLowerCase();
 
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE lower(trim(username)) = $1 LIMIT 1',
+      `SELECT ${USER_AUTH_COLUMNS} FROM users WHERE lower(trim(username)) = $1 LIMIT 1`,
       [normalizedUsername]
     );
 

@@ -1,4 +1,12 @@
 const pool = require('../config/db');
+const { refDataCache } = require('../utils/ttlCache');
+
+const TEAMS_CACHE_KEY = 'teams:rows';
+const TEAMS_TTL_MS = 120_000;
+
+function invalidateTeamsCache() {
+  refDataCache.invalidate('teams');
+}
 
 /**
  * GET /api/admin/teams
@@ -6,13 +14,20 @@ const pool = require('../config/db');
  */
 async function listTeams(req, res) {
   try {
-    const { rows } = await pool.query(
-      `
-        SELECT DISTINCT ON (LOWER(TRIM(name)))
-          id, name, created_by, created_at
-        FROM teams
-        ORDER BY LOWER(TRIM(name)) ASC, id ASC
-      `
+    const rows = await refDataCache.getOrSet(
+      TEAMS_CACHE_KEY,
+      async () => {
+        const { rows: dbRows } = await pool.query(
+          `
+            SELECT DISTINCT ON (LOWER(TRIM(name)))
+              id, name, created_by, created_at
+            FROM teams
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
+          `
+        );
+        return dbRows;
+      },
+      TEAMS_TTL_MS
     );
     return res.json(rows);
   } catch (err) {
@@ -44,6 +59,7 @@ async function createTeam(req, res) {
       [name, req.user?.id ?? null]
     );
 
+    invalidateTeamsCache();
     return res.status(201).json(rows[0]);
   } catch (err) {
     if (err.code === '23505') {
@@ -77,6 +93,8 @@ async function deleteTeam(req, res) {
     if (!rows[0]) {
       return res.status(404).json({ message: 'Team not found.' });
     }
+
+    invalidateTeamsCache();
 
     return res.json({
       message: `Team “${rows[0].name}” deleted.`,

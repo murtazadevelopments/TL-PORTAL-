@@ -1,6 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
-const { requireRole } = require('../middleware/permissions');
+const { requireCeoExclusive } = require('../middleware/permissions');
 const { requireSalesPin } = require('../middleware/salesPin');
 const {
   listSalesTargets,
@@ -22,7 +22,8 @@ router.use(authMiddleware);
 router.get('/me', getMySalesTarget);
 router.get('/me/days', getMyDailyTargets);
 
-router.use(requireRole('ceo'));
+// Sales Targets board is CEO-only (managers inherit every other CEO capability).
+router.use(requireCeoExclusive('Sales targets are available to the CEO only.'));
 
 router.post('/pin', setSalesPin);
 router.post('/pin/otp', requestSalesPinOtp);

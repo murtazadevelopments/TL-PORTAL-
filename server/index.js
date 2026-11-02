@@ -3,6 +3,13 @@ const path = require('path');
 // override: true so newly added keys (e.g. VAPID_*) win over stale process/injected env
 require('dotenv').config({ path: path.join(__dirname, '.env'), override: true });
 
+const {
+  startProcessLifecycle,
+  startHangDiagnostics,
+  DB_HEALTH_TIMEOUT_MS,
+} = require('./utils/hangDiagnostics');
+startProcessLifecycle();
+
 // Strict VAPID — mismatched / invalid keys crash the process (no silent repair).
 require('./config/vapid');
 
@@ -12,10 +19,13 @@ const compression = require('compression');
 const fs = require('fs');
 const { sanitizePublicJson } = require('./utils/sanitizePublicJson');
 
+const { requestTiming } = require('./middleware/requestTiming');
+
 const app = express();
 // Hostinger sits in front of Node — first hop only, for req.ip and HTTPS.
 app.set('trust proxy', 1);
 app.use(compression());
+app.use(requestTiming);
 
 // JWT is Authorization: Bearer (not cookies). CORS for local Vite and the public site.
 const defaultOrigins = [
@@ -116,8 +126,56 @@ function healthPayload() {
   };
 }
 
+function healthJson(res, extra = {}) {
+  const started = Date.now();
+  res.json({ ...healthPayload(), ...extra, ms: Date.now() - started });
+}
+
 app.get('/api/health', (req, res) => {
-  res.json(healthPayload());
+  healthJson(res);
+});
+
+/** Alias for uptime monitors that probe /health (no DB). */
+app.get('/health', (req, res) => {
+  healthJson(res);
+});
+
+/** SELECT 1 with 3s timeout — public liveness of the pool. */
+app.get('/health/db', async (req, res) => {
+  const started = Date.now();
+  if (!process.env.DATABASE_URL) {
+    return res.status(503).json({
+      status: 'error',
+      connected: false,
+      error: 'Service unavailable.',
+      ms: Date.now() - started,
+    });
+  }
+  let connected = false;
+  let timer;
+  try {
+    const pool = require('./config/db');
+    await Promise.race([
+      pool.query('SELECT 1 AS ok'),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const err = new Error('db health timeout');
+          err.code = 'EXT_TIMEOUT';
+          reject(err);
+        }, DB_HEALTH_TIMEOUT_MS);
+      }),
+    ]);
+    connected = true;
+  } catch {
+    connected = false;
+  } finally {
+    clearTimeout(timer);
+  }
+  return res.status(connected ? 200 : 503).json({
+    status: connected ? 'ok' : 'error',
+    connected,
+    ms: Date.now() - started,
+  });
 });
 
 /** Public deploy marker — no auth, no secrets. */
@@ -352,6 +410,13 @@ function startHttpServer() {
       startScheduledJobsIfLeader();
     } catch (err) {
       console.error('Failed to start scheduled jobs:', err.message || err);
+    }
+
+    try {
+      const pool = require('./config/db');
+      startHangDiagnostics(pool);
+    } catch (err) {
+      console.error('[hang-diagnostics] failed to start:', err.message || err);
     }
   });
 }

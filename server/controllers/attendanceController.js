@@ -1017,7 +1017,9 @@ async function adminOverview(req, res) {
           break_label: breaksAllowed ? breakSummary.break_label : '',
           work_days: workDaysFromUser(person),
           work_days_label: workDaysSummary(workDaysFromUser(person)),
-          face_check_capture: isCeoRole(req.user?.role) ? userFaceCheckCapture(person) : undefined,
+          face_check_capture: isCeoOrManagerRole(req.user?.role)
+            ? userFaceCheckCapture(person)
+            : undefined,
           checks_per_shift: remoteChallenges.checkCountFromUser(person),
           duration_minutes: breakSummary.work_minutes ?? personDay?.duration_minutes ?? null,
           duration_label: breakSummary.work_label
@@ -1468,8 +1470,8 @@ async function putUserFaceCheckCapture(req, res) {
     if (!isFaceCheckFeatureEnabled()) {
       return res.status(403).json({ message: 'Face check photos are disabled.' });
     }
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can turn picture capture on or off.' });
+    if (!isCeoOrManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can turn picture capture on or off.' });
     }
     const targetId = Number(req.params.userId);
     if (!Number.isFinite(targetId) || targetId <= 0) {
@@ -1513,8 +1515,8 @@ async function listFaceCheckCaptures(req, res) {
     if (!isFaceCheckFeatureEnabled()) {
       return res.status(403).json({ message: 'Face check photos are disabled.' });
     }
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can review face check photos.' });
+    if (!isCeoOrManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can review face check photos.' });
     }
     const userId = Number(req.query.user_id);
     const dateKey = String(req.query.date || '').slice(0, 10);
@@ -1580,8 +1582,8 @@ async function streamFaceCheckCapture(req, res) {
       return res.status(403).json({ message: 'Face check photos are disabled.' });
     }
     const { rows: me } = await pool.query(`SELECT role FROM users WHERE id = $1 LIMIT 1`, [req.user.id]);
-    if (!isCeoRole(me[0]?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can view face check photos.' });
+    if (!isCeoOrManagerRole(me[0]?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can view face check photos.' });
     }
     const captureId = Number(req.params.captureId);
     if (!Number.isFinite(captureId) || captureId <= 0) {
@@ -1605,7 +1607,7 @@ async function streamFaceCheckCapture(req, res) {
 
 /**
  * DELETE /api/admin/attendance/face-checks/:captureId
- * CEO only — permanently removes the capture row and stored image.
+ * CEO or manager — permanently removes the capture row and stored image.
  */
 async function deleteFaceCheckCapture(req, res) {
   try {
@@ -1613,8 +1615,8 @@ async function deleteFaceCheckCapture(req, res) {
     if (!isFaceCheckFeatureEnabled()) {
       return res.status(403).json({ message: 'Face check photos are disabled.' });
     }
-    if (!isCeoRole(req.user?.role)) {
-      return res.status(403).json({ message: 'Only the CEO can delete face check photos.' });
+    if (!isCeoOrManagerRole(req.user?.role)) {
+      return res.status(403).json({ message: 'Only the CEO or a manager can delete face check photos.' });
     }
     const captureId = Number(req.params.captureId);
     if (!Number.isFinite(captureId) || captureId <= 0) {
@@ -2225,7 +2227,7 @@ async function adminEmployeeDays(req, res) {
     if (userBreaksEnabled(target)) {
       history.days = await attachBreakSummaries(target.id, history.days || []);
     }
-    const ceoView = isCeoRole(req.user?.role);
+    const ceoView = isCeoOrManagerRole(req.user?.role);
     let days = ceoView
       ? await attachDayFaceChecks(target.id, month, history.days || [])
       : history.days || [];

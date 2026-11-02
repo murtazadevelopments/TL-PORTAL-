@@ -14,6 +14,23 @@ const { blockedLoginMessage } = require('../utils/accountStatus');
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
+/** Same shape as authController USER_AUTH_COLUMNS — keep in sync. */
+const USER_AUTH_COLUMNS = `
+  id, employee_id, username, name, email, contact_number,
+  address, cnic_number, cnic_front_url, cnic_back_url, cv_url, employment_form_url, profile_picture_url,
+  role, department, designation, status, branch, shift, salary,
+  education, last_job_status, employment_type, staff_kind, date_of_birth,
+  date_of_joining, date_joined, created_at, updated_at, is_active,
+  work_start_hour, work_end_hour,
+  bank_name, account_title, iban, account_number,
+  emergency_contact_name, emergency_contact_number,
+  reference_person AS reference_person_name,
+  failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
+  terminated_at, exit_remarks,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
+  password
+`;
+
 function signToken(user) {
   return jwt.sign(
     {
@@ -410,7 +427,7 @@ async function loginVerify(req, res) {
     }
 
     const { rows: users } = await pool.query(
-      `SELECT * FROM users WHERE lower(trim(username)) = $1 LIMIT 1`,
+      `SELECT ${USER_AUTH_COLUMNS} FROM users WHERE lower(trim(username)) = $1 LIMIT 1`,
       [username]
     );
     const user = users[0];
@@ -454,7 +471,7 @@ async function loginVerify(req, res) {
     const credentialId = assertion.id || assertion.rawId;
     const { rows: credRows } = await pool.query(
       `
-        SELECT *
+        SELECT id, user_id, credential_id, public_key, counter, transports
         FROM webauthn_credentials
         WHERE user_id = $1 AND credential_id = $2
         LIMIT 1

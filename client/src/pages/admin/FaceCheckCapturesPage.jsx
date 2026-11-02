@@ -3,7 +3,7 @@ import { Link, Navigate } from 'react-router';
 import api from '../../api/client';
 import PhotoLightbox from '../../components/PhotoLightbox';
 import { useAuthUser } from '../../context/AuthUserContext';
-import { isCeo } from '../../utils/permissions';
+import { canUseFaceCheck } from '../../utils/permissions';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import './AttendanceAdminPage.css';
 
@@ -82,7 +82,7 @@ export function FaceCheckShot({ captureId, cacheKey, name, onOpen }) {
 
 export default function FaceCheckCapturesPage() {
   const { user, loading: authLoading } = useAuthUser();
-  const ceo = isCeo(user?.role);
+  const canReview = canUseFaceCheck(user?.role);
   const [date, setDate] = useState('');
   const [search, setSearch] = useState('');
   const [applied, setApplied] = useState({ date: '', search: '' });
@@ -111,10 +111,10 @@ export default function FaceCheckCapturesPage() {
   }, []);
 
   useEffect(() => {
-    if (!ceo) return undefined;
+    if (!canReview) return undefined;
     load(applied);
     return undefined;
-  }, [ceo, applied, load]);
+  }, [canReview, applied, load]);
 
   async function deleteCapture(row) {
     const label = row.name || row.employee_id || 'this photo';
@@ -140,7 +140,7 @@ export default function FaceCheckCapturesPage() {
   }
 
   if (authLoading) return null;
-  if (!ceo) return <Navigate to="/dashboard" replace />;
+  if (!canReview) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="admin-page page-panel attendance-admin face-check-page">

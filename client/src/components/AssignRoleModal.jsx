@@ -390,8 +390,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
           <div>
             <h2>Assign Role</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Choose an employee and role. Manager has full access except Face check photos and Sales
-              Targets (CEO only).
+              Choose an employee and role. Manager has full access except Sales Targets (CEO only).
             </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
@@ -470,7 +469,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
               <fieldset className="assign-step">
                 <legend>3. Manager access</legend>
                 <p className="muted" style={{ margin: 0 }}>
-                  Managers can use every admin feature except Face check photos and Sales Targets.
+                  Managers can use every admin feature except Sales Targets.
                   Those stay CEO-only and will not appear in their menu.
                 </p>
               </fieldset>

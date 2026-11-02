@@ -6,7 +6,7 @@ const SHIFT_SELECT = `id, name, start_time, late_after, absent_after, created_by
 
 let shiftCatalog = null;
 let shiftCatalogAt = 0;
-const SHIFT_CACHE_MS = 30_000;
+const SHIFT_CACHE_MS = 120_000;
 
 function invalidateShiftCache() {
   shiftCatalog = null;
@@ -74,11 +74,14 @@ function parseShiftBody(body) {
 
 async function listShifts(req, res) {
   try {
-    await ensureOnsiteAttendanceSchema();
-    const { rows } = await pool.query(
-      `SELECT ${SHIFT_SELECT} FROM shifts ORDER BY start_time ASC, name ASC`
-    );
-    return res.json(rows.map(serializeShift));
+    const map = await loadShiftCatalog();
+    const rows = [...map.values()].sort((a, b) => {
+      const ta = String(a.start_time || '');
+      const tb = String(b.start_time || '');
+      if (ta !== tb) return ta.localeCompare(tb);
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    return res.json(rows);
   } catch (err) {
     console.error('listShifts error:', err);
     return res.status(500).json({ message: 'Server error fetching shifts.' });

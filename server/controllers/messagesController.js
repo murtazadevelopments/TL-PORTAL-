@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fsp = require('fs/promises');
 const pool = require('../config/db');
 const { sendEmailSafe } = require('../services/email');
 const { writeAuditLog } = require('../utils/auditLog');
@@ -423,7 +424,9 @@ async function sendAdminMessage(req, res) {
       imageBuffer = req.file.buffer;
       try {
         const abs = absoluteFromRelative(imagePath);
-        if (abs) imageBuffer = fs.readFileSync(abs);
+        if (abs && (await fsp.stat(abs).then((s) => s.isFile()).catch(() => false))) {
+          imageBuffer = await fsp.readFile(abs);
+        }
       } catch {
         /* use original buffer */
       }

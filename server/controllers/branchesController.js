@@ -4,10 +4,17 @@ const { ensureOnsiteAttendanceSchema } = require('../utils/onsiteAttendanceSchem
 const { isCeoRole, isManagerRole } = require('../middleware/permissions');
 const { parseOfficeIps, formatOfficeIps, looksLikeOfficeNetworkEntry, normalizeOfficeNetworkEntry } = require('../utils/requestMeta');
 const { parseCoordinate } = require('../utils/geo');
+const { refDataCache } = require('../utils/ttlCache');
 
 const BRANCH_SELECT = `id, name, ip_address, latitude, longitude, radius_meters, created_by, created_at`;
 const MAX_OFFICE_IPS = 20;
 const DEFAULT_RADIUS_METERS = 150;
+const BRANCHES_CACHE_KEY = 'branches:rows';
+const BRANCHES_TTL_MS = 120_000;
+
+function invalidateBranchesCache() {
+  refDataCache.invalidate('branches');
+}
 
 function toFiniteNumber(value) {
   if (value == null || value === '') return null;
@@ -131,18 +138,22 @@ function canEditBranchIp(req) {
 async function listBranches(req, res) {
   try {
     await ensureOnsiteAttendanceSchema();
-    const { rows } = await pool.query(
-      `
-        SELECT ${BRANCH_SELECT}
-        FROM branches
-        ORDER BY name ASC
-      `
+    const rows = await refDataCache.getOrSet(
+      BRANCHES_CACHE_KEY,
+      async () => {
+        const { rows: dbRows } = await pool.query(
+          `
+            SELECT ${BRANCH_SELECT}
+            FROM branches
+            ORDER BY name ASC
+          `
+        );
+        return dbRows;
+      },
+      BRANCHES_TTL_MS
     );
-    const out = [];
-    for (const row of rows) {
-      out.push(serializeBranch(row, canEditBranchIp(req)));
-    }
-    return res.json(out);
+    const ceo = canEditBranchIp(req);
+    return res.json(rows.map((row) => serializeBranch(row, ceo)));
   } catch (err) {
     console.error('listBranches error:', err);
     return res.status(500).json({ message: 'Server error fetching branches.' });
@@ -181,6 +192,7 @@ async function createBranch(req, res) {
       [name, req.user?.id ?? null, parsed.stored, geo.latitude, geo.longitude, geo.radius_meters]
     );
 
+    invalidateBranchesCache();
     return res.status(201).json(serializeBranch(rows[0], ceo));
   } catch (err) {
     if (err.code === '23505') {
@@ -252,6 +264,7 @@ async function updateBranch(req, res) {
         : [id, parsed.stored, geo.latitude, geo.longitude, geo.radius_meters]
     );
 
+    invalidateBranchesCache();
     return res.json(serializeBranch(rows[0], true));
   } catch (err) {
     console.error('updateBranch error:', err);
@@ -283,6 +296,7 @@ async function deleteBranch(req, res) {
       return res.status(404).json({ message: 'Branch not found.' });
     }
 
+    invalidateBranchesCache();
     return res.json({
       message: `Branch “${rows[0].name}” deleted.`,
       branch: rows[0],

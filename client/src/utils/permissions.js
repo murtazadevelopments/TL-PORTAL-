@@ -25,10 +25,10 @@ export function isCeoOrManager(role) {
 /** Flip to true when face check photos should show again. */
 export const FACE_CHECK_FEATURE_ENABLED = false;
 
-/** Face-check capture, photos, and per-day review — CEO only. */
+/** Face-check capture, photos, and per-day review — CEO or manager. */
 export function canUseFaceCheck(role) {
   if (!FACE_CHECK_FEATURE_ENABLED) return false;
-  return isCeo(role);
+  return isCeoOrManager(role);
 }
 
 /** Administration: assign roles, login logs, export logs. */

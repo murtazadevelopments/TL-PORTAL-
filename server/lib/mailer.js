@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { withOutboundTimeout } = require('../utils/hangDiagnostics');
 
 let transporter;
 let loggedVerify = false;
@@ -178,7 +179,7 @@ async function sendEmailQueued(mail, to) {
   let lastError;
   for (let attempt = 1; attempt <= RATE_LIMIT_RETRIES; attempt += 1) {
     try {
-      const info = await getTransporter().sendMail(mail);
+      const info = await withOutboundTimeout('brevo', () => getTransporter().sendMail(mail));
       bumpDailyCount();
       console.log('[email] sent', {
         to,

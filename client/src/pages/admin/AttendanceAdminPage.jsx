@@ -9,7 +9,6 @@ import {
   canViewOnsiteTeamAttendance,
   canViewRemoteTeamAttendance,
   canViewFullAttendanceHistory,
-  isCeo,
   isCeoOrManager,
 } from '../../utils/permissions';
 import ShiftHoursDetail from '../../components/ShiftHoursDetail';
@@ -430,7 +429,6 @@ function AttendancePhoto({ row, onOpen }) {
 
 export default function AttendanceAdminPage({ mode: forcedMode = 'onsite' }) {
   const { user, permissions, loading: authLoading } = useAuthUser();
-  const ceo = isCeo(user?.role);
   const fullDays = canViewFullAttendanceHistory(user?.role, permissions);
   const canDeleteAttendance = isCeoOrManager(user?.role);
   const canRemote = canViewRemoteTeamAttendance(user?.role, permissions);

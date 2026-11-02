@@ -3,6 +3,7 @@
  */
 
 const ipaddr = require('ipaddr.js');
+const { withOutboundTimeout } = require('./hangDiagnostics');
 
 const PRIVATE_V4 =
   /^(127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|169\.254\.\d+\.\d+|0\.0\.0\.0)$/;
@@ -223,23 +224,25 @@ function normalizeOfficeNetworkEntry(value) {
 }
 
 async function fetchJson(url, timeoutMs, extraHeaders = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'TexturedLabPortal/1.0 (login-geo)',
-        ...extraHeaders,
+    return await withOutboundTimeout(
+      'geo',
+      async (signal) => {
+        const res = await fetch(url, {
+          signal,
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'TexturedLabPortal/1.0 (login-geo)',
+            ...extraHeaders,
+          },
+        });
+        if (!res.ok) return null;
+        return await res.json();
       },
-    });
-    if (!res.ok) return null;
-    return await res.json();
+      timeoutMs
+    );
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

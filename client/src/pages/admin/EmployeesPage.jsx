@@ -612,6 +612,7 @@ function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [statusTab, setStatusTab] = useState(() => {
     return parseEmployeeStatusTab(searchParams.get('status'));
@@ -683,6 +684,11 @@ function EmployeesPage() {
     const id = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(id);
+  }, [search]);
 
   useEffect(() => {
     let active = true;
@@ -1342,7 +1348,7 @@ function EmployeesPage() {
   );
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     const source =
       statusTab === 'subordinate-staff'
         ? lowerStaff
@@ -1429,7 +1435,7 @@ function EmployeesPage() {
           (contactDigits.includes(qDigits) || cnicDigits.includes(qDigits)))
       );
     });
-  }, [portalEmployees, lowerStaff, closedLowerStaff, search, filters, statusTab]);
+  }, [portalEmployees, lowerStaff, closedLowerStaff, debouncedSearch, filters, statusTab]);
 
   const selectedListRow = useMemo(
     () => employees.find((e) => String(e.id) === String(selectedId)) || null,

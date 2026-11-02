@@ -143,7 +143,7 @@ export default function DeactivatedEmployeesPage() {
         <div>
           <h1>Deactivated</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Restore an employee to the active list, or permanently delete them (CEO only).
+            Restore an employee to the active list, or permanently delete them (CEO or manager).
           </p>
         </div>
         <button type="button" className="btn btn-ghost" disabled={loading || busy} onClick={load}>

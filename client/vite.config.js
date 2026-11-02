@@ -2,6 +2,7 @@ import { createRequire } from 'module';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
 
 const require = createRequire(import.meta.url);
 const { getBuildMeta } = require('../scripts/build-meta.js');
@@ -9,6 +10,7 @@ const { getBuildMeta } = require('../scripts/build-meta.js');
 const buildMeta = getBuildMeta();
 /** Changes every build so Workbox cache names + SW filename invalidate old PWAs. */
 const SW_BUILD_ID = buildMeta.swBuildId;
+const analyzeBundle = process.env.ANALYZE === '1';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -19,6 +21,13 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    analyzeBundle &&
+      visualizer({
+        filename: 'dist/stats.html',
+        gzipSize: true,
+        brotliSize: true,
+        open: false,
+      }),
     VitePWA({
       registerType: 'autoUpdate',
       // Inline into index.html so CDN cannot serve a stale registerSW.js
@@ -133,7 +142,7 @@ export default defineConfig({
         enabled: false,
       },
     }),
-  ],
+  ].filter(Boolean),
   build: {
     rollupOptions: {
       output: {

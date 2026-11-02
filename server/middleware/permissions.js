@@ -85,16 +85,9 @@ function requireRole(...allowedRoles) {
         return next();
       }
 
-      // Manager matches CEO except CEO-only routes (face check, sales targets).
+      // Manager matches CEO for all routes. Sales Targets stays CEO-only via requireCeoExclusive.
       if (isManagerRole(role)) {
         attachManagerAccess(req);
-        const ceoOnly = allowed.length === 1 && allowed[0] === 'ceo';
-        if (ceoOnly) {
-          return res.status(403).json({
-            error: 'Forbidden: insufficient permissions',
-            message: 'This action is available to the CEO only.',
-          });
-        }
         return next();
       }
 
@@ -287,10 +280,54 @@ function requireCeoOrAnyPermission(...keys) {
   };
 }
 
+/**
+ * True CEO-only gate (managers are denied). Use for Sales Targets board only.
+ * Prefer this over requireRole('ceo') when managers should not inherit the route.
+ */
+function requireCeoExclusive(message = 'This action is available to the CEO only.') {
+  return async function requireCeoExclusiveMiddleware(req, res, next) {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
+      }
+      const { rows } = await pool.query(
+        'SELECT role, is_active, blocked_at, blocked_reason, resigned_at, terminated_at, status FROM users WHERE id = $1 LIMIT 1',
+        [req.user.id]
+      );
+      const row = rows[0];
+      if (!row || row.is_active === false || row.blocked_at || isClosedAccount(row)) {
+        const blocked = row?.blocked_at || isClosedAccount(row) ? blockedLoginMessage(row) : null;
+        return res.status(403).json({
+          error: 'Forbidden: insufficient permissions',
+          message: blocked
+            ? blocked.message
+            : 'This account has been deactivated. Contact an administrator.',
+          code: blocked ? blocked.code : 'ACCOUNT_DEACTIVATED',
+        });
+      }
+      const role = normalizeRole(row.role);
+      req.user.role = role;
+      if (!isCeoRole(role)) {
+        return res.status(403).json({
+          error: 'Forbidden: insufficient permissions',
+          message,
+        });
+      }
+      req.user.permissions = ['*'];
+      req.user.permissionScopes = {};
+      return next();
+    } catch (err) {
+      console.error('requireCeoExclusive error:', err);
+      return res.status(500).json({ message: 'Server error verifying permissions.' });
+    }
+  };
+}
+
 module.exports = {
   requireRole,
   requirePermission,
   requireCeoOrAnyPermission,
+  requireCeoExclusive,
   loadAdminPermissions,
   loadAdminPermissionAccess,
   normalizeRole,

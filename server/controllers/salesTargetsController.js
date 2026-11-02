@@ -160,6 +160,8 @@ async function allocateDailyAchieved(userId, period, achieved, updatedBy) {
   const rows = await listDailyRows(userId, period);
   if (!rows.length) return;
   let left = Math.round(Number(achieved || 0) * 100);
+  const dayNumbers = [];
+  const amounts = [];
   for (let i = 0; i < rows.length; i += 1) {
     const cap = Math.round(Number(rows[i].target_amount || 0) * 100);
     let take = Math.min(Math.max(0, left), cap);
@@ -168,15 +170,24 @@ async function allocateDailyAchieved(userId, period, achieved, updatedBy) {
       take += left;
       left = 0;
     }
-    await pool.query(
-      `
-        UPDATE sales_agent_daily_targets
-        SET achieved_amount = $4, updated_by = $5, updated_at = NOW()
-        WHERE user_id = $1 AND period = $2 AND day_number = $3
-      `,
-      [userId, period, rows[i].day_number, take / 100, updatedBy]
-    );
+    dayNumbers.push(rows[i].day_number);
+    amounts.push(take / 100);
   }
+  // One UPDATE instead of N round-trips (same day amounts as before).
+  await pool.query(
+    `
+      UPDATE sales_agent_daily_targets AS t
+      SET
+        achieved_amount = v.amount,
+        updated_by = $4,
+        updated_at = NOW()
+      FROM UNNEST($3::int[], $5::numeric[]) AS v(day_number, amount)
+      WHERE t.user_id = $1
+        AND t.period = $2
+        AND t.day_number = v.day_number
+    `,
+    [userId, period, dayNumbers, updatedBy, amounts]
+  );
 }
 
 async function syncMonthlyFromDaily(userId, period, updatedBy) {
