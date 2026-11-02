@@ -72,7 +72,7 @@ const LAST_JOB_STATUSES = new Set([
 ]);
 
 const LIST_COLUMNS = `
-  id, employee_id, username, name, email, contact_number,
+  id, employee_id, username, name, email, contact_number, cnic_number,
   department, designation, status, branch, shift, salary, date_of_joining,
   education, last_job_status, employment_type, staff_kind, profile_picture_url, created_at, is_active,
   failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,

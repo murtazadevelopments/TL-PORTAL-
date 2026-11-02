@@ -1354,10 +1354,18 @@ function EmployeesPage() {
       if (statusTab === 'subordinate-staff') {
         if (!q) return true;
         const extra = `${e.staff_extra_1_label || ''} ${e.staff_extra_1_text || ''} ${e.staff_extra_2_label || ''} ${e.staff_extra_2_text || ''}`;
+        const qDigits = q.replace(/\D/g, '');
+        const contactDigits = String(e.contact_number || '').replace(/\D/g, '');
+        const cnicDigits = String(e.cnic_number || '').replace(/\D/g, '');
         return (
           fullName(e).toLowerCase().includes(q) ||
+          String(e.email || '').toLowerCase().includes(q) ||
+          String(e.contact_number || '').toLowerCase().includes(q) ||
+          String(e.cnic_number || '').toLowerCase().includes(q) ||
           String(e.branch || '').toLowerCase().includes(q) ||
-          extra.toLowerCase().includes(q)
+          extra.toLowerCase().includes(q) ||
+          (qDigits.length >= 3 &&
+            (contactDigits.includes(qDigits) || cnicDigits.includes(qDigits)))
         );
       }
       if (statusTab === 'active' && e.status !== 'active') return false;
@@ -1404,7 +1412,22 @@ function EmployeesPage() {
       const name = fullName(e).toLowerCase();
       const username = String(e.username || '').toLowerCase();
       const empId = String(e.employee_id || '').toLowerCase();
-      return name.includes(q) || username.includes(q) || empId.includes(q);
+      const email = String(e.email || '').toLowerCase();
+      const contact = String(e.contact_number || '').toLowerCase();
+      const cnic = String(e.cnic_number || '').toLowerCase();
+      const qDigits = q.replace(/\D/g, '');
+      const contactDigits = String(e.contact_number || '').replace(/\D/g, '');
+      const cnicDigits = String(e.cnic_number || '').replace(/\D/g, '');
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        contact.includes(q) ||
+        cnic.includes(q) ||
+        username.includes(q) ||
+        empId.includes(q) ||
+        (qDigits.length >= 3 &&
+          (contactDigits.includes(qDigits) || cnicDigits.includes(qDigits)))
+      );
     });
   }, [portalEmployees, lowerStaff, closedLowerStaff, search, filters, statusTab]);
 
@@ -2161,7 +2184,7 @@ function EmployeesPage() {
           <input
             className="admin-search"
             type="search"
-            placeholder="Search by name, username, or employee ID…"
+            placeholder="Search by name, CNIC, contact number, or email…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
