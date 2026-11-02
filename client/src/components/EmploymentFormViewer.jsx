@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import PdfJsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 import api from '../api/client';
+import { useDocumentOverlay } from '../hooks/useDocumentOverlay';
+import RouteErrorBoundary from './RouteErrorBoundary';
 import './EmploymentFormViewer.css';
 
 let pdfWorkerPort;
@@ -40,12 +42,15 @@ function touchDistance(a, b) {
   return Math.hypot(dx, dy);
 }
 
-export default function EmploymentFormViewer({ open, src, title, onClose }) {
+function EmploymentFormViewerInner({ open, src, title, onClose }) {
+  const { requestClose } = useDocumentOverlay(open, onClose);
   const stageRef = useRef(null);
   const canvasRef = useRef(null);
   const pdfRef = useRef(null);
   const renderTaskRef = useRef(null);
   const pinchRef = useRef(null);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
@@ -69,7 +74,9 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
     }
 
     await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (!openRef.current || pdfRef.current !== pdf) return;
     const pdfPage = await pdf.getPage(page);
+    if (!openRef.current || pdfRef.current !== pdf || !canvasRef.current) return;
     const unscaled = pdfPage.getViewport({ scale: 1 });
     const availW = Math.max(120, stage.clientWidth - 24);
     const availH = Math.max(120, stage.clientHeight - 24);
@@ -139,8 +146,13 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
         }
         renderTaskRef.current = null;
       }
-      pdfRef.current?.destroy();
+      const pdf = pdfRef.current;
       pdfRef.current = null;
+      if (pdf) {
+        Promise.resolve()
+          .then(() => pdf.destroy())
+          .catch(() => {});
+      }
     };
   }, [open, src]);
 
@@ -151,7 +163,11 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
       try {
         await paint();
       } catch (err) {
-        if (!cancelled && err?.name !== 'RenderingCancelledException') {
+        if (
+          !cancelled &&
+          openRef.current &&
+          err?.name !== 'RenderingCancelledException'
+        ) {
           setStatus('error');
           setError('Could not display this page.');
         }
@@ -183,7 +199,6 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     function onKey(e) {
-      if (e.key === 'Escape') onClose?.();
       if (e.key === 'ArrowRight') {
         setZoom(1);
         setPage((n) => Math.min(pageCount || n, n + 1));
@@ -196,13 +211,8 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
       if (e.key === '-' || e.key === '_') setZoom((z) => clampZoom(z - 0.25));
     }
     window.addEventListener('keydown', onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open, onClose, pageCount]);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, pageCount]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -250,7 +260,7 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
             </p>
           )}
         </div>
-        <button type="button" className="ef-viewer-close" onClick={onClose} aria-label="Close">
+        <button type="button" className="ef-viewer-close" onClick={requestClose} aria-label="Close">
           Close
         </button>
       </header>
@@ -322,5 +332,16 @@ export default function EmploymentFormViewer({ open, src, title, onClose }) {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function EmploymentFormViewer(props) {
+  return (
+    <RouteErrorBoundary
+      resetKey={props.open ? props.src || 'open' : 'closed'}
+      onError={props.onClose}
+    >
+      <EmploymentFormViewerInner {...props} />
+    </RouteErrorBoundary>
   );
 }

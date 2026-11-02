@@ -22,6 +22,7 @@ import HardRefreshButton from '../components/HardRefreshButton';
 import InstallAppButton from '../components/InstallAppButton';
 import PushEnableBanner from '../components/PushEnableBanner';
 import { SalesLeaveGuardProvider, useSalesLeaveGuard } from '../context/SalesLeaveGuard';
+import RouteErrorBoundary from '../components/RouteErrorBoundary';
 import './AppShell.css';
 
 function ShellInner() {
@@ -234,6 +235,10 @@ function ShellInner() {
           aria-label="Go back"
           onClick={() => {
             if (!trySalesLeave({ type: 'back' })) return;
+            if (window.history.state?.tlDocOverlay) {
+              window.history.back();
+              return;
+            }
             const idx = window.history.state?.idx;
             if (typeof idx === 'number' && idx > 0) {
               navigate(-1);
@@ -396,7 +401,9 @@ function ShellInner() {
             </div>
           </div>
         )}
-        <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
+        <RouteErrorBoundary resetKey={`${location.pathname}${location.search}`}>
+          <Outlet context={{ refreshUnreadMessages: refreshUnread }} />
+        </RouteErrorBoundary>
       </main>
       {showBirthday && (
         <BirthdayCelebration

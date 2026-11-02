@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api/client';
+import { useDocumentOverlay } from '../hooks/useDocumentOverlay';
+import RouteErrorBoundary from './RouteErrorBoundary';
 import './CnicProtectedViewer.css';
 
 function cnicSideLabel(docType) {
@@ -35,7 +37,7 @@ function drawWatermark(ctx, width, height, lines) {
   ctx.restore();
 }
 
-export default function CnicProtectedViewer({
+function CnicProtectedViewerInner({
   open,
   userId,
   docType,
@@ -44,6 +46,7 @@ export default function CnicProtectedViewer({
   subjectLabel,
   onClose,
 }) {
+  const { requestClose } = useDocumentOverlay(open, onClose);
   const canvasRef = useRef(null);
   const bitmapRef = useRef(null);
   const restoreTimerRef = useRef(null);
@@ -178,10 +181,7 @@ export default function CnicProtectedViewer({
     }
 
     function onKeyDown(e) {
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
+      if (e.key === 'Escape') return;
       if (isCaptureChord(e)) {
         e.preventDefault();
         conceal();
@@ -219,7 +219,7 @@ export default function CnicProtectedViewer({
       window.removeEventListener('beforeprint', conceal);
       window.removeEventListener('afterprint', restore);
     };
-  }, [open, status, onClose, paint]);
+  }, [open, status, paint]);
 
   if (!open) return null;
 
@@ -227,7 +227,7 @@ export default function CnicProtectedViewer({
     <div
       className="cnic-viewer-backdrop"
       role="presentation"
-      onClick={onClose}
+      onClick={requestClose}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div
@@ -243,7 +243,7 @@ export default function CnicProtectedViewer({
             <h2>{title || sideLabel}</h2>
             <p>Screenshots restricted on CNIC front and back. This view is watermarked.</p>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={requestClose} aria-label="Close">
             ×
           </button>
         </header>
@@ -266,5 +266,16 @@ export default function CnicProtectedViewer({
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CnicProtectedViewer(props) {
+  return (
+    <RouteErrorBoundary
+      resetKey={props.open ? `${props.userId || ''}:${props.docType || ''}` : 'closed'}
+      onError={props.onClose}
+    >
+      <CnicProtectedViewerInner {...props} />
+    </RouteErrorBoundary>
   );
 }

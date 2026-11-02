@@ -1,15 +1,8 @@
-import { useEffect } from 'react';
+import { useDocumentOverlay } from '../hooks/useDocumentOverlay';
 import './PhotoLightbox.css';
 
 export default function PhotoLightbox({ open, src, alt = '', onClose }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    function onKey(e) {
-      if (e.key === 'Escape') onClose?.();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const { requestClose } = useDocumentOverlay(Boolean(open && src), onClose);
 
   if (!open || !src) return null;
 
@@ -19,9 +12,17 @@ export default function PhotoLightbox({ open, src, alt = '', onClose }) {
       role="dialog"
       aria-modal="true"
       aria-label="Profile picture"
-      onClick={onClose}
+      onClick={requestClose}
     >
-      <button type="button" className="photo-lightbox-close" onClick={onClose} aria-label="Close">
+      <button
+        type="button"
+        className="photo-lightbox-close"
+        onClick={(e) => {
+          e.stopPropagation();
+          requestClose();
+        }}
+        aria-label="Close"
+      >
         ×
       </button>
       <img
