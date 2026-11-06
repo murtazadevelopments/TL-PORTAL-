@@ -1,3 +1,4 @@
+const pool = require('../config/db');
 const {
   clientIp,
   clientUserAgent,
@@ -50,23 +51,27 @@ async function recordSuccessfulLogin(req, user) {
     const userAgent = clientUserAgent(req);
     const hints = hintsFromRequest(req);
     const device = describeDevice(userAgent, hints);
-    const geo = await geoFromLoginHints(req.body?.deviceHints, ip);
-    await recordLoginLog({
+    const geoPromise = geoFromLoginHints(req.body?.deviceHints, ip).catch((err) => {
+      console.warn('login geo failed:', err.message || err);
+      return { label: '', city: null, area: null, country: null, latitude: null, longitude: null, source: null };
+    });
+    const logPromise = recordLoginLog({
       userId: user.id,
       employeeId: user.employee_id,
       employeeName: user.name,
       username: user.username,
       ipAddress: ip,
-      location: geo.label,
+      location: null,
       userAgent,
       device,
-      city: geo.city,
-      area: geo.area,
-      country: geo.country,
-      latitude: geo.latitude,
-      longitude: geo.longitude,
-      locationSource: geo.source || (geo.latitude != null ? 'gps' : 'ip'),
+      city: null,
+      area: null,
+      country: null,
+      latitude: null,
+      longitude: null,
+      locationSource: null,
     });
+    const [geo, logRow] = await Promise.all([geoPromise, logPromise]);
     const loginMeta = {
       ip,
       userAgent,
@@ -74,9 +79,27 @@ async function recordSuccessfulLogin(req, user) {
       device,
       geo,
     };
-    // Email and mobile push are independent so a failed mailbox still alerts
-    // on a phone that has notifications enabled.
     await Promise.all([
+      logRow?.id
+        ? pool.query(
+            `
+              UPDATE login_logs
+              SET location = $2, city = $3, area = $4, country = $5,
+                  latitude = $6, longitude = $7, location_source = $8
+              WHERE id = $1
+            `,
+            [
+              logRow.id,
+              geo.label || null,
+              geo.city || null,
+              geo.area || null,
+              geo.country || null,
+              geo.latitude ?? null,
+              geo.longitude ?? null,
+              geo.source || (geo.latitude != null ? 'gps' : 'ip'),
+            ]
+          )
+        : Promise.resolve(),
       notifyUserLogin(user, loginMeta).catch((err) => {
         console.warn('login email failed:', err.message || err);
       }),

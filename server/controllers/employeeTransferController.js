@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { invalidateRequestUser } = require('../utils/requestUserCache');
 const { writeAuditLog } = require('../utils/auditLog');
 const { employeeMatchesScope, normalizeScope } = require('../utils/employeeScope');
 const { loadAdminPermissionAccess } = require('../middleware/permissions');
@@ -194,6 +195,7 @@ async function transferEmployee(req, res) {
       nextValue,
       targetId,
     ]);
+    invalidateRequestUser(targetId);
 
     const { rows: historyRows } = await pool.query(
       `

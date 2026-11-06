@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import { useAuthUser } from '../../context/AuthUserContext';
 import TeamFilterSelect from '../../components/TeamFilterSelect';
 import { canAccessAdmin, canViewTeamAttendance } from '../../utils/permissions';
 import { matchesTeamFilter } from '../../utils/teamNames';
@@ -28,6 +29,7 @@ function karachiParts(iso) {
 
 export default function AttendanceDashboard() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuthUser();
   const [checking, setChecking] = useState(true);
   const [logs, setLogs] = useState([]);
   const [error, setError] = useState('');
@@ -50,10 +52,15 @@ export default function AttendanceDashboard() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
     async function verify() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
+        if (!data) {
+          if (active) navigate('/', { replace: true });
+          return;
+        }
         if (!active) return;
         if (!canAccessAdmin(data.role) || !canViewTeamAttendance(data.role, data.permissions)) {
           navigate('/dashboard', { replace: true });
@@ -70,7 +77,7 @@ export default function AttendanceDashboard() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [navigate, authLoading, authUser]);
 
   useEffect(() => {
     if (checking) return undefined;

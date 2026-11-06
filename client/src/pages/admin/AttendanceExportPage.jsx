@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { useFlashSuccess } from '../../utils/successPopup';
 import { describeEmployeeScope } from '../../utils/employeeScope';
@@ -88,6 +89,7 @@ async function downloadBlob(format, filters) {
 
 export default function AttendanceExportPage() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuthUser();
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
   const [checking, setChecking] = useState(true);
@@ -171,10 +173,15 @@ export default function AttendanceExportPage() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
     async function verify() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
+        if (!data) {
+          if (active) navigate('/', { replace: true });
+          return;
+        }
         if (!active) return;
         if (
           !canAccessAdmin(data.role) ||
@@ -197,7 +204,7 @@ export default function AttendanceExportPage() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [navigate, authLoading, authUser]);
 
   useEffect(() => {
     if (!checking && canExport) loadOptions();

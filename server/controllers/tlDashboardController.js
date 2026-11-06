@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const { invalidateRequestUser } = require('../utils/requestUserCache');
 const { notifyTPinOtp, notifyTlViewPinOtp } = require('../services/notifications');
 const {
   isCeoOrManagerRole,
@@ -319,6 +320,7 @@ async function setTPin(req, res) {
       `,
       [hash, req.user.id]
     );
+    invalidateRequestUser(req.user.id);
 
     return res.json({ message: 'T-Pin saved.', tPinConfigured: true });
   } catch (err) {
@@ -973,6 +975,7 @@ async function setViewPin(req, res) {
       `,
       [hash, req.user.id]
     );
+    invalidateRequestUser(req.user.id);
 
     return res.json({ message: 'Dashboard PIN saved.', viewPinConfigured: true });
   } catch (err) {

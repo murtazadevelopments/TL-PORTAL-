@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { startRegistration } from '@simplewebauthn/browser';
 import api from '../../api/client';
+import { useAuthUser } from '../../context/AuthUserContext';
 import PasswordInput from '../../components/PasswordInput';
 
 export default function AccountSecurity() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuthUser();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,10 +34,15 @@ export default function AccountSecurity() {
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
     async function load() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
+        if (!data) {
+          if (active) navigate('/', { replace: true });
+          return;
+        }
         if (!active) return;
         setProfile(data);
         if (webauthnSupported) {
@@ -62,7 +69,7 @@ export default function AccountSecurity() {
     return () => {
       active = false;
     };
-  }, [navigate, webauthnSupported]);
+  }, [navigate, webauthnSupported, authLoading, authUser]);
 
   async function refreshPasskeys() {
     setPasskeyLoading(true);

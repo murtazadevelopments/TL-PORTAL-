@@ -2,9 +2,11 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
+import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
+import LazyAuthImage from '../../components/LazyAuthImage';
 import ComposeMessageModal from '../../components/ComposeMessageModal';
 import UploadEmploymentFormModal from '../../components/UploadEmploymentFormModal';
 import EmploymentFormViewer from '../../components/EmploymentFormViewer';
@@ -602,6 +604,7 @@ function TransferHistoryList({ userId, refreshKey = 0 }) {
 
 function EmployeesPage() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuthUser();
   const [searchParams, setSearchParams] = useSearchParams();
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
@@ -692,12 +695,17 @@ function EmployeesPage() {
   }, [search]);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
 
     async function verifyAdmin() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
         if (!active) return;
+        if (!data) {
+          navigate('/', { replace: true });
+          return;
+        }
         if (!canAccessAdmin(data.role)) {
           navigate('/dashboard', { replace: true });
           return;
@@ -756,7 +764,7 @@ function EmployeesPage() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [navigate, authLoading, authUser]);
 
   async function loadEmployees() {
     setLoading(true);
@@ -2703,12 +2711,10 @@ function EmployeesPage() {
                               });
                             }}
                           >
-                            <img
+                            <LazyAuthImage
                               className="thumb"
-                              src={withAuthDocumentUrl(
-                                row.profile_picture_url,
-                                row.updated_at || row.id
-                              )}
+                              url={row.profile_picture_url}
+                              cacheKey={row.updated_at || row.id}
                               alt=""
                             />
                           </button>

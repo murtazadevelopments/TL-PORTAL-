@@ -20,6 +20,7 @@ const {
 const { ensureUsersTextColumns } = require('../utils/ensureUsersTextColumns');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { blockedLoginMessage, invalidateAccountStatus } = require('../utils/accountStatus');
+const { invalidateRequestUser } = require('../utils/requestUserCache');
 const {
   findIdentityConflict,
   preferOpenAccounts,
@@ -610,6 +611,7 @@ async function resetPassword(req, res) {
         hashedPassword,
         row.user_id,
       ]);
+      invalidateRequestUser(row.user_id);
       await pool.query(
         `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
         [row.id]
@@ -673,6 +675,7 @@ async function changePassword(req, res) {
       hashedPassword,
       user.id,
     ]);
+    invalidateRequestUser(user.id);
 
     return res.json({ message: 'Password changed successfully.' });
   } catch (err) {

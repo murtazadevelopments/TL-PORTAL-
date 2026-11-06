@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { invalidateRequestUser, loadAuthUser } = require('./requestUserCache');
 
 const ACCOUNT_CODES = {
   DEACTIVATED: 'ACCOUNT_DEACTIVATED',
@@ -10,9 +11,6 @@ const ACCOUNT_CODES = {
 
 const RESIGNED_REASON = 'resigned';
 const TERMINATED_REASON = 'terminated';
-const STATUS_CACHE_TTL_MS = 45 * 1000;
-
-const statusCache = new Map();
 let blockedColumnReady = false;
 let ensurePromise = null;
 
@@ -53,14 +51,8 @@ function blockedLoginMessage(row) {
   };
 }
 
-function cacheKey(userId) {
-  return Number(userId);
-}
-
 function invalidateAccountStatus(userId) {
-  const key = cacheKey(userId);
-  if (!Number.isFinite(key)) return;
-  statusCache.delete(key);
+  invalidateRequestUser(userId);
 }
 
 async function ensureBlockedColumn() {
@@ -145,24 +137,7 @@ function denialForAccount(row) {
 }
 
 async function loadAccountStatus(userId) {
-  const key = cacheKey(userId);
-  const hit = statusCache.get(key);
-  if (hit && hit.expires > Date.now()) {
-    return hit.row;
-  }
-
-  const { rows } = await pool.query(
-    `
-      SELECT id, is_active, locked_at, blocked_at, blocked_reason, resigned_at, terminated_at, status
-      FROM users
-      WHERE id = $1
-      LIMIT 1
-    `,
-    [userId]
-  );
-  const row = rows[0] || null;
-  statusCache.set(key, { row, expires: Date.now() + STATUS_CACHE_TTL_MS });
-  return row;
+  return loadAuthUser(userId);
 }
 
 /**

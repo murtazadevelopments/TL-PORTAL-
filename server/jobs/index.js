@@ -67,7 +67,7 @@ function startScheduledJobs() {
     cron.schedule(
       birthdayCatchUpExpression,
       () => {
-        runBirthdayEmailsLocked({ catchUp: true }).catch((err) => {
+        runBirthdayEmailsLocked(new Date(), { catchUp: true }).catch((err) => {
           console.error('[birthday-job] catch-up failed:', err.message || err);
         });
       },
@@ -76,7 +76,7 @@ function startScheduledJobs() {
     console.log(`[cron] Birthday catch-up scheduled: "${birthdayCatchUpExpression}" (${tz})`);
   }
 
-  runBirthdayEmailsLocked({ catchUp: true }).catch((err) => {
+  runBirthdayEmailsLocked(new Date(), { catchUp: true }).catch((err) => {
     console.error('[birthday-job] startup catch-up failed:', err.message || err);
   });
 

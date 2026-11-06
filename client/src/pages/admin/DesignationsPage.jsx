@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
+import { useAuthUser } from '../../context/AuthUserContext';
 import { canAccessAdmin, hasPermission } from '../../utils/permissions';
 import { useFlashSuccess } from '../../utils/successPopup';
 import './AdminDashboard.css';
 
 export default function DesignationsPage() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuthUser();
   const [role, setRole] = useState(null);
   const [permissions, setPermissions] = useState([]);
   const [checking, setChecking] = useState(true);
@@ -39,10 +41,15 @@ export default function DesignationsPage() {
   }, []);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
     async function verify() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
+        if (!data) {
+          if (active) navigate('/', { replace: true });
+          return;
+        }
         if (!active) return;
         if (!canAccessAdmin(data.role)) {
           navigate('/dashboard', { replace: true });
@@ -62,7 +69,7 @@ export default function DesignationsPage() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [navigate, authLoading, authUser]);
 
   useEffect(() => {
     if (!checking && role) load();

@@ -70,8 +70,8 @@ function formFromProfile(data) {
 
 export default function AccountProfile() {
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading, refreshUser } = useAuthUser();
   const { setBusy } = useInactivityGuard();
-  const { refreshUser } = useAuthUser();
   const editSectionRef = useRef(null);
   const [profile, setProfile] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
@@ -86,10 +86,15 @@ export default function AccountProfile() {
   const [showIncompleteBanner, setShowIncompleteBanner] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let active = true;
     async function loadProfile() {
       try {
-        const { data } = await api.get('/api/users/me');
+        const data = authUser;
+        if (!data) {
+          if (active) navigate('/', { replace: true });
+          return;
+        }
         if (!active) return;
         setProfile(data);
         setAvatarBroken(false);
@@ -113,7 +118,7 @@ export default function AccountProfile() {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [navigate, authLoading, authUser]);
 
   const missingEmployeeFields = useMemo(
     () => (profile ? missingEmployeePortalFields(profile) : []),

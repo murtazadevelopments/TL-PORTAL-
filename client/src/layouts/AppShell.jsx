@@ -26,7 +26,7 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary';
 import './AppShell.css';
 
 function ShellInner() {
-  const { user, role, permissions, loading, logout, refreshUser } = useAuthUser();
+  const { user, role, permissions, loading, logout } = useAuthUser();
   const tlDashboardAccess =
     Boolean(user?.tl_dashboard_access) || isCeoOrManager(role) || isTeamLeader(role);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -143,12 +143,6 @@ function ShellInner() {
   }, [profileLocked, location.pathname, navigate, user]);
 
   useEffect(() => {
-    if (location.pathname === '/account') {
-      refreshUser?.();
-    }
-  }, [location.pathname, refreshUser]);
-
-  useEffect(() => {
     if (!user?.id) return undefined;
     // Stable dep: user.id only. Throttle defaults on — avoids re-POST / resubscribe loops.
     ensurePushSubscription({ silent: true });
@@ -168,20 +162,27 @@ function ShellInner() {
 
   useEffect(() => {
     if (!user) return undefined;
-    refreshUnread();
-    refreshUser?.();
-    const id = setInterval(() => {
+    let timer = 0;
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
       refreshUnread();
-      refreshUser?.();
-    }, 45_000);
-    return () => clearInterval(id);
-  }, [user, refreshUnread, refreshUser, location.pathname]);
+    };
+    tick();
+    timer = window.setInterval(tick, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user, refreshUnread]);
 
   useEffect(() => {
     if (!user || typeof navigator === 'undefined' || !navigator.serviceWorker) return undefined;
     const onMessage = (event) => {
       if (event.data?.type === 'PORTAL_PUSH') {
-        refreshUser?.();
         refreshUnread();
         setLiveNotice({
           title: event.data.title || 'New notification',
@@ -192,7 +193,7 @@ function ShellInner() {
     };
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
-  }, [user, refreshUser, refreshUnread]);
+  }, [user, refreshUnread]);
 
   useEffect(() => {
     document.body.classList.toggle('drawer-lock', drawerOpen);
