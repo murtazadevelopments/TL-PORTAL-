@@ -10,7 +10,13 @@ const {
 const { ensureSalesTargetsSchema } = require('../utils/ensureSalesTargetsSchema');
 const { ensureStaffKindColumn } = require('../utils/staffKind');
 const { ensureBlockedColumn } = require('../utils/accountStatus');
-const { employeeHasSalesAgentDashboard, isSalesRosterPerson, SALES_ROSTER_SQL } = require('../utils/salesTeams');
+const {
+  employeeHasSalesAgentDashboard,
+  isSalesRosterPerson,
+  isFrontPageSalesPerson,
+  SALES_ROSTER_SQL,
+  FRONT_PAGE_SALES_SQL,
+} = require('../utils/salesTeams');
 const { notifySalesPinOtp } = require('../services/notifications');
 
 function currentPeriod(tz = process.env.APP_TIMEZONE || 'Asia/Karachi') {

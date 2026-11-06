@@ -2,7 +2,6 @@ const pool = require('../config/db');
 const {
   assignablePermissionsCatalog,
   normalizePermissionKeys,
-  SALES_TARGETS_KEY,
 } = require('../constants/permissionsCatalog');
 const {
   normalizeScope,
@@ -159,9 +158,7 @@ async function assignRole(req, res) {
     let permissionKeys = [];
     let permissionRows = [];
     if (role === 'admin') {
-      permissionKeys = normalizePermissionKeys(body.permissions).filter(
-        (key) => key !== SALES_TARGETS_KEY
-      );
+      permissionKeys = normalizePermissionKeys(body.permissions);
       if (permissionKeys.length === 0) {
         return res.status(400).json({
           message: 'Select at least one permission scope when assigning the admin role.',

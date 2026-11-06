@@ -124,6 +124,8 @@ const REQUIRED_ADMIN_FIELDS = [
   'designation',
   'branch',
   'shift',
+  'date_of_joining',
+  'cnic_number',
 ];
 
 function isEmptyValue(value) {
@@ -951,7 +953,7 @@ async function updateEmployee(req, res) {
     if (keys.length === 0) {
       return res.status(400).json({
         message:
-          'Required fields: employee_id, status, department, designation, branch, shift. Optional: date_of_joining, employment_type.',
+          'Required fields: employee_id, status, department, designation, branch, shift, date_of_joining, cnic_number, and employment_type.',
       });
     }
 
@@ -1071,9 +1073,14 @@ async function updateEmployee(req, res) {
     if (!next.employee_id) {
       return res.status(400).json({ message: 'Employee ID is required.' });
     }
-    if (next.cnic_number && !/^\d{13}$/.test(next.cnic_number)) {
+    if (!/^\d{13}$/.test(String(next.cnic_number || ''))) {
       return res.status(400).json({
-        message: 'CNIC must be exactly 13 digits when provided.',
+        message: 'CNIC must be exactly 13 digits.',
+      });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next.date_of_joining || ''))) {
+      return res.status(400).json({
+        message: 'Date of joining is required.',
       });
     }
 

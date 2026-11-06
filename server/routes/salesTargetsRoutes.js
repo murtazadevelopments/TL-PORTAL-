@@ -4,6 +4,7 @@ const { requireCeoExclusive } = require('../middleware/permissions');
 const { requireSalesPin } = require('../middleware/salesPin');
 const {
   listSalesTargets,
+  listSalesProgress,
   setSalesPin,
   requestSalesPinOtp,
   verifySalesPinOtp,

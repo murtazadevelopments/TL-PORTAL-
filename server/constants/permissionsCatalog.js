@@ -123,7 +123,7 @@ function managerPermissionKeys() {
 }
 
 function assignablePermissionsCatalog() {
-  return PERMISSIONS_CATALOG.filter((p) => p.key !== SALES_TARGETS_KEY);
+  return PERMISSIONS_CATALOG;
 }
 
 function normalizePermissionKeys(input) {

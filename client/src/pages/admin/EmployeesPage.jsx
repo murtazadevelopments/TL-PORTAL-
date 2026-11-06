@@ -41,6 +41,7 @@ const LAST_JOB_OPTIONS = [
 ];
 
 const ADMIN_FIELD_LABELS = {
+  cnic_number: 'CNIC number',
   employee_id: 'Employee ID',
   status: 'Status',
   department: 'Department / Team',
@@ -1597,10 +1598,13 @@ function EmployeesPage() {
   function validateAdminForm() {
     const errors = {};
     for (const key of Object.keys(ADMIN_FIELD_LABELS)) {
-      if (key === 'date_of_joining') continue; // optional
       if (isBlank(editForm[key])) {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
+    }
+    const cnicDigits = String(editForm.cnic_number || '').replace(/\D/g, '');
+    if (!errors.cnic_number && cnicDigits.length !== 13) {
+      errors.cnic_number = 'CNIC must be exactly 13 digits.';
     }
     return errors;
   }
@@ -1739,12 +1743,6 @@ function EmployeesPage() {
     setSaveSuccess('');
 
     const cnicDigits = String(editForm.cnic_number || '').replace(/\D/g, '').slice(0, 13);
-    if (cnicDigits && cnicDigits.length !== 13) {
-      setFieldErrors((prev) => ({ ...prev, cnic_number: 'CNIC must be exactly 13 digits.' }));
-      setSaveError('CNIC must be exactly 13 digits when provided.');
-      setSaveSuccess('');
-      return;
-    }
 
     const payload = {
       employee_id: editForm.employee_id.trim(),
@@ -1753,11 +1751,11 @@ function EmployeesPage() {
       designation: editForm.designation.trim(),
       branch: editForm.branch,
       shift: editForm.shift,
-      date_of_joining: editForm.date_of_joining ? editForm.date_of_joining : null,
+      date_of_joining: editForm.date_of_joining,
       employment_type: editForm.employment_type === 'remote' ? 'remote' : 'onsite',
       work_start_hour: Number(editForm.work_start_hour),
       work_end_hour: Number(editForm.work_end_hour),
-      cnic_number: cnicDigits || null,
+      cnic_number: cnicDigits,
     };
 
     try {
@@ -3651,7 +3649,7 @@ function EmployeesPage() {
                 <form className="edit-box" onSubmit={handleSave} noValidate>
                   <fieldset disabled={!canEditEmploymentType(detail.employment_type)}>
                   <label className={fieldErrors.cnic_number ? 'has-error' : ''}>
-                    CNIC number
+                    CNIC number <span className="req-star" aria-hidden="true">*</span>
                     <input
                       type="text"
                       name="cnic_number"
@@ -3662,13 +3660,11 @@ function EmployeesPage() {
                       data-input-kind="integer"
                       maxLength={13}
                       autoComplete="off"
+                      required
+                      aria-required="true"
                     />
-                    {fieldErrors.cnic_number ? (
+                    {fieldErrors.cnic_number && (
                       <span className="field-error">{fieldErrors.cnic_number}</span>
-                    ) : (
-                      <span className="muted" style={{ fontSize: '0.8rem' }}>
-                        Optional. Admin can enter or correct the employee CNIC manually.
-                      </span>
                     )}
                   </label>
                   <label className={fieldErrors.employee_id ? 'has-error' : ''}>
@@ -3688,8 +3684,8 @@ function EmployeesPage() {
                   </label>
 
                   <label className={fieldErrors.status ? 'has-error' : ''}>
-                    Status
-                    <select name="status" value={editForm.status} onChange={handleEditChange}>
+                    Status <span className="req-star" aria-hidden="true">*</span>
+                    <select name="status" value={editForm.status} onChange={handleEditChange} required>
                       <option value="">Select status</option>
                       <option value="active">Active</option>
                       <option value="inactive">Inactive / Pending Approval</option>
@@ -3703,11 +3699,12 @@ function EmployeesPage() {
 
                   <div className="field-with-action">
                     <label className={fieldErrors.department ? 'has-error' : ''}>
-                      Department / Team
+                      Department / Team <span className="req-star" aria-hidden="true">*</span>
                       <select
                         name="department"
                         value={editForm.department}
                         onChange={handleEditChange}
+                        required
                       >
                         <option value="">Select team</option>
                         {teams.map((t) => (
@@ -3797,18 +3794,20 @@ function EmployeesPage() {
                     onChange={handleEditChange}
                     designations={designations}
                     canManage={canEditEmployees}
+                    required
                     error={fieldErrors.designation}
                     onCreated={handleCreateDesignation}
                     onRemoved={handleRemoveDesignation}
                   />
 
                   <label className={fieldErrors.date_of_joining ? 'has-error' : ''}>
-                    Date of joining
+                    Date of joining <span className="req-star" aria-hidden="true">*</span>
                     <input
                       type="date"
                       name="date_of_joining"
                       value={editForm.date_of_joining}
                       onChange={handleEditChange}
+                      required
                     />
                     {fieldErrors.date_of_joining && (
                       <span className="field-error">{fieldErrors.date_of_joining}</span>
@@ -3816,8 +3815,8 @@ function EmployeesPage() {
                   </label>
 
                   <label className={fieldErrors.branch ? 'has-error' : ''}>
-                    Branch
-                    <select name="branch" value={editForm.branch} onChange={handleEditChange}>
+                    Branch <span className="req-star" aria-hidden="true">*</span>
+                    <select name="branch" value={editForm.branch} onChange={handleEditChange} required>
                       <option value="">Select branch</option>
                       {branches.map((b) => (
                         <option key={b.id} value={b.name}>
@@ -3894,11 +3893,12 @@ function EmployeesPage() {
                   )}
 
                   <label>
-                    Employment type
+                    Employment type <span className="req-star" aria-hidden="true">*</span>
                     <select
                       name="employment_type"
                       value={editForm.employment_type}
                       onChange={handleEditChange}
+                      required
                     >
                       {(canEditOnsiteEmployees || editForm.employment_type === 'onsite') && (
                         <option value="onsite">Onsite</option>
@@ -3929,8 +3929,8 @@ function EmployeesPage() {
                   )}
 
                   <label className={fieldErrors.shift ? 'has-error' : ''}>
-                    Shift
-                    <select name="shift" value={editForm.shift} onChange={handleEditChange}>
+                    Shift <span className="req-star" aria-hidden="true">*</span>
+                    <select name="shift" value={editForm.shift} onChange={handleEditChange} required>
                       <option value="">Select shift</option>
                       {shiftOptions.map((opt) => (
                         <option key={opt} value={opt}>

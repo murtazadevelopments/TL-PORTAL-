@@ -35,6 +35,7 @@ function defaultScopesFromUser(user) {
     'attendance:export',
     'attendance:view',
     'attendance:edit',
+    'sales:targets',
   ]) {
     scopes[key] = normalizeEmployeeScope(incoming[key]);
   }
@@ -91,11 +92,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
         ]);
         if (!active) return;
         setEmployees(Array.isArray(listRes.data?.employees) ? listRes.data.employees : []);
-        setCatalog(
-          (Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []).filter(
-            (perm) => perm.key !== 'sales:targets'
-          )
-        );
+        setCatalog(Array.isArray(catalogRes.data?.permissions) ? catalogRes.data.permissions : []);
         const fromApi = Array.isArray(branchesRes.data)
           ? branchesRes.data.map((b) => b.name).filter(Boolean)
           : [];
@@ -151,6 +148,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
         'attendance:export': { type: 'all' },
         'attendance:view': { type: 'all' },
         'attendance:edit': { type: 'all' },
+        'sales:targets': { type: 'team', values: [] },
       });
       setReason('');
       setSearch('');
@@ -189,7 +187,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
     if (isScopedEmployeePermission(key)) {
       setScopes((prev) => ({
         ...prev,
-        [key]: prev[key] || { type: 'all' },
+        [key]: prev[key] || (key === 'sales:targets' ? { type: 'team', values: [] } : { type: 'all' }),
       }));
     }
   }
@@ -237,7 +235,7 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
 
     if (role === 'admin') {
       for (const key of permissions) {
-        if (!isScopedEmployeePermission(key) || key === 'sales:targets') continue;
+        if (!isScopedEmployeePermission(key)) continue;
         const scope = normalizeEmployeeScope(scopes[key]);
         if (scope.type !== 'all' && (!scope.values || !scope.values.length)) {
           setFormError(
@@ -254,6 +252,8 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
                       ? 'Remote employees'
                       : key === 'attendance:view'
                         ? 'View attendance (yesterday & today)'
+                        : key === 'sales:targets'
+                          ? 'Sales targets'
                           : 'Edit attendance'
             }, choose All, or pick at least one branch/team.`
           );

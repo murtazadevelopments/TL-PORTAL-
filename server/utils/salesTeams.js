@@ -13,6 +13,20 @@ const SALES_TEAM_LEAD_TITLES = new Set([
  * People who can have individual sales targets: sales executives/agents and team leaders.
  * Production, HR, admins, artists, etc. are excluded.
  */
+/** Front-page progress: sales agents and sales executives only. */
+function isFrontPageSalesPerson(user) {
+  const designation = normalizeDesignation(user?.designation);
+  if (designation !== 'sales agent' && designation !== 'sales executive') return false;
+  if (/production/i.test(String(user?.department || ''))) return false;
+  return true;
+}
+
+const FRONT_PAGE_SALES_SQL = `
+  AND LOWER(REGEXP_REPLACE(TRIM(COALESCE(u.designation, '')), '[\\s_-]+', ' ', 'g'))
+    IN ('sales agent', 'sales executive')
+  AND COALESCE(u.department, '') !~* 'production'
+`;
+
 function isSalesRosterPerson(user) {
   const role = String(user?.role || '')
     .trim()
