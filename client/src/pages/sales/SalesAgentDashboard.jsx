@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../../api/client';
-import { useAuthUser } from '../../context/AuthUserContext';
 import '../admin/AdminDashboard.css';
 import './SalesTargetsDashboard.css';
 import { ProgressRing, formatAmount, formatPeriod, statusLabel, daysInPeriod, dailyTargetAmount } from './salesUi';
 
 export default function SalesAgentDashboard() {
   const navigate = useNavigate();
-  const { user: authUser, loading: authLoading } = useAuthUser();
   const [checking, setChecking] = useState(true);
   const [current, setCurrent] = useState(null);
   const [history, setHistory] = useState([]);
@@ -16,15 +14,10 @@ export default function SalesAgentDashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (authLoading) return undefined;
     let active = true;
     async function load() {
       try {
-        const me = { data: authUser };
-        if (!me.data) {
-          if (active) navigate('/', { replace: true });
-          return;
-        }
+        const me = await api.get('/api/users/me');
         if (!active) return;
         if (!me.data?.id) {
           navigate('/', { replace: true });
@@ -55,7 +48,7 @@ export default function SalesAgentDashboard() {
     return () => {
       active = false;
     };
-  }, [navigate, authLoading, authUser]);
+  }, [navigate]);
 
   if (checking) {
     return (

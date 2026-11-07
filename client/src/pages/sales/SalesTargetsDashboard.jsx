@@ -298,7 +298,6 @@ function RecoverPinPanel({ busy, error, onBusy, onError, onCancel, onDone }) {
 
 export default function SalesTargetsDashboard() {
   const navigate = useNavigate();
-  const { user: authUser, loading: authLoading } = useAuthUser();
   const { logout } = useAuthUser();
   const [checking, setChecking] = useState(true);
   const [ceo, setCeo] = useState(false);
@@ -395,15 +394,10 @@ export default function SalesTargetsDashboard() {
   }, []);
 
   useEffect(() => {
-    if (authLoading) return undefined;
     let active = true;
     async function verify() {
       try {
-        const data = authUser;
-        if (!data) {
-          if (active) navigate('/', { replace: true });
-          return;
-        }
+        const { data } = await api.get('/api/users/me');
         if (!active) return;
         if (!canManageSalesTargets(data.role, data.permissions)) {
           navigate('/dashboard', { replace: true });
@@ -435,7 +429,7 @@ export default function SalesTargetsDashboard() {
     return () => {
       active = false;
     };
-  }, [navigate, authLoading, authUser]);
+  }, [navigate]);
 
   useEffect(() => {
     if (checking || !unlockedPin) return undefined;

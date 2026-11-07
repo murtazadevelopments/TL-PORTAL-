@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../api/client';
-import { useAuthUser } from '../context/AuthUserContext';
 import TeamFilterSelect from '../components/TeamFilterSelect';
 import { canAssignRoles } from '../utils/permissions';
 import './AdminDashboard.css';
@@ -87,7 +86,6 @@ function shortDevice(ua) {
 
 function LoginLogs() {
   const navigate = useNavigate();
-  const { user: authUser, loading: authLoading } = useAuthUser();
   const [role, setRole] = useState(null);
   const [checking, setChecking] = useState(true);
   const [logs, setLogs] = useState([]);
@@ -106,15 +104,10 @@ function LoginLogs() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    if (authLoading) return undefined;
     let active = true;
     async function verify() {
       try {
-        const data = authUser;
-        if (!data) {
-          if (active) navigate('/', { replace: true });
-          return;
-        }
+        const { data } = await api.get('/api/users/me');
         if (!active) return;
         if (!canAssignRoles(data.role)) {
           navigate('/dashboard', { replace: true });
@@ -133,7 +126,7 @@ function LoginLogs() {
     return () => {
       active = false;
     };
-  }, [navigate, authLoading, authUser]);
+  }, [navigate]);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);

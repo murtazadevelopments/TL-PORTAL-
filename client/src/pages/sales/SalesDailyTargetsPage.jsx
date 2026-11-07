@@ -39,7 +39,6 @@ function statusClass(status) {
 
 export default function SalesDailyTargetsPage({ agentView = false }) {
   const navigate = useNavigate();
-  const { user: authUser, loading: authLoading } = useAuthUser();
   const { agentId } = useParams();
   const [searchParams] = useSearchParams();
   const { logout } = useAuthUser();
@@ -78,7 +77,6 @@ export default function SalesDailyTargetsPage({ agentView = false }) {
   }, [agentView, agentId, pin, period, searchParams]);
 
   useEffect(() => {
-    if (authLoading) return undefined;
     let active = true;
     async function start() {
       try {
@@ -86,7 +84,7 @@ export default function SalesDailyTargetsPage({ agentView = false }) {
           navigate('/sales-targets', { replace: true });
           return;
         }
-        const me = { data: authUser };
+        const me = await api.get('/api/users/me');
         if (!active) return;
         if (agentView && !me.data?.sales_agent_dashboard) {
           navigate('/dashboard', { replace: true });
@@ -134,7 +132,7 @@ export default function SalesDailyTargetsPage({ agentView = false }) {
     return () => {
       active = false;
     };
-  }, [agentView, load, navigate, pin, authLoading, authUser]);
+  }, [agentView, load, navigate, pin]);
 
   const dirty = useMemo(() => {
     if (agentView) return false;

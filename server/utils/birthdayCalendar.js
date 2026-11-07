@@ -1,11 +1,4 @@
 function calendarYmd(now = new Date(), tz = process.env.APP_TIMEZONE || 'Asia/Karachi') {
-  const dt = now instanceof Date ? now : new Date(now);
-  if (!Number.isFinite(dt.getTime())) {
-    console.warn(`[birthday-job] invalid date value: ${String(now)}`);
-    now = new Date();
-  } else {
-    now = dt;
-  }
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric',

@@ -16,8 +16,8 @@ function hasDoc(profile, urlKey, onFileKey) {
 
 export default function AccountDocuments() {
   const navigate = useNavigate();
-  const { user: authUser, loading: authLoading, refreshUser } = useAuthUser();
   const { setBusy } = useInactivityGuard();
+  const { refreshUser } = useAuthUser();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,15 +31,10 @@ export default function AccountDocuments() {
   const cvInputRef = useRef(null);
 
   useEffect(() => {
-    if (authLoading) return undefined;
     let active = true;
     async function load() {
       try {
-        const data = authUser;
-        if (!data) {
-          if (active) navigate('/', { replace: true });
-          return;
-        }
+        const { data } = await api.get('/api/users/me');
         if (active) setProfile(data);
       } catch (err) {
         if (!active) return;
@@ -57,7 +52,7 @@ export default function AccountDocuments() {
     return () => {
       active = false;
     };
-  }, [navigate, authLoading, authUser]);
+  }, [navigate]);
 
   const missingDocFields = useMemo(
     () => (profile ? missingEmployeePortalFields(profile).filter((field) => field.document) : []),

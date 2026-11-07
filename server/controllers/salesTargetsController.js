@@ -1,7 +1,6 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const pool = require('../config/db');
-const { invalidateRequestUser } = require('../utils/requestUserCache');
 const { isCeoRole } = require('../middleware/permissions');
 const {
   normalizeScope,
@@ -323,7 +322,6 @@ async function setSalesPin(req, res) {
       `,
       [hash, req.user.id]
     );
-    invalidateRequestUser(req.user.id);
 
     return res.json({ message: 'Sales PIN saved.', salesPinConfigured: true });
   } catch (err) {

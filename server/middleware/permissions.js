@@ -1,6 +1,5 @@
 const pool = require('../config/db');
 const { blockedLoginMessage, isClosedAccount } = require('../utils/accountStatus');
-const { loadAuthUser } = require('../utils/requestUserCache');
 const { managerPermissionKeys, SALES_TARGETS_KEY } = require('../constants/permissionsCatalog');
 
 function normalizeRole(role) {
@@ -54,7 +53,12 @@ function requireRole(...allowedRoles) {
         return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const row = await loadAuthUser(req.user.id);
+      const { rows } = await pool.query(
+        'SELECT role, is_active, blocked_at, blocked_reason, resigned_at, terminated_at, status FROM users WHERE id = $1 LIMIT 1',
+        [req.user.id]
+      );
+
+      const row = rows[0];
       if (!row || row.is_active === false || row.blocked_at || isClosedAccount(row)) {
         const blocked = row?.blocked_at || isClosedAccount(row) ? blockedLoginMessage(row) : null;
         return res.status(403).json({
@@ -143,17 +147,17 @@ function requirePermission(...requiredKeys) {
         return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
       }
 
+      // Prefer live DB role so JWT stale role never blocks a CEO
       let role = normalizeRole(req.user.role);
-      if (req.user.id) {
+      if (!isCeoRole(role) && req.user.id) {
         try {
-          const row = await loadAuthUser(req.user.id);
-          if (row?.role) {
-            role = normalizeRole(row.role);
+          const { rows } = await pool.query(
+            'SELECT role FROM users WHERE id = $1 LIMIT 1',
+            [req.user.id]
+          );
+          if (rows[0]?.role) {
+            role = normalizeRole(rows[0].role);
             req.user.role = role;
-            if (role === 'admin') {
-              req.user.permissions = row.permissions;
-              req.user.permissionScopes = row.permissionScopes;
-            }
           }
         } catch {
           /* keep existing role */
@@ -182,10 +186,7 @@ function requirePermission(...requiredKeys) {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const access =
-        Array.isArray(req.user.permissions) && req.user.permissionScopes
-          ? { permissions: req.user.permissions, scopes: req.user.permissionScopes }
-          : await loadAdminPermissionAccess(req.user.id);
+      const access = await loadAdminPermissionAccess(req.user.id);
       req.user.permissions = access.permissions;
       req.user.permissionScopes = access.scopes;
 
@@ -223,15 +224,15 @@ function requireCeoOrAnyPermission(...keys) {
       }
 
       let role = normalizeRole(req.user.role);
-      if (req.user.id) {
+      if (!isCeoRole(role) && req.user.id) {
         try {
-          const row = await loadAuthUser(req.user.id);
-          if (row?.role) {
-            role = normalizeRole(row.role);
+          const { rows } = await pool.query(
+            'SELECT role FROM users WHERE id = $1 LIMIT 1',
+            [req.user.id]
+          );
+          if (rows[0]?.role) {
+            role = normalizeRole(rows[0].role);
             req.user.role = role;
-            if (role === 'admin' && !Array.isArray(req.user.permissions)) {
-              req.user.permissions = row.permissions;
-            }
           }
         } catch {
           /* keep */
@@ -260,9 +261,7 @@ function requireCeoOrAnyPermission(...keys) {
         return res.status(403).json({ error: 'Forbidden: insufficient permissions' });
       }
 
-      const permissions = Array.isArray(req.user.permissions)
-        ? req.user.permissions
-        : await loadAdminPermissions(req.user.id);
+      const permissions = await loadAdminPermissions(req.user.id);
       req.user.permissions = permissions;
 
       if (accepted.some((key) => permissions.includes(key))) {
@@ -291,7 +290,11 @@ function requireCeoExclusive(message = 'This action is available to the CEO only
       if (!req.user?.id) {
         return res.status(401).json({ error: 'Forbidden: insufficient permissions' });
       }
-      const row = await loadAuthUser(req.user.id);
+      const { rows } = await pool.query(
+        'SELECT role, is_active, blocked_at, blocked_reason, resigned_at, terminated_at, status FROM users WHERE id = $1 LIMIT 1',
+        [req.user.id]
+      );
+      const row = rows[0];
       if (!row || row.is_active === false || row.blocked_at || isClosedAccount(row)) {
         const blocked = row?.blocked_at || isClosedAccount(row) ? blockedLoginMessage(row) : null;
         return res.status(403).json({

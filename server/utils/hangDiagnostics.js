@@ -106,13 +106,8 @@ function hungRequest(req, res, next) {
 let monitorsStarted = false;
 
 function startHangDiagnostics(pool) {
-  if (!requestTimingEnabled()) {
-    console.log('[BOOT] hang monitors not started: REQUEST_TIMING is not 1 (no [MEM]/[LOOP-LAG]/[POOL-WAIT]/[HUNG])');
-    return;
-  }
-  if (monitorsStarted) return;
+  if (!requestTimingEnabled() || monitorsStarted) return;
   monitorsStarted = true;
-  console.log('[BOOT] hang monitors started: [MEM] every 5m, [LOOP-LAG] and [POOL-WAIT] every 10s, [HUNG] at 10s');
 
   const histogram = monitorEventLoopDelay({ resolution: 20 });
   histogram.enable();
@@ -151,13 +146,7 @@ function startProcessLifecycle() {
   if (lifecycleStarted) return;
   lifecycleStarted = true;
 
-  const timing = process.env.REQUEST_TIMING === '1' ? '1' : '0';
-  const queryTiming = process.env.QUERY_TIMING === '1' ? '1' : '0';
-  console.log(
-    `[BOOT] pid=${process.pid} at=${new Date().toISOString()} ` +
-      `NODE_ENV=${process.env.NODE_ENV || ''} REQUEST_TIMING=${timing} QUERY_TIMING=${queryTiming} ` +
-      `EXT_TIMEOUT_MS=${process.env.EXT_TIMEOUT_MS || '8000'} hangMonitors=${timing === '1' ? 'on' : 'off'}`
-  );
+  console.log(`[BOOT] pid=${process.pid} at=${new Date().toISOString()}`);
 
   function onShutdown(signal) {
     if (shuttingDown) return;

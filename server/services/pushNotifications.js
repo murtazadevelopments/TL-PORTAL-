@@ -88,9 +88,8 @@ async function sendPushToUser(userId, payload, opts = {}) {
       const status = err.statusCode || err.status || 0;
       const error = errorBodySnippet(err);
       results.push({ id: sub.id, host, status, error });
-      const vapidMismatch = status === 403 && /vapid|mismatch/i.test(`${error} ${err.message || ''}`);
-      // 404/410 = endpoint gone. 403 VAPID mismatch is the same dead subscription.
-      if (status === 404 || status === 410 || vapidMismatch) {
+      // 404/410 = endpoint gone — drop. 401/403 = auth/VAPID issue — keep + warn.
+      if (status === 404 || status === 410) {
         await dropStaleSubscription(sub.id, userId, status);
       } else if (status === 401 || status === 403) {
         console.warn(`[push] auth fail user=${userId} host=${host} status=${status}`);

@@ -27,7 +27,6 @@ const { ensureDesignationsSchema } = require('../utils/designationsSchema');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { isBirthdayToday, birthdayKey } = require('../utils/birthdayCalendar');
 const { blockedLoginMessage } = require('../utils/accountStatus');
-const { getCachedMe, rememberMe, invalidateRequestUser } = require('../utils/requestUserCache');
 const { managerPermissionKeys } = require('../constants/permissionsCatalog');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const {
@@ -113,7 +112,6 @@ async function decorateProfileAlert(user) {
     user.profile_alert_fields = [];
     user.profile_alert_count = 0;
     user.profile_incomplete_locked_at = null;
-    invalidateRequestUser(user.id);
   }
   user.photo_alert_seen_count = photoAlertSeenCount(user);
   user.photo_alert_pending = isPhotoAlertPending(user);
@@ -126,11 +124,6 @@ async function decorateProfileAlert(user) {
 
 async function getMe(req, res) {
   try {
-    const cached = getCachedMe(req.user.id);
-    if (cached) {
-      return res.json(cached);
-    }
-
     await ensureProfileAlertColumns();
     await ensureEmploymentTypeColumn();
     await ensureDesignationsSchema();
@@ -288,7 +281,6 @@ async function getMe(req, res) {
       user.exam_congrats = null;
     }
 
-    rememberMe(user.id, user);
     return res.json(user);
   } catch (err) {
     console.error('getMe error:', err);
@@ -434,7 +426,6 @@ async function updateMe(req, res) {
     const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
 
     const changed = summarizeChanges(current, user, EMPLOYEE_UPDATE_WHITELIST);
-    invalidateRequestUser(req.user.id);
     res.json(user);
     if (changed.length) {
       void notifyAfterResponse('profile-self-update', user.id, () =>
@@ -504,7 +495,6 @@ async function updateProfilePicture(req, res) {
     );
 
     const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
-    invalidateRequestUser(req.user.id);
     res.json(user);
     void notifyAfterResponse('profile-photo-update', user.id, () =>
       notifyAdminsEmployeeSelfUpdate(user, ['profile picture (updated)'])
@@ -580,7 +570,6 @@ async function updateDocuments(req, res) {
     if (cnicBack) changed.push('CNIC back (updated)');
     if (cv) changed.push('CV (updated)');
 
-    invalidateRequestUser(req.user.id);
     res.json({
       message: 'Documents updated.',
       user,
@@ -687,7 +676,6 @@ async function updateCvBase64(req, res) {
     user.cv_on_file = true;
     if (!user.cv_url) user.cv_url = `/api/documents/${user.id}/cv`;
 
-    invalidateRequestUser(req.user.id);
     res.json({ message: 'CV updated.', user });
     void notifyAfterResponse('profile-documents-update', user.id, () =>
       notifyAdminsEmployeeSelfUpdate(user, ['CV (updated)'])
@@ -746,7 +734,6 @@ async function ackPhotoAlertSeen(req, res) {
       [req.user.id, PROFILE_ALERT_MAX]
     );
     const updated = next[0];
-    invalidateRequestUser(req.user.id);
     return res.json({
       ok: true,
       photo_alert_seen_count: photoAlertSeenCount(updated),
@@ -765,7 +752,6 @@ async function ackExamCongrats(req, res) {
       return res.status(400).json({ message: 'Congratulations id is required.' });
     }
     await acknowledgeExamCongrats(req.user.id, congratsId);
-    invalidateRequestUser(req.user.id);
     return res.json({ ok: true });
   } catch (err) {
     console.error('ackExamCongrats error:', err);

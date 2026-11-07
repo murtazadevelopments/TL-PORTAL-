@@ -1,5 +1,4 @@
 const pool = require('../config/db');
-const { invalidateRequestUser } = require('../utils/requestUserCache');
 const {
   assignablePermissionsCatalog,
   normalizePermissionKeys,
@@ -214,7 +213,6 @@ async function assignRole(req, res) {
     );
 
     await client.query('COMMIT');
-    invalidateRequestUser(updated.id);
 
     const scopesOut = {};
     for (const row of permissionRows) {
@@ -463,7 +461,6 @@ async function saveHrPeople(req, res) {
     }
 
     await client.query('COMMIT');
-    for (const id of new Set([...next, ...current])) invalidateRequestUser(id);
 
     const { rows: assigned } = await pool.query(
       `

@@ -211,11 +211,8 @@ async function streamDocument(req, res) {
               ? 'image/gif'
               : 'image/jpeg';
 
-    if (isCnicDocType(docType)) {
-      res.setHeader('Cache-Control', 'private, no-store');
-    } else {
-      res.setHeader('Cache-Control', 'private, max-age=300');
-    }
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (isCnicDocType(docType)) {
       res.setHeader('Permissions-Policy', 'display-capture=()');

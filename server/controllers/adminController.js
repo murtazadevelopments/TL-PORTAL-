@@ -28,7 +28,6 @@ const {
   isTerminatedAccount,
   isClosedAccount,
 } = require('../utils/accountStatus');
-const { invalidateRequestUser } = require('../utils/requestUserCache');
 const { ensureUsersBranchNotEnumLocked } = require('../utils/usersBranchConstraint');
 const {
   missingEmployeePortalFields,
@@ -1418,7 +1417,6 @@ async function purgeEmployee(req, res) {
     ]);
 
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
-    invalidateRequestUser(id);
 
     res.json({ message: 'Employee permanently purged.' });
     queueCeoBranchManagerNotice(req, {
@@ -1968,7 +1966,6 @@ async function dispatchProfileAlert(req, target, sender) {
     `,
     [target.id, JSON.stringify(labels), nextCount, lockNow]
   );
-  invalidateRequestUser(target.id);
 
   try {
     await writeAuditLog({
@@ -2126,7 +2123,6 @@ async function sendBulkProfileAlert(req, res) {
     const sender = await loadMessageSender(req);
     const sent = [];
     const skipped = { pending: 0, complete: 0, locked: 0, cooldown: 0, error: 0 };
-    const queue = [];
 
     for (const row of rows) {
       if (!employeeInAlertScope(row, scopes, access)) continue;
@@ -2147,32 +2143,19 @@ async function sendBulkProfileAlert(req, res) {
         skipped.cooldown += 1;
         continue;
       }
-      queue.push(row);
-    }
-
-    const ALERT_CONCURRENCY = 5;
-    let cursor = 0;
-    async function sendNext() {
-      while (cursor < queue.length) {
-        const row = queue[cursor];
-        cursor += 1;
-        try {
-          const payload = await dispatchProfileAlert(req, row, sender);
-          sent.push({
-            id: payload.id,
-            profileAlertSentAt: payload.profileAlertSentAt,
-            profileAlertCount: payload.profileAlertCount,
-            profileIncompleteLockedAt: payload.profileIncompleteLockedAt,
-          });
-        } catch (err) {
-          console.error('bulk profile alert failed:', row.id, err.message || err);
-          skipped.error += 1;
-        }
+      try {
+        const payload = await dispatchProfileAlert(req, row, sender);
+        sent.push({
+          id: payload.id,
+          profileAlertSentAt: payload.profileAlertSentAt,
+          profileAlertCount: payload.profileAlertCount,
+          profileIncompleteLockedAt: payload.profileIncompleteLockedAt,
+        });
+      } catch (err) {
+        console.error('bulk profile alert failed:', row.id, err.message || err);
+        skipped.error += 1;
       }
     }
-    await Promise.all(
-      Array.from({ length: Math.min(ALERT_CONCURRENCY, queue.length) }, () => sendNext())
-    );
 
     if (sent.length) {
       queueCeoBranchManagerNotice(req, {
@@ -2303,7 +2286,6 @@ async function sendPhotoAlert(req, res) {
       `,
       [id]
     );
-    invalidateRequestUser(id);
 
     try {
       await writeAuditLog({

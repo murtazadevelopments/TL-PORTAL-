@@ -67,31 +67,7 @@ async function alreadySentOk({ emailType, recipient, dayKey, subject }) {
   }
 }
 
-function coerceBirthdayNow(value) {
-  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
-  if (value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, 'catchUp')) {
-    console.warn(
-      `[birthday-job] invalid date value (options object passed as now): ${JSON.stringify(value)}`
-    );
-    return { now: new Date(), catchUp: Boolean(value.catchUp) };
-  }
-  const dt = value == null ? new Date() : new Date(value);
-  if (!Number.isFinite(dt.getTime())) {
-    console.warn(`[birthday-job] invalid date value: ${String(value)}`);
-    return new Date();
-  }
-  return dt;
-}
-
-async function runBirthdayEmails(now = new Date(), options = {}) {
-  let catchUp = Boolean(options && options.catchUp);
-  const coerced = coerceBirthdayNow(now);
-  if (coerced && coerced.now instanceof Date && Object.prototype.hasOwnProperty.call(coerced, 'catchUp')) {
-    now = coerced.now;
-    catchUp = coerced.catchUp;
-  } else {
-    now = coerced;
-  }
+async function runBirthdayEmails(now = new Date(), { catchUp = false } = {}) {
   // Midnight Karachi: employees whose birthday is today; CEO preview for tomorrow (24h notice).
   const todayKey = birthdayKey(now);
   const tomorrowPeople = await findTomorrowBirthdayUsers(now);
