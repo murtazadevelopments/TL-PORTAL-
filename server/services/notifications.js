@@ -134,6 +134,7 @@ async function notifyApp(userId, payload = {}, opts = {}) {
       requireEnabled: false,
       ttl: opts.ttl,
       urgency: opts.urgency || 'high',
+      timeoutMs: opts.timeoutMs,
     }
   );
   console.log(
@@ -760,8 +761,7 @@ async function notifyAttendanceFailed(user, hourKey) {
   return result;
 }
 
-async function notifyRemoteAttendanceCheck(user, challenge) {
-  if (!user?.id && !user?.email) return { ok: false };
+function buildRemoteAttendanceNotice(user, challenge) {
   const { frontendBaseUrl } = require('../utils/frontendUrl');
   const {
     START_ON_TIME_MINUTES,
@@ -792,29 +792,41 @@ async function notifyRemoteAttendanceCheck(user, challenge) {
       </ul>
       <p><a href="${escapeHtml(checkUrl)}">Open My Attendance</a></p>
     `;
+  return {
+    email: {
+      emailType: 'remote_attendance_check',
+      to: user?.email,
+      subject,
+      html,
+    },
+    push: {
+      title: isCheckout ? 'Attendance check-out' : 'Attendance check-in',
+      body: isCheckout
+        ? `Check out now${when ? ` (${when})` : ''}.`
+        : `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
+      url: '/attendance',
+      tag: `attendance-check-${challenge.id}`,
+      ttl: 40 * 60,
+      urgency: 'high',
+    },
+  };
+}
 
+async function notifyRemoteAttendanceCheck(user, challenge, opts = {}) {
+  if (!user?.id && !user?.email) return { ok: false };
+  const notice = buildRemoteAttendanceNotice(user, challenge);
+  const sendEmail = opts.email !== false && Boolean(user?.email);
+  const sendPush = opts.push !== false && Boolean(user?.id);
   const [emailResult, pushResult] = await Promise.all([
-    user.email
-      ? sendEmailSafe({
-          emailType: 'remote_attendance_check',
-          to: user.email,
-          subject,
-          html,
-        })
+    sendEmail
+      ? sendEmailSafe({ ...notice.email, timeoutMs: opts.timeoutMs })
       : Promise.resolve(null),
-    user.id
-      ? notifyApp(
-          user.id,
-          {
-            title: isCheckout ? 'Attendance check-out' : 'Attendance check-in',
-            body: isCheckout
-              ? `Check out now${when ? ` (${when})` : ''}.`
-              : `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
-            url: '/attendance',
-            tag: `attendance-check-${challenge.id}`,
-          },
-          { ttl: 40 * 60, urgency: 'high' }
-        )
+    sendPush
+      ? notifyApp(user.id, notice.push, {
+          ttl: notice.push.ttl,
+          urgency: notice.push.urgency,
+          timeoutMs: opts.timeoutMs,
+        })
       : Promise.resolve({ sent: 0 }),
   ]);
 
@@ -846,6 +858,7 @@ module.exports = {
   notifyCeoBirthdayTomorrow,
   notifyCeoRemoteFaceAttendance,
   notifyAttendanceFailed,
+  buildRemoteAttendanceNotice,
   notifyRemoteAttendanceCheck,
   notifyApp,
   summarizeChanges,

@@ -42,6 +42,18 @@ function getReplyTo() {
   return env('SMTP_REPLY_TO') || env('MAIL_REPLY_TO') || undefined;
 }
 
+function parseAddress(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(.*)<([^>]+)>\s*$/);
+  if (!match) return { email: raw, name: undefined };
+  const name = match[1].trim().replace(/^"|"$/g, '');
+  return { email: match[2].trim(), name: name || undefined };
+}
+
+function mailProvider() {
+  return env('BREVO_API_KEY') ? 'brevo-api' : 'smtp';
+}
+
 function htmlToText(html) {
   return String(html || '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -166,7 +178,7 @@ async function sendEmail(opts) {
   const replyTo = opts.replyTo || getReplyTo();
   if (replyTo) mail.replyTo = replyTo;
 
-  const run = sendChain.then(() => sendEmailQueued(mail, to));
+  const run = sendChain.then(() => sendEmailQueued(mail, to, opts.timeoutMs));
   sendChain = run.then(
     () => {},
     () => {}
@@ -174,20 +186,83 @@ async function sendEmail(opts) {
   return run;
 }
 
-async function sendEmailQueued(mail, to) {
+async function sendViaBrevoApi(mail, signal) {
+  const sender = parseAddress(mail.from);
+  const recipients = (Array.isArray(mail.to) ? mail.to : [mail.to]).map((email) => ({
+    email: String(email),
+  }));
+  const body = {
+    sender: { email: sender.email, name: sender.name },
+    to: recipients,
+    subject: mail.subject,
+    htmlContent: mail.html || '',
+    textContent: mail.text || '',
+  };
+  if (mail.replyTo) {
+    const reply = parseAddress(mail.replyTo);
+    body.replyTo = { email: reply.email, name: reply.name };
+  }
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      'api-key': env('BREVO_API_KEY'),
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  const raw = await response.text();
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    parsed = null;
+  }
+  const messageId = parsed?.messageId || null;
+  console.log(
+    `[email] provider=brevo-api status=${response.status} messageId=${messageId || 'n/a'}`
+  );
+  if (!response.ok) {
+    const err = new Error(parsed?.message || `Brevo API HTTP ${response.status}`);
+    err.code = 'BREVO_API_FAILED';
+    err.responseCode = response.status;
+    throw err;
+  }
+  return { id: messageId, provider: 'brevo-api', status: response.status, response: parsed };
+}
+
+async function sendEmailQueued(mail, to, timeoutMs) {
+  if (mailProvider() === 'brevo-api' && !(mail.attachments && mail.attachments.length)) {
+    const info = await withOutboundTimeout(
+      'brevo',
+      (signal) => sendViaBrevoApi(mail, signal),
+      timeoutMs
+    );
+    bumpDailyCount();
+    return info;
+  }
+
   mail.from = smtpConfig().from;
   let lastError;
   for (let attempt = 1; attempt <= RATE_LIMIT_RETRIES; attempt += 1) {
     try {
-      const info = await withOutboundTimeout('brevo', () => getTransporter().sendMail(mail));
+      const info = await withOutboundTimeout(
+        'brevo',
+        () => getTransporter().sendMail(mail),
+        timeoutMs
+      );
       bumpDailyCount();
-      console.log('[email] sent', {
-        to,
-        messageId: info.messageId,
+      console.log(
+        `[email] provider=smtp status=${info.responseCode || 'n/a'} messageId=${info.messageId || 'n/a'}`
+      );
+      return {
+        id: info.messageId,
+        provider: 'smtp',
+        status: info.responseCode || null,
         accepted: info.accepted,
-        rejected: info.rejected,
-      });
-      return { id: info.messageId, accepted: info.accepted, response: info.response, ...info };
+        response: info.response,
+      };
     } catch (error) {
       lastError = error;
       const safe = safeSmtpLog(error);
@@ -216,6 +291,7 @@ module.exports = {
   sendEmail,
   getFrom,
   getReplyTo,
+  mailProvider,
   verifyMailer,
   logMailerStatus,
 };

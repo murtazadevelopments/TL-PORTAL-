@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import logo from '../assets/logo.webp';
 import { AuthUserProvider, useAuthUser } from '../context/AuthUserContext';
@@ -53,13 +53,21 @@ function ShellInner() {
   const missingText = portalGaps.some((field) => !field.document);
   const profileLocked = isProfileIncompleteLocked(user);
 
+  const unreadInflight = useRef(null);
   const refreshUnread = useCallback(async () => {
-    try {
-      const { data } = await api.get('/api/messages/unread-count');
-      setUnreadMessages(Number(data?.count) || 0);
-    } catch {
-      /* ignore — badge optional */
-    }
+    if (unreadInflight.current) return unreadInflight.current;
+    const run = (async () => {
+      try {
+        const { data } = await api.get('/api/messages/unread-count');
+        setUnreadMessages(Number(data?.count) || 0);
+      } catch {
+        /* ignore — badge optional */
+      } finally {
+        unreadInflight.current = null;
+      }
+    })();
+    unreadInflight.current = run;
+    return run;
   }, []);
 
   useEffect(() => {

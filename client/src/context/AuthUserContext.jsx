@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import api from '../api/client';
 
@@ -11,30 +11,38 @@ export function AuthUserProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const refreshInflight = useRef(null);
   const refreshUser = useCallback(async () => {
+    if (refreshInflight.current) return refreshInflight.current;
     setError('');
-    try {
-      const { data } = await api.get('/api/users/me');
-      setUser(data);
-      setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
-      return data;
-    } catch (err) {
-      const code = err.response?.data?.code;
-      if (
-        err.response?.status === 401 ||
-        (err.response?.status === 403 &&
-          (code === 'ACCOUNT_BLOCKED' ||
-            code === 'ACCOUNT_DEACTIVATED' ||
-            code === 'ACCOUNT_LOCKED' ||
-            code === 'ACCOUNT_RESIGNED'))
-      ) {
-        localStorage.removeItem('token');
-        navigate('/', { replace: true });
+    const run = (async () => {
+      try {
+        const { data } = await api.get('/api/users/me');
+        setUser(data);
+        setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+        return data;
+      } catch (err) {
+        const code = err.response?.data?.code;
+        if (
+          err.response?.status === 401 ||
+          (err.response?.status === 403 &&
+            (code === 'ACCOUNT_BLOCKED' ||
+              code === 'ACCOUNT_DEACTIVATED' ||
+              code === 'ACCOUNT_LOCKED' ||
+              code === 'ACCOUNT_RESIGNED'))
+        ) {
+          localStorage.removeItem('token');
+          navigate('/', { replace: true });
+          return null;
+        }
+        setError(err.response?.data?.message || 'Failed to load account.');
         return null;
+      } finally {
+        refreshInflight.current = null;
       }
-      setError(err.response?.data?.message || 'Failed to load account.');
-      return null;
-    }
+    })();
+    refreshInflight.current = run;
+    return run;
   }, [navigate]);
 
   useEffect(() => {

@@ -37,13 +37,18 @@ function poolConfigFromEnv() {
     /[?&]sslmode=disable/i.test(String(process.env.DATABASE_URL));
 
   // Single shared Pool for the app (scripts may open a one-off max:1 pool).
-  // Session pooler: keep max modest; release via pool.query (no manual client hold).
+  // Session pooler default is about 15 clients; stay at 10 unless PG_POOL_MAX is set.
+  // node-pg has no min-size option. Boot warms 3 sockets and a 30s SELECT 1 holds them.
+  const idleTimeoutMillis =
+    Number(process.env.PG_POOL_IDLE_MS || process.env.PG_IDLE_TIMEOUT_MS) || 300000;
   return {
     connectionString,
     ssl: disableSsl ? false : { rejectUnauthorized: false },
     max: Number(process.env.PG_POOL_MAX) || 10,
-    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS) || 30000,
+    idleTimeoutMillis,
     connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS) || 15000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   };
 }
 
@@ -52,6 +57,38 @@ const pool = new Pool(poolConfigFromEnv());
 pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL pool error:', err.message || err);
 });
+
+function warmPoolConnections() {
+  const count = Math.min(3, pool.options.max || 3);
+  return Promise.all(
+    Array.from({ length: count }, async () => {
+      const client = await pool.connect();
+      try {
+        await client.query('SELECT 1');
+      } finally {
+        client.release();
+      }
+    })
+  );
+}
+
+function startPoolKeepAlive() {
+  const timer = setInterval(() => {
+    if (pool.waitingCount > 0 || pool.idleCount === 0) return;
+    pool.query('SELECT 1').catch((err) => {
+      console.warn('[pool] keepalive failed:', err.message || err);
+    });
+  }, 30000);
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+console.log(
+  `[BOOT] pool max=${pool.options.max} idleTimeoutMillis=${pool.options.idleTimeoutMillis} keepAlive=true`
+);
+warmPoolConnections().catch((err) => {
+  console.error('[pool] warm connections failed:', err.message || err);
+});
+startPoolKeepAlive();
 
 /**
  * Query duration around the shared pool. Logs first 60 chars of SQL + ms.

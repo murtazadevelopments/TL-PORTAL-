@@ -634,4 +634,7 @@ router.post(
   uploadEmploymentForm
 );
 
+const { listNotificationOutbox } = require('../controllers/notificationOutboxController');
+router.get('/notification-outbox', requireRole('ceo', 'manager'), listNotificationOutbox);
+
 module.exports = router;

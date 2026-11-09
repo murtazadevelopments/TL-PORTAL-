@@ -21,11 +21,12 @@ function requestTimingEnabled() {
 
 function extTimeoutMs(override) {
   const envRaw = Number(process.env.EXT_TIMEOUT_MS);
-  const cap = Number.isFinite(envRaw) && envRaw > 0 ? envRaw : DEFAULT_EXT_TIMEOUT_MS;
-  if (override == null) return cap;
+  const fallback = Number.isFinite(envRaw) && envRaw > 0 ? envRaw : DEFAULT_EXT_TIMEOUT_MS;
+  if (override == null) return fallback;
   const n = Number(override);
-  if (!Number.isFinite(n) || n <= 0) return cap;
-  return Math.min(n, cap);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  // An explicit caller timeout is not cut down to the 8s request-path default.
+  return Math.min(n, 60000);
 }
 
 function durationMs(started) {

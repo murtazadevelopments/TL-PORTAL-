@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { runBirthdayEmails } = require('./birthdayEmails');
 const { runLoginLogsPrune } = require('./loginLogsPrune');
 const { runAttendanceMissed } = require('./attendanceMissed');
+const { startNotificationOutboxWorker } = require('./notificationOutbox');
 const { startZktecoSync } = require('../scripts/sync');
 const { ensureQueryIndexes } = require('../utils/ensureQueryIndexes');
 const { JOB_LOCKS, lockedJob, acquireJobLeadership } = require('../utils/pgAdvisoryLock');
@@ -118,6 +119,8 @@ function startScheduledJobs() {
   if (/^(1|true|yes)$/i.test(String(process.env.ZKTECO_SYNC_ENABLED || ''))) {
     startZktecoSync();
   }
+
+  startNotificationOutboxWorker();
 }
 
 function startScheduledJobsIfLeader() {

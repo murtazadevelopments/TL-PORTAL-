@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const challenges = require('../utils/remoteAttendanceChallenges');
-const { notifyRemoteAttendanceCheck } = require('../services/notifications');
+const { enqueueAttendanceReminder } = require('../services/notificationOutbox');
 const { refreshAttendanceDay } = require('../utils/attendanceDays');
 const { isRemoteProfileIncomplete } = require('../utils/profileCompleteness');
 const { userFlexibleHours } = require('../utils/flexibleHours');
@@ -70,6 +70,19 @@ function stepMs(label, started) {
   return ms;
 }
 
+async function runStep(label, fn, fallback) {
+  const started = Date.now();
+  try {
+    const result = await fn();
+    stepMs(label, started);
+    return result;
+  } catch (err) {
+    console.error(`[attendance-missed] step ${label} failed:`, err.message || err);
+    stepMs(label, started);
+    return fallback;
+  }
+}
+
 /**
  * One round trip: anything due, expiring, or missing today's/yesterday's challenge rows.
  * Holiday cleanup and schedule realignment still run when this is non-idle.
@@ -112,8 +125,8 @@ async function probeAttendanceWork(now) {
               FROM attendance_challenges c
               WHERE c.user_id = u.id
                 AND c.shift_date IN (
-                  (NOW() AT TIME ZONE 'Asia/Karachi')::date,
-                  ((NOW() AT TIME ZONE 'Asia/Karachi')::date - 1)
+                  to_char(NOW() AT TIME ZONE 'Asia/Karachi', 'YYYY-MM-DD'),
+                  to_char((NOW() AT TIME ZONE 'Asia/Karachi') - INTERVAL '1 day', 'YYYY-MM-DD')
                 )
             )
         ) AS needs_challenges,
@@ -170,18 +183,11 @@ async function dispatchDueNotifications(now = new Date()) {
       await challenges.markNotified(row.id, now);
       continue;
     }
-    const claimed = await challenges.markNotified(row.id, now);
-    if (!claimed) continue;
     try {
-      const result = await notifyRemoteAttendanceCheck(person, row);
-      if (!result?.ok) {
-        await challenges.clearNotifiedIfUnused(row.id);
-        continue;
-      }
-      sent += 1;
+      const queued = await enqueueAttendanceReminder(person, row, now);
+      if (queued.queued) sent += 1;
     } catch (err) {
-      await challenges.clearNotifiedIfUnused(row.id);
-      console.error('[remote-attendance] notify failed:', err.message || err);
+      console.error('[remote-attendance] enqueue failed:', err.message || err);
     }
   }
   return { due: due.length, sent };
@@ -251,57 +257,32 @@ async function markExpiredChallenges(now = new Date()) {
 
 async function runRemoteAttendanceTick(now = new Date()) {
   const started = Date.now();
-  let mark = Date.now();
-  await ensureAttendanceTables();
-  stepMs('schema', mark);
+  await runStep('schema', () => ensureAttendanceTables(), null);
 
-  mark = Date.now();
-  const probe = await probeAttendanceWork(now);
-  stepMs('probe', mark);
-  if (!probe.due && !probe.expired && !probe.needs_challenges && !probe.recent_edit) {
+  const probe = await runStep('probe', () => probeAttendanceWork(now), null);
+  const idle =
+    probe && !probe.due && !probe.expired && !probe.needs_challenges && !probe.recent_edit;
+  if (idle) {
     console.log(`[attendance-missed] idle ${Date.now() - started}ms`);
     return { remotes: 0, created: 0, due: 0, sent: 0, expired: 0, inserted: 0 };
   }
 
-  const jobs = [];
-  if (probe.needs_challenges || probe.recent_edit) {
-    jobs.push(
-      (async () => {
-        const t = Date.now();
-        const ensured = await ensureActiveShiftChallenges(now);
-        stepMs('ensure', t);
-        return ensured;
-      })()
-    );
-  } else {
-    jobs.push(Promise.resolve({ remotes: 0, created: 0 }));
-  }
-  if (probe.due) {
-    jobs.push(
-      (async () => {
-        const t = Date.now();
-        const notified = await dispatchDueNotifications(now);
-        stepMs('notify', t);
-        return notified;
-      })()
-    );
-  } else {
-    jobs.push(Promise.resolve({ due: 0, sent: 0 }));
-  }
-  if (probe.expired) {
-    jobs.push(
-      (async () => {
-        const t = Date.now();
-        const missed = await markExpiredChallenges(now);
-        stepMs('expire', t);
-        return missed;
-      })()
-    );
-  } else {
-    jobs.push(Promise.resolve({ expired: 0, inserted: 0 }));
-  }
+  // A failed probe must not skip reminders or expiry.
+  const runEnsure = !probe || probe.needs_challenges || probe.recent_edit;
+  const runNotify = !probe || probe.due;
+  const runExpire = !probe || probe.expired;
 
-  const [ensured, notified, missed] = await Promise.all(jobs);
+  const [ensured, notified, missed] = await Promise.all([
+    runEnsure
+      ? runStep('ensure', () => ensureActiveShiftChallenges(now), { remotes: 0, created: 0 })
+      : Promise.resolve({ remotes: 0, created: 0 }),
+    runNotify
+      ? runStep('notify', () => dispatchDueNotifications(now), { due: 0, sent: 0 })
+      : Promise.resolve({ due: 0, sent: 0 }),
+    runExpire
+      ? runStep('expire', () => markExpiredChallenges(now), { expired: 0, inserted: 0 })
+      : Promise.resolve({ expired: 0, inserted: 0 }),
+  ]);
   console.log(`[attendance-missed] total ${Date.now() - started}ms`);
   return { ...ensured, ...notified, ...missed };
 }

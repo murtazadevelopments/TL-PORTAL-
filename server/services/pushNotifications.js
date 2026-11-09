@@ -68,7 +68,9 @@ async function sendPushToUser(userId, payload, opts = {}) {
   for (const sub of subs) {
     const host = endpointHost(sub.endpoint);
     try {
-      const response = await withOutboundTimeout('push', () =>
+      const response = await withOutboundTimeout(
+        'push',
+        () =>
         webpush.sendNotification(
           {
             endpoint: sub.endpoint,
@@ -79,7 +81,8 @@ async function sendPushToUser(userId, payload, opts = {}) {
             TTL: Number.isFinite(opts.ttl) ? opts.ttl : 60 * 60 * 12,
             urgency: opts.urgency || 'high',
           }
-        )
+        ),
+        opts.timeoutMs
       );
       sent += 1;
       const okStatus = Number(response?.statusCode) || 201;
