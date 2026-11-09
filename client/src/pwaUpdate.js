@@ -7,9 +7,68 @@
  * stale /api/document 404 responses from the old image CacheFirst rule.
  */
 const LEGACY_SW_SUFFIXES = ['/sw.js', '/tl-sw.js'];
+const CACHE_CLEAR_MS = 30 * 60 * 1000;
+const CACHE_CLEAR_KEY = 'tl-cache-cleared-at';
+
+function cacheClearDue() {
+  try {
+    const last = Number(localStorage.getItem(CACHE_CLEAR_KEY) || 0);
+    return !last || Date.now() - last >= CACHE_CLEAR_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markCacheCleared() {
+  try {
+    localStorage.setItem(CACHE_CLEAR_KEY, String(Date.now()));
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Drop Cache Storage. Reload when asked so the open page is not left on stale files. */
+export async function clearAppCache({ reload = false } = {}) {
+  if (typeof window === 'undefined') return;
+  markCacheCleared();
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch {
+    /* still reload if asked */
+  }
+  if (!reload) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('_nocache', String(Date.now()));
+  window.location.replace(url.href);
+}
+
+function startAutoCacheClear() {
+  try {
+    if (!localStorage.getItem(CACHE_CLEAR_KEY)) markCacheCleared();
+  } catch {
+    return;
+  }
+
+  const tick = () => {
+    if (document.visibilityState === 'hidden') return;
+    if (!cacheClearDue()) return;
+    clearAppCache({ reload: true });
+  };
+
+  setInterval(tick, 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tick();
+  });
+  tick();
+}
 
 export function startPwaUpdateWatcher() {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+  if (typeof window === 'undefined') return;
+  startAutoCacheClear();
+  if (!('serviceWorker' in navigator)) return;
 
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -69,6 +128,7 @@ export function startPwaUpdateWatcher() {
  */
 export async function hardEmptyCacheAndReload() {
   if (typeof window === 'undefined') return;
+  markCacheCleared();
   try {
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();

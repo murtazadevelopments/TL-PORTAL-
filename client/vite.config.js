@@ -117,7 +117,7 @@ export default defineConfig({
               cacheName: `tl-portal-images-${SW_BUILD_ID}`,
               expiration: {
                 maxEntries: 60,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
+                maxAgeSeconds: 30 * 60,
               },
             },
           },
@@ -132,7 +132,7 @@ export default defineConfig({
               cacheName: `tl-portal-assets-${SW_BUILD_ID}`,
               expiration: {
                 maxEntries: 80,
-                maxAgeSeconds: 60 * 60 * 24 * 14,
+                maxAgeSeconds: 30 * 60,
               },
             },
           },
