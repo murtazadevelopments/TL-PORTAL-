@@ -1332,8 +1332,8 @@ async function adminRequestCheckIn(req, res) {
       return res.status(409).json({ message: 'Could not open a check for this employee.' });
     }
 
-    const { enqueueAttendanceReminder } = require('../services/notificationOutbox');
-    await enqueueAttendanceReminder(target, opened, now, { reset: true });
+    await notifications.notifyRemoteAttendanceCheck(target, opened);
+    await remoteChallenges.markNotified(opened.id, now);
     await pool.query(`UPDATE users SET remote_check_request_at = $2 WHERE id = $1`, [target.id, now]);
 
     await writeAuditLog({

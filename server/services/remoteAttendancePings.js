@@ -1,6 +1,7 @@
 const pool = require('../config/db');
 const { ensureAttendanceTables } = require('../utils/attendanceSchema');
 const challenges = require('../utils/remoteAttendanceChallenges');
+const { notifyRemoteAttendanceCheck } = require('../services/notifications');
 const { enqueueAttendanceReminder } = require('../services/notificationOutbox');
 const { refreshAttendanceDay } = require('../utils/attendanceDays');
 const { isRemoteProfileIncomplete } = require('../utils/profileCompleteness');
@@ -187,7 +188,19 @@ async function dispatchDueNotifications(now = new Date()) {
       const queued = await enqueueAttendanceReminder(person, row, now);
       if (queued.queued) sent += 1;
     } catch (err) {
-      console.error('[remote-attendance] enqueue failed:', err.message || err);
+      if (err.code !== '42P01') {
+        console.error('[remote-attendance] enqueue failed:', err.message || err);
+        continue;
+      }
+      try {
+        const result = await notifyRemoteAttendanceCheck(person, row);
+        if (result?.ok) {
+          await challenges.markNotified(row.id, now);
+          sent += 1;
+        }
+      } catch (sendErr) {
+        console.error('[remote-attendance] notify failed:', sendErr.message || sendErr);
+      }
     }
   }
   return { due: due.length, sent };

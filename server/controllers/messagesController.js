@@ -194,11 +194,7 @@ async function deliverOneMessage({
     pushPayload
   );
 
-  const pushDelivered = Number(push?.sent) > 0;
-  const wantEmail =
-    deliveryMethod === 'email' ||
-    deliveryMethod === 'both' ||
-    (emailIfPushUndelivered && !pushDelivered);
+  const wantEmail = Boolean(recipient.email);
 
   if (wantEmail) {
     if (!recipient.email) {
@@ -492,13 +488,10 @@ async function sendAdminMessage(req, res) {
     }
 
     const plural = created.length === 1 ? 'employee' : 'employees';
-    let emailNote = '';
-    if (deliveryMethod === 'email' || deliveryMethod === 'both') {
-      emailNote =
-        emailFailures > 0
-          ? ` ${emailsSent} email(s) sent, ${emailFailures} skipped/failed.`
-          : ` ${emailsSent} email(s) sent.`;
-    }
+    const emailNote =
+      emailFailures > 0
+        ? ` ${emailsSent} email(s) sent, ${emailFailures} skipped/failed.`
+        : ` ${emailsSent} email(s) sent.`;
 
     return res.status(201).json({
       message: `Message sent to ${created.length} ${plural}.${emailNote}`,
