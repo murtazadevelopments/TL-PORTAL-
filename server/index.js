@@ -250,6 +250,7 @@ try {
   app.use('/api/documents', require('./routes/documentsRoutes'));
   app.use('/api/tl-dashboard', require('./routes/tlDashboardRoutes'));
   app.use('/api/sales-targets', require('./routes/salesTargetsRoutes'));
+  app.use('/api/petty-cash', require('./routes/pettyCashRoutes'));
   app.use('/api/messages', require('./routes/messagesRoutes'));
   app.use('/api/push', require('./routes/pushRoutes'));
   app.use('/api/leave-requests', require('./routes/leaveRequestsRoutes'));

@@ -126,6 +126,17 @@ export function canManageSalesTargets(role) {
   return isCeo(role);
 }
 
+/** Personal petty cash ledger — assigned admins only (not CEO/manager overview). */
+export function canUsePettyCash(role, permissions) {
+  if (isCeoOrManager(role)) return false;
+  return hasPermission(permissions, 'petty:cash', role);
+}
+
+/** CEO/manager can open every assigned petty cash dashboard by name. */
+export function canOverseePettyCash(role) {
+  return isCeoOrManager(role);
+}
+
 /** Flip to true when leave requests should show in the portal UI again. */
 export const LEAVE_FEATURE_ENABLED = false;
 

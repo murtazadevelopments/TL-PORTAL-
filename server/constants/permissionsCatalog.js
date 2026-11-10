@@ -28,6 +28,12 @@ const PERMISSIONS_CATALOG = [
       'Named sales supervisor: PIN-locked board for sales executives and team leaders on assigned teams only. Those people see My Target under My Account.',
   },
   {
+    key: 'petty:cash',
+    label: 'Petty cash',
+    description:
+      'Personal petty cash dashboard for the assigned person only. Their entries are stored under their user id — other admins cannot see them. CEO and manager can open every assigned dashboard by name.',
+  },
+  {
     key: 'hr:followup',
     label: 'HR assignee',
     description:

@@ -1,0 +1,346 @@
+.petty-page {
+  width: min(960px, calc(100% - 2rem));
+  margin: 1.25rem auto 2.5rem;
+  box-sizing: border-box;
+}
+
+.petty-page h1 {
+  margin: 0 0 0.25rem;
+  font-family: var(--display);
+  font-weight: 550;
+  font-size: 1.75rem;
+  color: var(--text-h);
+}
+
+.petty-sub {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.petty-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1rem;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+}
+
+.petty-month {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.petty-month input {
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-h);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+}
+
+.petty-formula {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  flex: 1 1 12rem;
+}
+
+.petty-export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.petty-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 720px) {
+  .petty-tabs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.petty-tab {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: rgba(8, 12, 22, 0.55);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 4.5rem;
+}
+
+.petty-tab.active {
+  border-color: var(--border-strong);
+  background: rgba(61, 255, 122, 0.12);
+  box-shadow: 0 0 16px var(--glow-green);
+}
+
+.petty-tab-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.petty-tab-amount {
+  font-family: var(--display);
+  font-size: 1.35rem;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.petty-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.petty-total-box {
+  margin: 0 0 1.1rem;
+}
+
+.petty-section-title {
+  margin: 0 0 0.65rem;
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.petty-fund-section {
+  margin: 0 0 1.35rem;
+}
+
+.petty-total-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(8, 12, 22, 0.4);
+}
+
+.petty-total-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: min(100%, 12rem);
+}
+
+.petty-total-form input {
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-h);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+}
+
+.petty-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(8, 12, 22, 0.4);
+}
+
+.petty-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.petty-form label.full {
+  grid-column: 1 / -1;
+}
+
+.petty-form input,
+.petty-form select,
+.petty-form textarea {
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-h);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+}
+
+.petty-form textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.petty-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.petty-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.petty-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.petty-table th,
+.petty-table td {
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.petty-table th {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.petty-table tr:last-child td {
+  border-bottom: none;
+}
+
+.petty-holders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.petty-holder-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(8, 12, 22, 0.45);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.petty-holder-card:hover {
+  border-color: var(--border-strong);
+  background: rgba(61, 255, 122, 0.06);
+}
+
+.petty-holder-name {
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.petty-holder-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.petty-holder-balance {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.petty-empty {
+  padding: 1.25rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.petty-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.petty-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 4, 10, 0.72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+
+.petty-modal {
+  width: min(640px, calc(100% - 1rem));
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(10, 14, 24, 0.98);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 1rem 1.1rem 1.15rem;
+}
+
+.petty-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.petty-modal-header h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.petty-form-modal {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .petty-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .petty-form {
+    grid-template-columns: 1fr;
+  }
+}

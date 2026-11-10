@@ -271,6 +271,29 @@ function leavePrescriptionUpload(req, res, next) {
   });
 }
 
+/** Petty cash receipt: optional image or PDF field "receipt". */
+function pettyCashReceiptUpload(req, res, next) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (!contentType.includes('multipart/form-data')) return next();
+
+  const receiptUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+    fileFilter(req, file, cb) {
+      const mime = String(file.mimetype || '').toLowerCase();
+      if (mime === 'application/pdf' || mime.startsWith('image/')) {
+        return cb(null, true);
+      }
+      return cb(new Error('Receipt must be an image or PDF.'));
+    },
+  });
+
+  receiptUpload.single('receipt')(req, res, (err) => {
+    if (!err) return next();
+    return sendUploadError(res, err, 'Receipt must be 5MB or smaller.');
+  });
+}
+
 module.exports = {
   signupUpload,
   profilePictureUpload,
@@ -279,6 +302,7 @@ module.exports = {
   messagePictureUpload,
   lowerStaffUpload,
   leavePrescriptionUpload,
+  pettyCashReceiptUpload,
   extFromFile,
   bufferLooksLikePdf,
   MAX_CV_FILE_SIZE,

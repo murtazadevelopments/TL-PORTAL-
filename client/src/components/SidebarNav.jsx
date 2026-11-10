@@ -11,6 +11,8 @@ import {
   canManageSalesTargets,
   canAssignRoles,
   canReviewLeaveRequests,
+  canUsePettyCash,
+  canOverseePettyCash,
 } from '../utils/permissions';
 
 /**
@@ -67,6 +69,15 @@ export function buildSidebarGroups(
       label: 'Sales Targets',
       plainLabel: true,
       items: [{ to: '/sales-targets', label: 'Supervisor board' }],
+    });
+  }
+
+  if (canUsePettyCash(role, permissions)) {
+    groups.push({
+      id: 'petty-cash',
+      label: 'Petty Cash',
+      plainLabel: true,
+      items: [{ to: '/petty-cash', label: 'My petty cash' }],
     });
   }
 
@@ -133,6 +144,9 @@ export function buildSidebarGroups(
     const adminItems = [];
     if (canAssignRoles(role)) {
       adminItems.push({ to: '/admin/roles', label: 'Assign Roles' });
+    }
+    if (canOverseePettyCash(role)) {
+      adminItems.push({ to: '/admin/petty-cash', label: 'Petty cash' });
     }
     adminItems.push({ to: '/admin/teams', label: 'Manage Teams' });
     adminItems.push({ to: '/admin/designations', label: 'Manage Designations' });

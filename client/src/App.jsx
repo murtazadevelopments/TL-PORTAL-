@@ -41,6 +41,8 @@ const LeaveRequestsPage = lazy(() => import('./pages/admin/LeaveRequestsPage'));
 const SalesTargetsDashboard = lazy(() => import('./pages/sales/SalesTargetsDashboard'));
 const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard'));
 const SalesDailyTargetsPage = lazy(() => import('./pages/sales/SalesDailyTargetsPage'));
+const PettyCashPage = lazy(() => import('./pages/petty-cash/PettyCashPage'));
+const PettyCashOverviewPage = lazy(() => import('./pages/petty-cash/PettyCashOverviewPage'));
 
 function App() {
   return (
@@ -67,6 +69,7 @@ function App() {
               <Route path="/team-leader" element={<TeamLeaderDashboard />} />
               <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
               <Route path="/sales-targets/:agentId" element={<SalesDailyTargetsPage />} />
+              <Route path="/petty-cash" element={<PettyCashPage />} />
               <Route path="/my-target" element={<Navigate to="/account/my-target" replace />} />
               <Route path="/account" element={<AccountProfile />} />
               <Route path="/account/my-target" element={<SalesAgentDashboard />} />
@@ -100,6 +103,8 @@ function App() {
               <Route path="/admin/locked" element={<LockedAccountsPage />} />
               <Route path="/admin/deactivated" element={<DeactivatedEmployeesPage />} />
               <Route path="/admin/roles" element={<RolesPage />} />
+              <Route path="/admin/petty-cash" element={<PettyCashOverviewPage />} />
+              <Route path="/admin/petty-cash/:userId" element={<PettyCashOverviewPage />} />
               <Route path="/admin/teams" element={<TeamsPage />} />
               <Route path="/admin/designations" element={<DesignationsPage />} />
               <Route path="/admin/branches" element={<BranchesPage />} />

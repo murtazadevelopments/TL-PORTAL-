@@ -51,7 +51,6 @@ const {
   listCapturesForUserMonth,
   deleteFaceCheckCaptureById,
 } = require('../utils/faceCheckCapture');
-const { notifyRemoteAttendanceOpened } = require('../utils/attendanceReviewEmail');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const {
   isRemoteProfileIncomplete,
@@ -2253,14 +2252,6 @@ async function adminEmployeeDays(req, res) {
       totals: typeof tallyDays === 'function' ? tallyDays(days) : history.totals,
       recent_only: !fullDays,
     });
-    if (
-      (isCeoRole(req.user?.role) || isManagerRole(req.user?.role)) &&
-      normalizeEmploymentType(target.employment_type) === 'remote'
-    ) {
-      void notifyAfterResponse('attendance-review-email', target.id, () =>
-        notifyRemoteAttendanceOpened(target)
-      );
-    }
     return;
   } catch (err) {
     console.error('adminEmployeeDays error:', err);
