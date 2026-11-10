@@ -64,6 +64,7 @@ export function isEmployeeProfileComplete(row) {
 
 export const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 export const PROFILE_ALERT_MAX = 3;
+export const PHOTO_ALERT_MAX = 3;
 export const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 export const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -147,6 +148,41 @@ export function profileAlertCooldown(row, now = Date.now()) {
   return cooldownFromSentAt(lastProfileAlertAt(row), now);
 }
 
+export function photoAlertCount(row) {
+  const n = Number(row?.photo_alert_count);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(PHOTO_ALERT_MAX, Math.floor(n));
+}
+
+export function isPhotoAlertLocked(row) {
+  if (!row) return false;
+  if (isProfileLockExempt(row)) return false;
+  if (row.photo_alert_locked_at || row.photo_alert_locked === true) return true;
+  return photoAlertCount(row) >= PHOTO_ALERT_MAX;
+}
+
+export function photoAlertCooldown(row, now = Date.now()) {
+  return cooldownFromSentAt(row?.photo_alert_sent_at, now);
+}
+
+export function photoAlertAction(row, now = Date.now()) {
+  const count = photoAlertCount(row);
+  const locked = isPhotoAlertLocked(row);
+  const cooldown = photoAlertCooldown(row, now);
+  const next = Math.min(PHOTO_ALERT_MAX, count + 1);
+  return {
+    count,
+    locked,
+    cooldown,
+    disabled: locked || cooldown.active,
+    label: locked
+      ? `Photo locked ${PHOTO_ALERT_MAX}/${PHOTO_ALERT_MAX}`
+      : cooldown.active
+        ? `Photo wait ${cooldown.remainingLabel}`
+        : `Alert photo ${next}/${PHOTO_ALERT_MAX}`,
+  };
+}
+
 export function pendingPortalAlertStamp(row) {
   const stamps = [row?.profile_alert_at, row?.photo_alert_sent_at]
     .map((value) => {
@@ -166,15 +202,12 @@ export function portalAlertSeenKey(row) {
 }
 
 export function hasPendingPortalAlert(row) {
+  if (isPhotoAlertLocked(row)) return false;
   if (row?.profile_alert_at) return true;
   if (row?.photo_alert_pending === true) return true;
   if (row?.photo_alert_pending === false) return false;
   if (!row?.photo_alert_sent_at) return false;
   const seen = Number(row.photo_alert_seen_count);
-  if (Number.isFinite(seen) && seen >= PROFILE_ALERT_MAX) return false;
+  if (Number.isFinite(seen) && seen >= PHOTO_ALERT_MAX) return false;
   return true;
-}
-
-export function photoAlertCooldown(row, now = Date.now()) {
-  return cooldownFromSentAt(row?.photo_alert_sent_at, now);
 }

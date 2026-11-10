@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router';
 import {
   PHOTO_ALERT_BODY,
   PHOTO_ALERT_SUBJECT,
-  PROFILE_ALERT_MAX,
+  PHOTO_ALERT_MAX,
 } from '../utils/profileCompleteness';
 import './ProfileIncompleteLock.css';
 
@@ -15,7 +15,7 @@ export default function PortalAlertModal({ user, onContinue }) {
   const hasPhotoAlert =
     user?.photo_alert_pending === true ||
     (Boolean(user?.photo_alert_sent_at) &&
-      Number(user?.photo_alert_seen_count || 0) < PROFILE_ALERT_MAX);
+      Number(user?.photo_alert_seen_count || 0) < PHOTO_ALERT_MAX);
   if (!hasProfileAlert && !hasPhotoAlert) return null;
 
   function goDashboard() {

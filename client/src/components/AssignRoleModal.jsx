@@ -479,25 +479,66 @@ function AssignRoleModal({ open, onClose, onSuccess, initialUser = null, actorRo
               <fieldset className="assign-step">
                 <legend>3. Admin permissions</legend>
                 <div className="permission-list">
-                  {catalog.map((perm) => (
-                    <div
-                      key={perm.key}
-                      className={`permission-block${perm.key === 'hr:followup' || perm.key === 'hr:add_employee' || perm.key === 'employees:remote' ? ' permission-block-hr' : ''}`}
-                    >
-                      <label className="permission-item">
-                        <input
-                          type="checkbox"
-                          checked={permissions.includes(perm.key)}
-                          onChange={() => togglePermission(perm.key)}
-                        />
-                        <span>
-                          <strong>{perm.label}</strong>
-                          <span className="muted">{perm.description}</span>
-                        </span>
-                      </label>
-                      {isScopedEmployeePermission(perm.key) && renderScopeControls(perm.key)}
-                    </div>
-                  ))}
+                  {catalog.map((perm) => {
+                    const isDedicated =
+                      perm.key === 'petty:cash' ||
+                      perm.key === 'staff:subordinate' ||
+                      perm.key === 'hr:followup' ||
+                      perm.key === 'hr:add_employee' ||
+                      perm.key === 'employees:remote';
+                    const dedicatedClass =
+                      perm.key === 'petty:cash'
+                        ? ' permission-block-dedicated permission-block-petty'
+                        : perm.key === 'staff:subordinate'
+                          ? ' permission-block-dedicated permission-block-subordinate'
+                          : perm.key === 'hr:followup' ||
+                              perm.key === 'hr:add_employee' ||
+                              perm.key === 'employees:remote'
+                            ? ' permission-block-hr'
+                            : '';
+                    const selected = permissions.includes(perm.key);
+                    return (
+                      <div
+                        key={perm.key}
+                        className={`permission-block${dedicatedClass}${selected && isDedicated ? ' is-selected' : ''}`}
+                      >
+                        <label className="permission-item">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => togglePermission(perm.key)}
+                          />
+                          <span>
+                            <strong>{perm.label}</strong>
+                            <span className="muted">{perm.description}</span>
+                          </span>
+                        </label>
+                        {selected && perm.key === 'petty:cash' ? (
+                          <div className="permission-details">
+                            <p className="permission-details-title">Petty cash details</p>
+                            <ul>
+                              <li>Personal ledger only for this assigned admin</li>
+                              <li>Add total amounts and expense items with date &amp; time</li>
+                              <li>Month view plus Excel / PDF report download</li>
+                              <li>Separate from Subordinate staff</li>
+                            </ul>
+                          </div>
+                        ) : null}
+                        {selected && perm.key === 'staff:subordinate' ? (
+                          <div className="permission-details">
+                            <p className="permission-details-title">Subordinate staff details</p>
+                            <ul>
+                              <li>Add, edit, and delete subordinate staff records</li>
+                              <li>Manage salary, advances, loans, and paid marks</li>
+                              <li>Download subordinate salary Excel / PDF</li>
+                              <li>Separate from Petty cash</li>
+                            </ul>
+                          </div>
+                        ) : null}
+                        {isScopedEmployeePermission(perm.key) && renderScopeControls(perm.key)}
+                      </div>
+                    );
+                  })}
                 </div>
               </fieldset>
             )}

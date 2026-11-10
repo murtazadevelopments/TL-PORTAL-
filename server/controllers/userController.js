@@ -18,9 +18,12 @@ const {
   parseAlertFields,
   profileAlertCount,
   photoAlertSeenCount,
+  photoAlertCount,
   isPhotoAlertPending,
+  isPhotoAlertLocked,
   isProfileIncompleteLocked,
   PROFILE_ALERT_MAX,
+  PHOTO_ALERT_MAX,
 } = require('../utils/profileCompleteness');
 const { ensureEmploymentTypeColumn } = require('../utils/employmentType');
 const { ensureDesignationsSchema } = require('../utils/designationsSchema');
@@ -45,7 +48,7 @@ const USER_PUBLIC_COLUMNS = `
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
   profile_alert_at, profile_alert_fields, profile_alert_count, profile_incomplete_locked_at,
-  photo_alert_sent_at, photo_alert_seen_count
+  photo_alert_sent_at, photo_alert_seen_count, photo_alert_count, photo_alert_locked_at
 `;
 
 const EMPLOYEE_UPDATE_WHITELIST = [
@@ -116,8 +119,10 @@ async function decorateProfileAlert(user) {
     invalidateRequestUser(user.id);
   }
   user.photo_alert_seen_count = photoAlertSeenCount(user);
+  user.photo_alert_count = photoAlertCount(user);
+  user.photo_alert_locked = isPhotoAlertLocked(user);
   user.photo_alert_pending = isPhotoAlertPending(user);
-  if (!user.photo_alert_pending) {
+  if (!user.photo_alert_pending && !user.photo_alert_locked) {
     user.photo_alert_sent_at = null;
   }
   user.profile_incomplete_locked = isProfileIncompleteLocked(user);
@@ -496,6 +501,8 @@ async function updateProfilePicture(req, res) {
         SET profile_picture_url = $1,
             photo_alert_sent_at = NULL,
             photo_alert_seen_count = 0,
+            photo_alert_count = 0,
+            photo_alert_locked_at = NULL,
             updated_at = NOW()
         WHERE id = $2
         RETURNING ${USER_PUBLIC_COLUMNS}
@@ -717,7 +724,7 @@ async function ackPhotoAlertSeen(req, res) {
     await ensureProfileAlertColumns();
     const { rows } = await pool.query(
       `
-        SELECT photo_alert_sent_at, photo_alert_seen_count
+        SELECT photo_alert_sent_at, photo_alert_seen_count, photo_alert_count, photo_alert_locked_at
         FROM users
         WHERE id = $1
         LIMIT 1
@@ -725,14 +732,16 @@ async function ackPhotoAlertSeen(req, res) {
       [req.user.id]
     );
     const row = rows[0];
-    if (!row?.photo_alert_sent_at) {
+    if (!row?.photo_alert_sent_at && !isPhotoAlertLocked(row)) {
       return res.json({ ok: true, photo_alert_pending: false, photo_alert_seen_count: 0 });
     }
-    if (photoAlertSeenCount(row) >= PROFILE_ALERT_MAX) {
+    if (isPhotoAlertLocked(row) || photoAlertSeenCount(row) >= PHOTO_ALERT_MAX) {
       return res.json({
         ok: true,
-        photo_alert_pending: false,
-        photo_alert_seen_count: PROFILE_ALERT_MAX,
+        photo_alert_pending: isPhotoAlertLocked(row),
+        photo_alert_seen_count: Math.max(photoAlertSeenCount(row), PHOTO_ALERT_MAX),
+        photo_alert_count: photoAlertCount(row),
+        photo_alert_locked: isPhotoAlertLocked(row),
       });
     }
     const { rows: next } = await pool.query(
@@ -741,9 +750,9 @@ async function ackPhotoAlertSeen(req, res) {
         SET photo_alert_seen_count = LEAST($2, COALESCE(photo_alert_seen_count, 0) + 1),
             updated_at = NOW()
         WHERE id = $1
-        RETURNING photo_alert_sent_at, photo_alert_seen_count
+        RETURNING photo_alert_sent_at, photo_alert_seen_count, photo_alert_count, photo_alert_locked_at
       `,
-      [req.user.id, PROFILE_ALERT_MAX]
+      [req.user.id, PHOTO_ALERT_MAX]
     );
     const updated = next[0];
     invalidateRequestUser(req.user.id);

@@ -3,7 +3,11 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import api from '../../api/client';
 import { useAuthUser } from '../../context/AuthUserContext';
-import { canAccessAdmin, hasPermission } from '../../utils/permissions';
+import {
+  canAccessAdmin,
+  canManageSubordinateStaff,
+  hasPermission,
+} from '../../utils/permissions';
 import { BRANCH_OPTIONS } from '../../utils/employeeScope';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
 import LazyAuthImage from '../../components/LazyAuthImage';
@@ -17,10 +21,13 @@ import {
   missingEmployeePortalFieldsUnion,
   profileAlertCooldown,
   photoAlertCooldown,
+  photoAlertAction,
   profileAlertAction,
   isProfileIncompleteLocked,
+  isPhotoAlertLocked,
   profileAlertCount,
   PROFILE_ALERT_MAX,
+  PHOTO_ALERT_MAX,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
 } from '../../utils/profileCompleteness';
@@ -720,11 +727,12 @@ function EmployeesPage() {
         const canView =
           hasPermission(data.permissions, 'employees:view', data.role) ||
           hasPermission(data.permissions, 'hr:add_employee', data.role) ||
+          hasPermission(data.permissions, 'staff:subordinate', data.role) ||
           hasPermission(data.permissions, 'employees:remote', data.role);
         if (!canView) {
           setEmployees([]);
           setListError(
-            'You do not have permission to view employees. Ask the CEO to grant View employees, Remote employees, or Add employees (HR).'
+            'You do not have permission to view employees. Ask the CEO to grant View employees, Remote employees, Subordinate staff, or Add employees (HR).'
           );
           setLoading(false);
         } else {
@@ -792,6 +800,7 @@ function EmployeesPage() {
   }
 
   const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
+  const canManageSubordinate = canManageSubordinateStaff(role, permissions);
   const canRemoteEmployees = hasPermission(permissions, 'employees:remote', role);
   const canEditOnsiteEmployees =
     hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
@@ -1067,9 +1076,15 @@ function EmployeesPage() {
   function openPhotoAlertConfirm(row, event) {
     event?.stopPropagation?.();
     if (!canSendProfileAlert || !row?.id || isLowerStaffRow(row)) return;
-    const cooldown = photoAlertCooldown(row);
-    if (cooldown.active) {
-      setSaveError(`Photo alert already sent. You can send another after ${cooldown.remainingLabel}.`);
+    const action = photoAlertAction(row);
+    if (action.locked) {
+      setSaveError(
+        `This employee already had ${PHOTO_ALERT_MAX} photo alerts. Their portal is limited until they upload a new profile picture.`
+      );
+      return;
+    }
+    if (action.cooldown.active) {
+      setSaveError(`Photo alert already sent. You can send another after ${action.cooldown.remainingLabel}.`);
       return;
     }
     setSaveError('');
@@ -1089,6 +1104,9 @@ function EmployeesPage() {
         photo_alert_sent_at: sentAt,
         photo_alert_seen_count: 0,
         photo_alert_pending: true,
+        photo_alert_count: data?.photoAlertCount,
+        photo_alert_locked_at: data?.photoAlertLockedAt || null,
+        photo_alert_locked: Boolean(data?.photoAlertLocked),
       });
       setNowMs(Date.now());
       setPhotoConfirm(null);
@@ -1159,7 +1177,9 @@ function EmployeesPage() {
   }
 
   function canExitEmployee(row) {
-    if (isLowerStaffRow(row)) return canAddEmployees || canDeactivateEmployees || canEditEmployees;
+    if (isLowerStaffRow(row)) {
+      return canManageSubordinate || canDeactivateEmployees || canEditEmployees;
+    }
     return canDeactivateEmployees || canEditEmployees;
   }
 
@@ -1879,8 +1899,8 @@ function EmployeesPage() {
 
   async function handleAddLowerStaff(e) {
     e.preventDefault();
-    if (!canAddEmployees) {
-      setLowerError('Only HR can add subordinate staff.');
+    if (!canManageSubordinate) {
+      setLowerError('Only admins with Subordinate staff permission can add subordinate staff.');
       return;
     }
     const name = lowerForm.name.trim();
@@ -2177,7 +2197,7 @@ function EmployeesPage() {
           >
             Terminated <span className="tab-badge">{tabCounts.terminated}</span>
           </button>
-          {canAddEmployees && (
+          {canManageSubordinate && (
             <button
               type="button"
               className={`status-tab ${statusTab === 'subordinate-staff' ? 'active' : ''}`}
@@ -2295,7 +2315,7 @@ function EmployeesPage() {
         {listNotice && <p className="success">{listNotice}</p>}
         {saveError && !selectedId && <p className="error">{saveError}</p>}
 
-        {statusTab === 'subordinate-staff' && canAddEmployees && (
+        {statusTab === 'subordinate-staff' && canManageSubordinate && (
           (editingLowerId ? (node) => createPortal(node, document.body) : (node) => node)(
           <div
             className={
@@ -2965,8 +2985,8 @@ function EmployeesPage() {
           {!loading && !listError && filtered.length > 0 && statusTab === 'subordinate-staff' && (
             <LowerStaffPayroll
               employees={filtered}
-              canManage={canAddEmployees}
-              canExit={canAddEmployees || canDeactivateEmployees || canEditEmployees}
+              canManage={canManageSubordinate}
+              canExit={canManageSubordinate || canDeactivateEmployees || canEditEmployees}
               extraSlotSummary={extraSlotSummary}
               fullName={fullName}
               formatSalaryAmount={formatSalaryAmount}
@@ -3043,6 +3063,10 @@ function EmployeesPage() {
             </div>
             <p className="muted" style={{ margin: '0 0 0.45rem' }}>
               Subject: {PHOTO_ALERT_SUBJECT}
+            </p>
+            <p className="muted" style={{ margin: '0 0 0.45rem' }}>
+              {photoAlertAction(photoConfirm, nowMs).label}. After {PHOTO_ALERT_MAX} alerts their
+              portal is limited until they change the picture.
             </p>
             <blockquote className="photo-alert-preview">{PHOTO_ALERT_BODY}</blockquote>
             {saveError && <p className="error">{saveError}</p>}
@@ -3228,19 +3252,22 @@ function EmployeesPage() {
                         type="button"
                         className="btn btn-ghost alert-row-btn"
                         style={{ marginTop: '0.65rem' }}
-                        title="Ask them to upload a clear face photo"
+                        title="Ask them to upload a clear face photo (3 alerts then limited until they change it)"
                         disabled={
                           photoAlertingId === detail.id ||
-                          photoAlertCooldown(detail, nowMs).active
+                          photoAlertAction(detail, nowMs).disabled
                         }
                         onClick={(e) => openPhotoAlertConfirm(detail, e)}
                       >
                         {photoAlertingId === detail.id
                           ? 'Sending…'
-                          : photoAlertCooldown(detail, nowMs).active
-                            ? `Photo wait ${photoAlertCooldown(detail, nowMs).remainingLabel}`
-                            : 'Alert photo'}
+                          : photoAlertAction(detail, nowMs).label}
                       </button>
+                    )}
+                    {isPhotoAlertLocked(detail) && (
+                      <span className="status-pill locked" style={{ marginTop: '0.45rem' }}>
+                        Photo limited after {PHOTO_ALERT_MAX} alerts
+                      </span>
                     )}
                     <div className="status-stack" style={{ marginTop: '0.45rem' }}>
                       <span className={`status-pill ${statusClass(detail.status)}`}>

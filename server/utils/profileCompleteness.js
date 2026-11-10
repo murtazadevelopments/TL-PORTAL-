@@ -110,6 +110,7 @@ function formatFieldList(fields) {
 
 const PROFILE_ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const PROFILE_ALERT_MAX = 3;
+const PHOTO_ALERT_MAX = 3;
 const PHOTO_ALERT_SUBJECT = 'Please update your profile picture';
 const PHOTO_ALERT_BODY = 'Add a proper profile pic that shows your face clearly.';
 
@@ -158,12 +159,26 @@ function photoAlertCooldown(row, now = Date.now()) {
 function photoAlertSeenCount(row) {
   const n = Number(row?.photo_alert_seen_count);
   if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(PROFILE_ALERT_MAX, Math.floor(n));
+  return Math.min(PHOTO_ALERT_MAX, Math.floor(n));
+}
+
+function photoAlertCount(row) {
+  const n = Number(row?.photo_alert_count);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(PHOTO_ALERT_MAX, Math.floor(n));
+}
+
+function isPhotoAlertLocked(row) {
+  if (!row) return false;
+  if (isProfileLockExempt(row)) return false;
+  if (row.photo_alert_locked_at || row.photo_alert_locked === true) return true;
+  return photoAlertCount(row) >= PHOTO_ALERT_MAX;
 }
 
 function isPhotoAlertPending(row) {
+  if (isPhotoAlertLocked(row)) return true;
   if (!row?.photo_alert_sent_at) return false;
-  return photoAlertSeenCount(row) < PROFILE_ALERT_MAX;
+  return photoAlertSeenCount(row) < PHOTO_ALERT_MAX;
 }
 
 let profileAlertColumnsReady = false;
@@ -177,6 +192,8 @@ async function ensureProfileAlertColumns() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_sent_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_seen_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_alert_locked_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_alert_count INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_incomplete_locked_at TIMESTAMPTZ;
     UPDATE users
@@ -232,12 +249,15 @@ module.exports = {
   parseAlertFields,
   PROFILE_ALERT_COOLDOWN_MS,
   PROFILE_ALERT_MAX,
+  PHOTO_ALERT_MAX,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
   profileAlertCooldown,
   photoAlertCooldown,
   photoAlertSeenCount,
+  photoAlertCount,
   isPhotoAlertPending,
+  isPhotoAlertLocked,
   profileAlertCount,
   isProfileLockExempt,
   isProfileIncompleteLocked,

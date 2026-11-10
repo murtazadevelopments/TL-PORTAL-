@@ -7,6 +7,7 @@ import { isCeoOrManager, isTeamLeader } from '../utils/permissions';
 import {
   missingEmployeePortalFields,
   isProfileIncompleteLocked,
+  isPhotoAlertLocked,
   profileLockHomePath,
   hasPendingPortalAlert,
   portalAlertSeenKey,
@@ -15,6 +16,7 @@ import api from '../api/client';
 import { ensurePushSubscription } from '../utils/pushNotifications';
 import AdminIncompleteGate from '../components/AdminIncompleteGate';
 import ProfileIncompleteLock from '../components/ProfileIncompleteLock';
+import PhotoAlertLock from '../components/PhotoAlertLock';
 import PortalAlertModal from '../components/PortalAlertModal';
 import BirthdayCelebration from '../components/BirthdayCelebration';
 import ExamCelebration from '../components/ExamCelebration';
@@ -34,6 +36,7 @@ function ShellInner() {
   const [dismissProfileAlert, setDismissProfileAlert] = useState(false);
   const [ackPortalAlert, setAckPortalAlert] = useState(false);
   const [ackProfileLock, setAckProfileLock] = useState(false);
+  const [ackPhotoLock, setAckPhotoLock] = useState(false);
   const [ackBirthday, setAckBirthday] = useState(false);
   const [ackExam, setAckExam] = useState(false);
   const [liveNotice, setLiveNotice] = useState(null);
@@ -52,6 +55,8 @@ function ShellInner() {
   const missingDocs = portalGaps.some((field) => field.document);
   const missingText = portalGaps.some((field) => !field.document);
   const profileLocked = isProfileIncompleteLocked(user);
+  const photoLocked = isPhotoAlertLocked(user);
+  const accessLocked = profileLocked || photoLocked;
 
   const unreadInflight = useRef(null);
   const refreshUnread = useCallback(async () => {
@@ -91,6 +96,10 @@ function ShellInner() {
   useEffect(() => {
     if (!profileLocked) setAckProfileLock(false);
   }, [profileLocked]);
+
+  useEffect(() => {
+    if (!photoLocked) setAckPhotoLock(false);
+  }, [photoLocked]);
 
   const birthdayStorageKey =
     user?.is_birthday && user?.id && user?.birthday_on
@@ -142,13 +151,19 @@ function ShellInner() {
   }
 
   useEffect(() => {
-    if (!profileLocked) return;
+    if (!accessLocked && !photoLocked) return;
     const path = location.pathname;
+    if (photoLocked && !profileLocked) {
+      if (path !== '/account') {
+        navigate('/account', { replace: true });
+      }
+      return;
+    }
     const allowed = path === '/account' || path === '/account/documents';
     if (!allowed) {
       navigate(profileLockHomePath(user), { replace: true });
     }
-  }, [profileLocked, location.pathname, navigate, user]);
+  }, [profileLocked, photoLocked, location.pathname, navigate, user]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -253,16 +268,16 @@ function ShellInner() {
               navigate(-1);
               return;
             }
-            navigate(profileLocked ? profileLockHomePath(user) : '/dashboard');
+            navigate(accessLocked ? (photoLocked && !profileLocked ? '/account' : profileLockHomePath(user)) : '/dashboard');
           }}
         >
           <span className="shell-back-icon" aria-hidden />
         </button>
         <Link
-          to={profileLocked ? profileLockHomePath(user) : '/dashboard'}
+          to={accessLocked ? (photoLocked && !profileLocked ? '/account' : profileLockHomePath(user)) : '/dashboard'}
           className="shell-brand shell-brand-mobile"
           onClick={(event) =>
-            guardHref(profileLocked ? profileLockHomePath(user) : '/dashboard', event)
+            guardHref(accessLocked ? (photoLocked && !profileLocked ? '/account' : profileLockHomePath(user)) : '/dashboard', event)
           }
         >
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
@@ -287,10 +302,10 @@ function ShellInner() {
 
       <aside className="app-sidebar" aria-label="Sidebar">
         <Link
-          to={profileLocked ? profileLockHomePath(user) : '/dashboard'}
+          to={accessLocked ? (photoLocked && !profileLocked ? '/account' : profileLockHomePath(user)) : '/dashboard'}
           className="shell-brand shell-brand-desktop"
           onClick={(event) =>
-            guardHref(profileLocked ? profileLockHomePath(user) : '/dashboard', event)
+            guardHref(accessLocked ? (photoLocked && !profileLocked ? '/account' : profileLockHomePath(user)) : '/dashboard', event)
           }
         >
           <img src={logo} alt="" className="shell-logo" width={36} height={36} />
@@ -303,7 +318,7 @@ function ShellInner() {
           tlDashboardAccess={tlDashboardAccess}
           unreadMessages={unreadMessages}
           employmentType={user?.employment_type || null}
-          profileLocked={profileLocked}
+          profileLocked={accessLocked}
           salesAgentDashboard={Boolean(user?.sales_agent_dashboard)}
           onNavigate={() => setDrawerOpen(false)}
         />
@@ -350,7 +365,7 @@ function ShellInner() {
         )}
         {user ? <PushEnableBanner /> : null}
         {user?.profile_alert_at &&
-          !profileLocked &&
+          !accessLocked &&
           !showPortalAlert &&
           !dismissProfileAlert &&
           (Array.isArray(user.profile_alert_fields)
@@ -437,10 +452,13 @@ function ShellInner() {
       {showPortalAlert && (
         <PortalAlertModal user={user} onContinue={acknowledgePortalAlert} />
       )}
+      {photoLocked && !profileLocked && !ackPhotoLock && !showBirthday && !showExam && !showPortalAlert && (
+        <PhotoAlertLock user={user} onContinue={() => setAckPhotoLock(true)} />
+      )}
       {profileLocked && !ackProfileLock && !showBirthday && !showExam && !showPortalAlert && (
         <ProfileIncompleteLock user={user} onContinue={() => setAckProfileLock(true)} />
       )}
-      {!profileLocked && <AdminIncompleteGate user={user} />}
+      {!accessLocked && <AdminIncompleteGate user={user} />}
     </div>
   );
 }

@@ -30,13 +30,17 @@ function canManageLowerStaff(req) {
   const role = String(req.user?.role || '').toLowerCase();
   if (role === 'ceo' || role === 'manager') return true;
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  return perms.includes('hr:add_employee') || perms.includes('*');
+  return (
+    perms.includes('staff:subordinate') ||
+    perms.includes('hr:add_employee') ||
+    perms.includes('*')
+  );
 }
 
 function denyUnlessHr(req, res) {
   if (canManageLowerStaff(req)) return false;
   res.status(403).json({
-    message: 'Only HR with Add employees permission can manage subordinate staff salary.',
+    message: 'Only admins with Subordinate staff permission can manage subordinate salary.',
   });
   return true;
 }

@@ -98,6 +98,49 @@
   background: rgba(61, 255, 122, 0.08);
 }
 
+.permission-block-dedicated {
+  border-radius: 10px;
+  padding: 0.35rem 0.25rem 0.55rem;
+}
+
+.permission-block-petty {
+  border: 1px solid rgba(126, 203, 255, 0.4);
+  background: rgba(126, 203, 255, 0.08);
+}
+
+.permission-block-subordinate {
+  border: 1px solid rgba(255, 196, 92, 0.4);
+  background: rgba(255, 196, 92, 0.08);
+}
+
+.permission-block-dedicated.is-selected {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+.permission-details {
+  margin: 0 0 0.25rem 1.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(5, 8, 16, 0.4);
+}
+
+.permission-details-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.permission-details ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
 .permission-item strong {
   display: block;
   color: var(--text-h);

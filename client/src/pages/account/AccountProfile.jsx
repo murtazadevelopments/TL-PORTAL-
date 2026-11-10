@@ -5,7 +5,11 @@ import AvatarEditor from '../../components/AvatarEditor';
 import { useInactivityGuard } from '../../components/InactivityGuard';
 import { useAuthUser } from '../../context/AuthUserContext';
 import { withAuthDocumentUrl } from '../../utils/documentUrls';
-import { missingEmployeePortalFields, isProfileIncompleteLocked } from '../../utils/profileCompleteness';
+import {
+  missingEmployeePortalFields,
+  isProfileIncompleteLocked,
+  isPhotoAlertLocked,
+} from '../../utils/profileCompleteness';
 import { useFlashSuccess } from '../../utils/successPopup';
 import '../../components/ProfileIncompleteLock.css';
 
@@ -125,6 +129,7 @@ export default function AccountProfile() {
     [profile]
   );
   const locked = isProfileIncompleteLocked(profile);
+  const photoLocked = isPhotoAlertLocked(profile);
   const missingKeys = new Set(missingEmployeeFields.map((field) => field.key));
   const fieldRequired = (key) => locked && missingKeys.has(key);
   const missingLabels = missingEmployeeFields.map((field) => field.label);
@@ -184,13 +189,13 @@ export default function AccountProfile() {
       setAvatarBroken(false);
       setShowAvatarEditor(false);
       setSuccess('Profile photo updated.');
+      await refreshUser();
       if (missingEmployeePortalFields(data).length === 0) {
         setShowIncompleteBanner(false);
         sessionStorage.removeItem('profileIncompleteDismissed');
-        await refreshUser();
-        if (locked) navigate('/dashboard');
-      } else {
-        refreshUser();
+      }
+      if (photoLocked || (locked && missingEmployeePortalFields(data).length === 0)) {
+        navigate('/dashboard');
       }
     } catch (err) {
       if (err.response?.status === 401) {

@@ -270,7 +270,12 @@ router.put(
 router.get(
   '/employees',
   requireRole('admin'),
-  requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
+  requireCeoOrAnyPermission(
+    'employees:view',
+    'hr:add_employee',
+    'staff:subordinate',
+    'employees:remote'
+  ),
   listEmployees
 );
 router.get(
@@ -294,81 +299,86 @@ router.get(
 router.post(
   '/employees',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('hr:add_employee', 'staff:subordinate'),
   lowerStaffUpload,
   createEmployee
 );
 router.get(
   '/lower-staff/payroll',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   listStaffPayroll
 );
 router.get(
   '/lower-staff/payroll/export',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   exportStaffPayroll
 );
 router.get(
   '/employees/:id/payroll',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   getEmployeePayroll
 );
 router.post(
   '/employees/:id/advances',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   createAdvance
 );
 router.delete(
   '/employees/:id/advances/:advanceId',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   deleteAdvance
 );
 router.post(
   '/employees/:id/loans',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   createLoan
 );
 router.delete(
   '/employees/:id/loans/:loanId',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   deleteLoan
 );
 router.post(
   '/employees/:id/salary-payments',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   markSalaryPaid
 );
 router.delete(
   '/employees/:id/salary-payments/:monthKey',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   unmarkSalaryPaid
 );
 router.put(
   '/employees/:id/lower-staff',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   lowerStaffUpload,
   updateLowerStaff
 );
 router.delete(
   '/employees/:id/lower-staff',
   requireRole('admin'),
-  requirePermission('hr:add_employee'),
+  requireCeoOrAnyPermission('staff:subordinate', 'hr:add_employee'),
   deleteLowerStaff
 );
 router.get(
   '/employees/:id',
   requireRole('admin'),
-  requireCeoOrAnyPermission('employees:view', 'hr:add_employee', 'employees:remote'),
+  requireCeoOrAnyPermission(
+    'employees:view',
+    'hr:add_employee',
+    'staff:subordinate',
+    'employees:remote'
+  ),
   getEmployeeById
 );
 router.put(

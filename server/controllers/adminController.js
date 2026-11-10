@@ -36,11 +36,14 @@ const {
   ensureProfileAlertColumns,
   profileAlertCooldown,
   photoAlertCooldown,
+  photoAlertCount,
+  isPhotoAlertLocked,
   PHOTO_ALERT_SUBJECT,
   PHOTO_ALERT_BODY,
   withDocumentPresence,
   profileAlertCount,
   PROFILE_ALERT_MAX,
+  PHOTO_ALERT_MAX,
   isProfileLockExempt,
 } = require('../utils/profileCompleteness');
 const {
@@ -81,7 +84,8 @@ const LIST_COLUMNS = `
   bank_name, account_title, iban, account_number,
   emergency_contact_name, emergency_contact_number,
   reference_person AS reference_person_name,
-  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, photo_alert_count, photo_alert_locked_at,
+  profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url,
   cnic_front_url, cnic_back_url, cv_url
@@ -99,7 +103,8 @@ const DETAIL_COLUMNS = `
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
   terminated_at, exit_remarks,
-  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, photo_alert_count, photo_alert_locked_at,
+  profile_alert_count, profile_incomplete_locked_at,
   staff_extra_1_kind, staff_extra_1_label, staff_extra_1_text, staff_extra_1_url,
   staff_extra_2_kind, staff_extra_2_label, staff_extra_2_text, staff_extra_2_url
 `;
@@ -143,6 +148,17 @@ function canManageLowerStaff(req) {
   const role = String(req.user?.role || '').toLowerCase();
   if (role === 'ceo' || role === 'manager') return true;
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+  return (
+    perms.includes('staff:subordinate') ||
+    perms.includes('hr:add_employee') ||
+    perms.includes('*')
+  );
+}
+
+function canAddPortalEmployees(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'ceo' || role === 'manager') return true;
+  const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
   return perms.includes('hr:add_employee') || perms.includes('*');
 }
 
@@ -153,7 +169,10 @@ function directoryAccess(req) {
   return {
     ceo,
     canOnsiteDirectory:
-      ceo || perms.includes('employees:view') || perms.includes('hr:add_employee'),
+      ceo ||
+      perms.includes('employees:view') ||
+      perms.includes('hr:add_employee') ||
+      perms.includes('staff:subordinate'),
     canRemoteDirectory: ceo || perms.includes('employees:remote'),
     canEditOnsite: ceo || perms.includes('employees:edit') || perms.includes('hr:add_employee'),
     canEditRemote: ceo || perms.includes('employees:remote'),
@@ -438,7 +457,7 @@ async function createLowerStaff(req, res, body) {
   await ensureSalaryColumn();
   if (!canManageLowerStaff(req)) {
     return res.status(403).json({
-      message: 'Only HR with Add employees permission can add subordinate staff.',
+      message: 'Only admins with Subordinate staff permission can add subordinate staff.',
     });
   }
 
@@ -558,7 +577,7 @@ async function updateLowerStaff(req, res) {
     await ensureSalaryColumn();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
-        message: 'Only HR with Add employees permission can edit subordinate staff.',
+        message: 'Only admins with Subordinate staff permission can edit subordinate staff.',
       });
     }
 
@@ -684,7 +703,7 @@ async function deleteLowerStaff(req, res) {
     await ensureStaffKindColumn();
     if (!canManageLowerStaff(req)) {
       return res.status(403).json({
-        message: 'Only HR with Add employees permission can delete subordinate staff.',
+        message: 'Only admins with Subordinate staff permission can delete subordinate staff.',
       });
     }
 
@@ -749,6 +768,12 @@ async function createEmployee(req, res) {
 
     if (String(body.staff_kind || '').trim().toLowerCase() === 'lower') {
       return createLowerStaff(req, res, body);
+    }
+
+    if (!canAddPortalEmployees(req)) {
+      return res.status(403).json({
+        message: 'Only HR with Add employees permission can create portal employees.',
+      });
     }
 
     const username = String(body.username || '')
@@ -1804,7 +1829,7 @@ async function markEmployeeExit(req, res, kind) {
     if (isLowerStaff(target)) {
       if (!canManageLowerStaff(req)) {
         return res.status(403).json({
-          message: 'Only HR can resign or terminate subordinate staff.',
+          message: 'Only admins with Subordinate staff permission can resign or terminate subordinate staff.',
         });
       }
     } else {
@@ -2241,6 +2266,15 @@ async function sendPhotoAlert(req, res) {
       });
     }
 
+    if (isPhotoAlertLocked(target)) {
+      return res.status(409).json({
+        message: `This employee already had ${PHOTO_ALERT_MAX} photo alerts. Their portal is limited until they upload a new profile picture.`,
+        code: 'PHOTO_ALERT_LIMIT',
+        photoAlertCount: photoAlertCount(target),
+        photoAlertLockedAt: target.photo_alert_locked_at || null,
+      });
+    }
+
     const cooldown = photoAlertCooldown(target);
     if (cooldown.active) {
       return res.status(429).json({
@@ -2251,11 +2285,17 @@ async function sendPhotoAlert(req, res) {
       });
     }
 
+    const nextCount = Math.min(PHOTO_ALERT_MAX, photoAlertCount(target) + 1);
+    const lockNow = nextCount >= PHOTO_ALERT_MAX && !isProfileLockExempt(target);
     const firstName = String(target.name || target.username || 'there').split(' ')[0];
     const subject = PHOTO_ALERT_SUBJECT;
+    const lockNote = lockNow
+      ? `\n\nThis was reminder ${PHOTO_ALERT_MAX} of ${PHOTO_ALERT_MAX}. Until you upload a new profile picture, you can only open Profile to change it — not the dashboard.\n\n`
+      : `\n\nThis was reminder ${nextCount} of ${PHOTO_ALERT_MAX}.\n\n`;
     const messageBody =
       `Hi ${firstName},\n\n` +
-      `${PHOTO_ALERT_BODY}\n\n` +
+      `${PHOTO_ALERT_BODY}\n` +
+      lockNote +
       'Open My Account → Profile and upload a new photo.\n\n' +
       '— Textured Lab Portal';
 
@@ -2293,15 +2333,21 @@ async function sendPhotoAlert(req, res) {
       },
     });
 
-    await pool.query(
+    const { rows: updatedRows } = await pool.query(
       `
         UPDATE users
         SET photo_alert_sent_at = NOW(),
             photo_alert_seen_count = 0,
+            photo_alert_count = $2,
+            photo_alert_locked_at = CASE
+              WHEN $3::boolean THEN COALESCE(photo_alert_locked_at, NOW())
+              ELSE photo_alert_locked_at
+            END,
             updated_at = NOW()
         WHERE id = $1
+        RETURNING photo_alert_sent_at, photo_alert_count, photo_alert_locked_at
       `,
-      [id]
+      [id, nextCount, lockNow]
     );
     invalidateRequestUser(id);
 
@@ -2312,7 +2358,7 @@ async function sendPhotoAlert(req, res) {
         action: 'photo_alert_sent',
         targetTable: 'users',
         targetId: target.id,
-        reason: `Asked ${target.username || target.name} to update their profile picture`,
+        reason: `Asked ${target.username || target.name} to update their profile picture (${nextCount}/${PHOTO_ALERT_MAX})`,
       });
     } catch (auditErr) {
       console.warn('photo_alert_sent audit failed:', auditErr.message || auditErr);
@@ -2325,15 +2371,21 @@ async function sendPhotoAlert(req, res) {
       : viaEmail
         ? 'They do not have the app, so the alert was emailed.'
         : 'They will see the message in the portal. Email could not be sent.';
+    const nextHint = lockNow
+      ? 'Portal is now limited until they upload a new profile picture.'
+      : 'Next alert is available after 24 hours.';
 
     res.json({
-      message: `Photo alert sent. ${channel}`,
+      message: `Photo alert sent (${nextCount} of ${PHOTO_ALERT_MAX}). ${channel} ${nextHint}`,
       emailSent: viaEmail,
       pushSent: viaPush,
       emailError: result?.emailError || null,
-      photoAlertSentAt: new Date().toISOString(),
+      photoAlertSentAt: updatedRows[0]?.photo_alert_sent_at || new Date().toISOString(),
+      photoAlertCount: nextCount,
+      photoAlertLocked: lockNow,
+      photoAlertLockedAt: updatedRows[0]?.photo_alert_locked_at || null,
     });
-    queueCeoBranchManagerNotice(req, {
+    voidCeoBranchManagerNotice(req, {
       action: 'Sent photo alert',
       targetName: target.name || target.username,
       targetId: target.id,

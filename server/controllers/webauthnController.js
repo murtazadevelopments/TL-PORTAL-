@@ -27,7 +27,8 @@ const USER_AUTH_COLUMNS = `
   reference_person AS reference_person_name,
   failed_login_attempts, locked_at, blocked_at, blocked_reason, last_day_in_office, resigned_at,
   terminated_at, exit_remarks,
-  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, profile_alert_count, profile_incomplete_locked_at,
+  profile_alert_at, profile_alert_sent_at, photo_alert_sent_at, photo_alert_count, photo_alert_locked_at,
+  profile_alert_count, profile_incomplete_locked_at,
   password
 `;
 

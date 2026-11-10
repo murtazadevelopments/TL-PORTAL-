@@ -31,7 +31,13 @@ const PERMISSIONS_CATALOG = [
     key: 'petty:cash',
     label: 'Petty cash',
     description:
-      'Personal petty cash dashboard for the assigned person only. Their entries are stored under their user id — other admins cannot see them. CEO and manager can open every assigned dashboard by name.',
+      'Dedicated personal petty cash ledger for the assigned admin only. Add total amounts and expense items with date/time, upload receipts, and download Excel/PDF for the selected month. Other admins cannot see this ledger. CEO and manager can open every assigned person’s dashboard by name. This is separate from Subordinate staff.',
+  },
+  {
+    key: 'staff:subordinate',
+    label: 'Subordinate staff',
+    description:
+      'Dedicated subordinate staff access: add and edit subordinate staff records, manage salary advances/loans, mark salary paid, and download subordinate salary Excel/PDF. This is separate from Petty cash and does not grant portal employee HR access.',
   },
   {
     key: 'hr:followup',
@@ -43,7 +49,7 @@ const PERMISSIONS_CATALOG = [
     key: 'hr:add_employee',
     label: 'Add employees (HR)',
     description:
-      'For HR: create portal employees and subordinate staff records, manage shifts, and see onsite employees attendance. Other admins cannot add employees.',
+      'For HR: create portal employees, manage shifts, and see onsite employees attendance. Does not include subordinate staff (use Subordinate staff) or petty cash (use Petty cash).',
   },
   {
     key: 'attendance:view',

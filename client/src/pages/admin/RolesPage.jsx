@@ -17,6 +17,38 @@ function fullName(row) {
   return row?.name || '—';
 }
 
+const PERMISSION_LABELS = {
+  'petty:cash': 'Petty cash',
+  'staff:subordinate': 'Subordinate staff',
+  'hr:add_employee': 'Add employees (HR)',
+  'hr:followup': 'HR assignee',
+  'employees:remote': 'Remote employees',
+  'employees:view': 'View employees',
+  'employees:edit': 'Edit employees',
+  'employees:export': 'Export employee data',
+  'employees:deactivate': 'Deactivate employees',
+  'attendance:view': 'View attendance',
+  'attendance:edit': 'Edit attendance',
+  'attendance:month': 'Full month attendance',
+  'attendance:export': 'Export attendance',
+  'sales:targets': 'Sales targets',
+  'documents:view': 'View documents',
+  'documents:employment_form': 'Upload employment forms',
+  'notifications:signup_recipient': 'New signup notifications',
+  'teams:create': 'Manage teams',
+  'branches:create': 'Manage branches',
+  'accounts:unlock': 'Unlock locked accounts',
+  'messages:send': 'Send messages',
+};
+
+function permissionChipLabel(key, scope) {
+  const base = PERMISSION_LABELS[key] || key;
+  if (isScopedEmployeePermission(key) && scope) {
+    return `${base} · ${describeEmployeeScope(scope)}`;
+  }
+  return base;
+}
+
 function HrPeoplePicker({ onSaved }) {
   const [people, setPeople] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
@@ -314,10 +346,7 @@ export default function RolesPage() {
                         <div className="perm-chip-row">
                           {row.permissions.map((key) => {
                             const scope = row.scopes?.[key];
-                            const label =
-                              isScopedEmployeePermission(key) && scope
-                                ? `${key} · ${describeEmployeeScope(scope)}`
-                                : key;
+                            const label = permissionChipLabel(key, scope);
                             return (
                               <span key={key} className="perm-chip" title={label}>
                                 {label}

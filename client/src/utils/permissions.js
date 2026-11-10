@@ -132,6 +132,14 @@ export function canUsePettyCash(role, permissions) {
   return hasPermission(permissions, 'petty:cash', role);
 }
 
+/** Subordinate staff records + salary (separate from petty cash). */
+export function canManageSubordinateStaff(role, permissions) {
+  return (
+    hasPermission(permissions, 'staff:subordinate', role) ||
+    hasPermission(permissions, 'hr:add_employee', role)
+  );
+}
+
 /** CEO/manager can open every assigned petty cash dashboard by name. */
 export function canOverseePettyCash(role) {
   return isCeoOrManager(role);
