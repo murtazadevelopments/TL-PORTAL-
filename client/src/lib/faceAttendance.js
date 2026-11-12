@@ -1,7 +1,7 @@
 import * as faceapi from 'face-api.js';
 
 const MODEL_URL = '/models';
-const SAMPLE_COUNT = 2;
+const SAMPLE_COUNT = 3;
 const ALIGN_MS = 0;
 const SAMPLE_GAP_MS = 40;
 const LIVENESS_MS = 0;
