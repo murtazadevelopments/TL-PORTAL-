@@ -78,10 +78,74 @@ async function readErrorBody(data) {
   return '';
 }
 
+const ITEM_OPTIONS = [
+  'Milk',
+  'Chicken',
+  'ROTI',
+  'General',
+  'GENERAL ITEM',
+  'LPG GAS BILL',
+  'ROTI BILL',
+];
+const OTHER_ITEM = '__other__';
+
+function itemChoiceFor(name) {
+  if (!name) return '';
+  return ITEM_OPTIONS.includes(name) ? name : OTHER_ITEM;
+}
+
+/** Item dropdown with an "Other" option that reveals a manual text input. */
+function ItemField({ value, setValue }) {
+  const choice = value.item_choice;
+  return (
+    <>
+      <label>
+        Item name *
+        <select
+          value={choice}
+          onChange={(e) => {
+            const next = e.target.value;
+            setValue((f) => ({
+              ...f,
+              item_choice: next,
+              item_name: next === OTHER_ITEM ? '' : next,
+            }));
+          }}
+          required
+        >
+          <option value="" disabled>
+            Select item
+          </option>
+          {ITEM_OPTIONS.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+          <option value={OTHER_ITEM}>Other</option>
+        </select>
+      </label>
+      {choice === OTHER_ITEM ? (
+        <label>
+          Other item *
+          <input
+            type="text"
+            value={value.item_name}
+            onChange={(e) => setValue((f) => ({ ...f, item_name: e.target.value }))}
+            maxLength={200}
+            placeholder="Enter item name"
+            required
+            autoFocus
+          />
+        </label>
+      ) : null}
+    </>
+  );
+}
+
 const emptyForm = () => ({
+  item_choice: '',
   item_name: '',
   price: '',
-  quantity: '',
   branch: '',
   person_name: '',
   occurred_at: toDateTimeLocalValue(new Date()),
@@ -210,9 +274,9 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     setEditReceiptFile(null);
     setEditError('');
     setEditForm({
+      item_choice: itemChoiceFor(entry.item_name || ''),
       item_name: entry.item_name || '',
       price: String(entry.price ?? ''),
-      quantity: entry.quantity != null ? String(entry.quantity) : '',
       branch: entry.branch || '',
       person_name: entry.person_name || '',
       occurred_at: toDateTimeLocalValue(entry.occurred_at || entry.created_at),
@@ -232,9 +296,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     const fd = new FormData();
     fd.append('item_name', String(source.item_name || '').trim());
     fd.append('price', source.price);
-    if (source.quantity !== '' && source.quantity != null) {
-      fd.append('quantity', source.quantity);
-    }
     if (source.branch) fd.append('branch', source.branch);
     if (String(source.person_name || '').trim()) {
       fd.append('person_name', String(source.person_name).trim());
@@ -516,16 +577,7 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
 
       {canEdit ? (
         <form className="petty-form" onSubmit={handleAdd}>
-          <label>
-            Item name *
-            <input
-              type="text"
-              value={form.item_name}
-              onChange={(e) => setForm((f) => ({ ...f, item_name: e.target.value }))}
-              maxLength={200}
-              required
-            />
-          </label>
+          <ItemField value={form} setValue={setForm} />
           <label>
             Price *
             <input
@@ -535,17 +587,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
               value={form.price}
               onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
               required
-            />
-          </label>
-          <label>
-            Quantity
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={form.quantity}
-              onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
-              placeholder="Optional"
             />
           </label>
           <label>
@@ -609,7 +650,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                 <th>Date & time</th>
                 <th>Item</th>
                 <th>Price</th>
-                <th>Qty</th>
                 <th>Amount</th>
                 <th>Branch</th>
                 <th>Person</th>
@@ -623,7 +663,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                   <td>{formatDateTime(entry.occurred_at || entry.created_at)}</td>
                   <td>{entry.item_name}</td>
                   <td>{formatMoney(entry.price)}</td>
-                  <td>{entry.quantity != null ? entry.quantity : '—'}</td>
                   <td>{formatMoney(entry.amount)}</td>
                   <td>{entry.branch || '—'}</td>
                   <td>{entry.person_name || '—'}</td>
@@ -690,18 +729,7 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                 </div>
                 {editError ? <p className="error">{editError}</p> : null}
                 <div className="petty-form petty-form-modal">
-                  <label>
-                    Item name *
-                    <input
-                      type="text"
-                      value={editForm.item_name}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, item_name: e.target.value }))
-                      }
-                      maxLength={200}
-                      required
-                    />
-                  </label>
+                  <ItemField value={editForm} setValue={setEditForm} />
                   <label>
                     Price *
                     <input
@@ -713,19 +741,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                         setEditForm((f) => ({ ...f, price: e.target.value }))
                       }
                       required
-                    />
-                  </label>
-                  <label>
-                    Quantity
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={editForm.quantity}
-                      onChange={(e) =>
-                        setEditForm((f) => ({ ...f, quantity: e.target.value }))
-                      }
-                      placeholder="Optional"
                     />
                   </label>
                   <label>

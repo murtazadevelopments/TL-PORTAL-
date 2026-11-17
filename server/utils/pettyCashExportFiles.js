@@ -21,9 +21,8 @@ try {
 
 const COLUMNS = [
   { key: 'occurred_at', label: 'Date & time', width: 120 },
-  { key: 'item_name', label: 'Item', width: 140 },
+  { key: 'item_name', label: 'Item', width: 190 },
   { key: 'price', label: 'Price', width: 70 },
-  { key: 'quantity', label: 'Qty', width: 50 },
   { key: 'amount', label: 'Amount', width: 80 },
   { key: 'branch', label: 'Branch', width: 90 },
   { key: 'person_name', label: 'Person', width: 100 },
@@ -105,7 +104,6 @@ function displayRows(entries) {
     occurred_at: formatDateTime(row.occurred_at || row.created_at),
     item_name: row.item_name || '—',
     price: moneyLabel(row.price),
-    quantity: row.quantity != null ? String(row.quantity) : '—',
     amount: moneyLabel(row.amount),
     branch: row.branch || '—',
     person_name: row.person_name || '—',
@@ -277,9 +275,8 @@ async function buildPettyCashPdf(entries, summary = {}, meta = {}) {
 
   const cols = [
     { key: 'occurred_at', label: 'Date & time', width: 110, align: 'left' },
-    { key: 'item_name', label: 'Item', width: 150, align: 'left' },
+    { key: 'item_name', label: 'Item', width: 195, align: 'left' },
     { key: 'price', label: 'Price', width: 70, align: 'right' },
-    { key: 'quantity', label: 'Qty', width: 45, align: 'right' },
     { key: 'amount', label: 'Amount', width: 80, align: 'right' },
     { key: 'branch', label: 'Branch', width: 95, align: 'left' },
     { key: 'person_name', label: 'Person', width: 136, align: 'left' },

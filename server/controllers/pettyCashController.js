@@ -54,13 +54,6 @@ function parsePrice(raw) {
   return Math.round(n * 100) / 100;
 }
 
-function parseQuantity(raw) {
-  if (raw == null || String(raw).trim() === '') return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100) / 100;
-}
-
 function parseTotalAmount(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) return null;
@@ -102,13 +95,11 @@ function parseOccurredAt(raw) {
 
 function mapEntry(row) {
   const price = Number(row.price) || 0;
-  const quantity = row.quantity != null ? Number(row.quantity) : null;
   return {
     id: Number(row.id),
     owner_user_id: Number(row.owner_user_id),
     item_name: row.item_name || '',
     price,
-    quantity,
     branch: row.branch || '',
     person_name: row.person_name || '',
     amount: Math.round(price * 100) / 100,
@@ -169,7 +160,7 @@ async function listEntriesForOwner(ownerUserId, monthKey = null) {
   }
   const { rows } = await pool.query(
     `
-      SELECT id, owner_user_id, item_name, price, quantity, branch, person_name,
+      SELECT id, owner_user_id, item_name, price, branch, person_name,
              occurred_at, receipt_path, receipt_mime, created_by, created_at, updated_at
       FROM petty_cash_entries
       WHERE owner_user_id = $1
@@ -245,13 +236,12 @@ async function assertOverseer(req, res) {
 function parseEntryBody(body) {
   const itemName = String(body?.item_name || body?.itemName || '').trim().slice(0, 200);
   const price = parsePrice(body?.price);
-  const quantity = parseQuantity(body?.quantity);
   const branch = String(body?.branch || '').trim().slice(0, 120) || null;
   const personName = String(body?.person_name || body?.personName || '')
     .trim()
     .slice(0, 120) || null;
   const occurredAt = parseOccurredAt(body?.occurred_at || body?.occurredAt);
-  return { itemName, price, quantity, branch, personName, occurredAt };
+  return { itemName, price, branch, personName, occurredAt };
 }
 
 async function saveReceiptFile(ownerUserId, file) {
@@ -390,7 +380,7 @@ async function createMyEntry(req, res) {
     await ensurePettyCashSchema();
     if (!(await assertAssignee(req, res))) return;
 
-    const { itemName, price, quantity, branch, personName, occurredAt } =
+    const { itemName, price, branch, personName, occurredAt } =
       parseEntryBody(req.body);
     if (!itemName) {
       return res.status(400).json({ message: 'Item name is required.' });
@@ -413,17 +403,16 @@ async function createMyEntry(req, res) {
     const { rows } = await pool.query(
       `
         INSERT INTO petty_cash_entries
-          (owner_user_id, item_name, price, quantity, branch, person_name, status,
+          (owner_user_id, item_name, price, branch, person_name, status,
            occurred_at, receipt_path, receipt_mime, created_by, description, amount, direction)
-        VALUES ($1, $2, $3, $4, $5, $6, 'used', $7, $8, $9, $10, $2, $3, 'out')
-        RETURNING id, owner_user_id, item_name, price, quantity, branch, person_name,
+        VALUES ($1, $2, $3, $4, $5, 'used', $6, $7, $8, $9, $2, $3, 'out')
+        RETURNING id, owner_user_id, item_name, price, branch, person_name,
                   occurred_at, receipt_path, receipt_mime, created_by, created_at, updated_at
       `,
       [
         req.user.id,
         itemName,
         price,
-        quantity,
         branch,
         personName,
         occurredAt.toISOString(),
@@ -449,7 +438,7 @@ async function updateMyEntry(req, res) {
       return res.status(400).json({ message: 'Invalid entry.' });
     }
 
-    const { itemName, price, quantity, branch, personName, occurredAt } =
+    const { itemName, price, branch, personName, occurredAt } =
       parseEntryBody(req.body);
     if (!itemName) {
       return res.status(400).json({ message: 'Item name is required.' });
@@ -496,17 +485,16 @@ async function updateMyEntry(req, res) {
         UPDATE petty_cash_entries
         SET item_name = $3,
             price = $4,
-            quantity = $5,
-            branch = $6,
-            person_name = $7,
-            occurred_at = $8,
-            receipt_path = $9,
-            receipt_mime = $10,
+            branch = $5,
+            person_name = $6,
+            occurred_at = $7,
+            receipt_path = $8,
+            receipt_mime = $9,
             description = $3,
             amount = $4,
             updated_at = NOW()
         WHERE id = $1 AND owner_user_id = $2
-        RETURNING id, owner_user_id, item_name, price, quantity, branch, person_name,
+        RETURNING id, owner_user_id, item_name, price, branch, person_name,
                   occurred_at, receipt_path, receipt_mime, created_by, created_at, updated_at
       `,
       [
@@ -514,7 +502,6 @@ async function updateMyEntry(req, res) {
         req.user.id,
         itemName,
         price,
-        quantity,
         branch,
         personName,
         occurredAt.toISOString(),
