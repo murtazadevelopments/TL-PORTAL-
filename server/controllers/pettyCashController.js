@@ -547,6 +547,161 @@ async function deleteMyEntry(req, res) {
   }
 }
 
+async function updateMyFundAddition(req, res) {
+  try {
+    await ensurePettyCashSchema();
+    if (!(await assertAssignee(req, res))) return;
+
+    const additionId = Number(req.params.id);
+    if (!Number.isFinite(additionId)) {
+      return res.status(400).json({ message: 'Invalid amount entry.' });
+    }
+    const amount = parseAddAmount(req.body?.amount);
+    if (amount == null) {
+      return res.status(400).json({ message: 'Enter an amount greater than 0.' });
+    }
+    const occurredAt = parseOccurredAt(req.body?.occurred_at || req.body?.occurredAt);
+    if (!occurredAt) {
+      return res.status(400).json({ message: 'Enter a valid date and time.' });
+    }
+
+    const client = await pool.connect();
+    let fundRow;
+    try {
+      await client.query('BEGIN');
+      const { rows: oldRows } = await client.query(
+        `
+          SELECT amount FROM petty_cash_fund_additions
+          WHERE id = $1 AND owner_user_id = $2
+          FOR UPDATE
+        `,
+        [additionId, req.user.id]
+      );
+      if (!oldRows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Amount entry not found.' });
+      }
+      const delta = Math.round((amount - (Number(oldRows[0].amount) || 0)) * 100) / 100;
+      await client.query(
+        `
+          UPDATE petty_cash_fund_additions
+          SET amount = $3, occurred_at = $4
+          WHERE id = $1 AND owner_user_id = $2
+        `,
+        [additionId, req.user.id, amount, occurredAt.toISOString()]
+      );
+      const { rows: fundRows } = await client.query(
+        `
+          INSERT INTO petty_cash_funds (owner_user_id, total_amount, updated_by, updated_at)
+          VALUES ($1, GREATEST($2::numeric, 0), $3, NOW())
+          ON CONFLICT (owner_user_id) DO UPDATE
+            SET total_amount = GREATEST(petty_cash_funds.total_amount + $2::numeric, 0),
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()
+          RETURNING total_amount, updated_at
+        `,
+        [req.user.id, delta, req.user.id]
+      );
+      fundRow = fundRows[0];
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const monthKey = parseMonth(req.body?.month || req.query?.month);
+    const entries = await listEntriesForOwner(req.user.id, monthKey);
+    const fundAdditions = await listFundAdditionsForOwner(req.user.id, monthKey);
+    const total = Number(fundRow.total_amount) || 0;
+    return res.json({
+      ok: true,
+      total_amount: total,
+      fund_additions: fundAdditions,
+      month: monthKey,
+      summary: summarize(entries, total),
+      message: 'Amount updated.',
+    });
+  } catch (err) {
+    console.error('updateMyFundAddition error:', err);
+    return res.status(500).json({ message: 'Failed to update amount.' });
+  }
+}
+
+async function deleteMyFundAddition(req, res) {
+  try {
+    await ensurePettyCashSchema();
+    if (!(await assertAssignee(req, res))) return;
+
+    const additionId = Number(req.params.id);
+    if (!Number.isFinite(additionId)) {
+      return res.status(400).json({ message: 'Invalid amount entry.' });
+    }
+
+    const client = await pool.connect();
+    let fundRow;
+    try {
+      await client.query('BEGIN');
+      const { rows: delRows } = await client.query(
+        `
+          DELETE FROM petty_cash_fund_additions
+          WHERE id = $1 AND owner_user_id = $2
+          RETURNING amount
+        `,
+        [additionId, req.user.id]
+      );
+      if (!delRows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'Amount entry not found.' });
+      }
+      const removed = Number(delRows[0].amount) || 0;
+      const { rows: fundRows } = await client.query(
+        `
+          UPDATE petty_cash_funds
+          SET total_amount = GREATEST(total_amount - $2, 0),
+              updated_by = $3,
+              updated_at = NOW()
+          WHERE owner_user_id = $1
+          RETURNING total_amount, updated_at
+        `,
+        [req.user.id, removed, req.user.id]
+      );
+      fundRow = fundRows[0] || { total_amount: 0, updated_at: null };
+      await client.query('COMMIT');
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const monthKey = parseMonth(req.query?.month);
+    const entries = await listEntriesForOwner(req.user.id, monthKey);
+    const fundAdditions = await listFundAdditionsForOwner(req.user.id, monthKey);
+    const total = Number(fundRow.total_amount) || 0;
+    return res.json({
+      ok: true,
+      total_amount: total,
+      fund_additions: fundAdditions,
+      month: monthKey,
+      summary: summarize(entries, total),
+      message: 'Amount removed from total.',
+    });
+  } catch (err) {
+    console.error('deleteMyFundAddition error:', err);
+    return res.status(500).json({ message: 'Failed to remove amount.' });
+  }
+}
+
 async function streamReceiptForOwner(ownerUserId, entryId, res) {
   const { rows } = await pool.query(
     `
@@ -867,6 +1022,8 @@ module.exports = {
   createMyEntry,
   updateMyEntry,
   deleteMyEntry,
+  updateMyFundAddition,
+  deleteMyFundAddition,
   getMyReceipt,
   exportMyLedger,
   listHolders,

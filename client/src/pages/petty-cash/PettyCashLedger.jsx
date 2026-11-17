@@ -186,6 +186,9 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
   const [exporting, setExporting] = useState('');
   const [success, setSuccess] = useState('');
   const [branches, setBranches] = useState(BRANCH_OPTIONS);
+  const [fundEdit, setFundEdit] = useState(null);
+  const [fundEditError, setFundEditError] = useState('');
+  const [savingFund, setSavingFund] = useState(false);
   useFlashSuccess(success);
 
   const title = useMemo(() => {
@@ -393,6 +396,69 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     }
   }
 
+  function startFundEdit(row) {
+    setFundEditError('');
+    setFundEdit({
+      id: row.id,
+      amount: String(row.amount ?? ''),
+      occurred_at: toDateTimeLocalValue(row.occurred_at || row.created_at),
+    });
+  }
+
+  function cancelFundEdit() {
+    setFundEdit(null);
+    setFundEditError('');
+  }
+
+  async function handleUpdateFundAddition(e) {
+    e.preventDefault();
+    if (!canEdit || !fundEdit) return;
+    const amount = Number(fundEdit.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFundEditError('Enter an amount greater than 0.');
+      return;
+    }
+    setSavingFund(true);
+    setFundEditError('');
+    setSuccess('');
+    try {
+      await api.put(`/api/petty-cash/me/fund-additions/${fundEdit.id}`, {
+        amount: fundEdit.amount,
+        occurred_at: fundEdit.occurred_at,
+        month,
+      });
+      setSuccess('Amount updated.');
+      setFundEdit(null);
+      await load();
+    } catch (err) {
+      setFundEditError(err.response?.data?.message || 'Could not update amount.');
+    } finally {
+      setSavingFund(false);
+    }
+  }
+
+  async function handleRemoveFundAddition(row) {
+    if (!canEdit) return;
+    if (
+      !window.confirm(
+        `Remove ${formatMoney(row.amount)} from the total amount?`
+      )
+    ) {
+      return;
+    }
+    setError('');
+    setSuccess('');
+    try {
+      await api.delete(`/api/petty-cash/me/fund-additions/${row.id}`, {
+        params: { month },
+      });
+      setSuccess('Amount removed.');
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not remove amount.');
+    }
+  }
+
   async function handleExport(format) {
     setExporting(format);
     setError('');
@@ -560,6 +626,7 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                 <tr>
                   <th>Date & time</th>
                   <th>Amount added</th>
+                  {canEdit ? <th>Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -567,6 +634,26 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                   <tr key={row.id}>
                     <td>{formatDateTime(row.occurred_at || row.created_at)}</td>
                     <td>{formatMoney(row.amount)}</td>
+                    {canEdit ? (
+                      <td>
+                        <div className="petty-row-actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => startFundEdit(row)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => handleRemoveFundAddition(row)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -810,6 +897,69 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                       {saving ? 'Saving…' : 'Update item'}
                     </button>
                     <button type="button" className="btn btn-ghost" onClick={cancelEdit}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {fundEdit && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="petty-modal-backdrop"
+              onClick={cancelFundEdit}
+              role="presentation"
+            >
+              <form
+                className="petty-modal"
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={handleUpdateFundAddition}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="petty-fund-edit-title"
+              >
+                <div className="petty-modal-header">
+                  <h2 id="petty-fund-edit-title">Edit amount</h2>
+                  <button type="button" className="btn btn-ghost" onClick={cancelFundEdit}>
+                    Close
+                  </button>
+                </div>
+                {fundEditError ? <p className="error">{fundEditError}</p> : null}
+                <div className="petty-form petty-form-modal">
+                  <label>
+                    Amount *
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={fundEdit.amount}
+                      onChange={(e) =>
+                        setFundEdit((f) => ({ ...f, amount: e.target.value }))
+                      }
+                      required
+                      autoFocus
+                    />
+                  </label>
+                  <label>
+                    Date &amp; time *
+                    <input
+                      type="datetime-local"
+                      value={fundEdit.occurred_at}
+                      onChange={(e) =>
+                        setFundEdit((f) => ({ ...f, occurred_at: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                  <div className="petty-form-actions">
+                    <button type="submit" className="btn btn-primary" disabled={savingFund}>
+                      {savingFund ? 'Saving…' : 'Update amount'}
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={cancelFundEdit}>
                       Cancel
                     </button>
                   </div>

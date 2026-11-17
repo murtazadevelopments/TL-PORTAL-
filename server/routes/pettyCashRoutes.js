@@ -8,6 +8,8 @@ const {
   createMyEntry,
   updateMyEntry,
   deleteMyEntry,
+  updateMyFundAddition,
+  deleteMyFundAddition,
   getMyReceipt,
   exportMyLedger,
   listHolders,
@@ -23,6 +25,8 @@ router.use(authMiddleware);
 router.get('/me', getMyLedger);
 router.get('/me/export', exportMyLedger);
 router.put('/me/total', updateMyTotal);
+router.put('/me/fund-additions/:id', updateMyFundAddition);
+router.delete('/me/fund-additions/:id', deleteMyFundAddition);
 router.post('/me', pettyCashReceiptUpload, createMyEntry);
 router.put('/me/:id', pettyCashReceiptUpload, updateMyEntry);
 router.delete('/me/:id', deleteMyEntry);
