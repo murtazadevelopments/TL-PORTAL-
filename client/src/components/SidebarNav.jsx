@@ -13,6 +13,7 @@ import {
   canReviewLeaveRequests,
   canUsePettyCash,
   canOverseePettyCash,
+  canUseHardwareLedger,
 } from '../utils/permissions';
 
 /**
@@ -78,6 +79,15 @@ export function buildSidebarGroups(
       label: 'Petty Cash',
       plainLabel: true,
       items: [{ to: '/petty-cash', label: 'My petty cash' }],
+    });
+  }
+
+  if (canUseHardwareLedger(role, permissions)) {
+    groups.push({
+      id: 'hardware-ledger',
+      label: 'Hardware Ledger',
+      plainLabel: true,
+      items: [{ to: '/hardware-ledger', label: 'Vendors' }],
     });
   }
 

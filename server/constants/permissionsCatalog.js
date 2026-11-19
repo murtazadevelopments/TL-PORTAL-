@@ -34,6 +34,12 @@ const PERMISSIONS_CATALOG = [
       'Dedicated personal petty cash ledger for the assigned admin only. Add total amounts and expense items with date/time, upload receipts, and download Excel/PDF for the selected month. Other admins cannot see this ledger. CEO and manager can open every assigned person’s dashboard by name. This is separate from Subordinate staff.',
   },
   {
+    key: 'hardware:ledger',
+    label: 'Hardware ledger',
+    description:
+      'Hardware vendor ledger for assigned persons only. Add vendors; each vendor has its own records of total amounts and paid amounts with date/time, and shows Total, Paid and Pending amounts. Not visible to other admins without this permission. CEO and managers always have access.',
+  },
+  {
     key: 'staff:subordinate',
     label: 'Subordinate staff',
     description:

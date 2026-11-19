@@ -43,6 +43,8 @@ const SalesAgentDashboard = lazy(() => import('./pages/sales/SalesAgentDashboard
 const SalesDailyTargetsPage = lazy(() => import('./pages/sales/SalesDailyTargetsPage'));
 const PettyCashPage = lazy(() => import('./pages/petty-cash/PettyCashPage'));
 const PettyCashOverviewPage = lazy(() => import('./pages/petty-cash/PettyCashOverviewPage'));
+const HardwareLedgerPage = lazy(() => import('./pages/hardware-ledger/HardwareLedgerPage'));
+const HardwareVendorPage = lazy(() => import('./pages/hardware-ledger/HardwareVendorPage'));
 
 function App() {
   return (
@@ -70,6 +72,8 @@ function App() {
               <Route path="/sales-targets" element={<SalesTargetsDashboard />} />
               <Route path="/sales-targets/:agentId" element={<SalesDailyTargetsPage />} />
               <Route path="/petty-cash" element={<PettyCashPage />} />
+              <Route path="/hardware-ledger" element={<HardwareLedgerPage />} />
+              <Route path="/hardware-ledger/:vendorId" element={<HardwareVendorPage />} />
               <Route path="/my-target" element={<Navigate to="/account/my-target" replace />} />
               <Route path="/account" element={<AccountProfile />} />
               <Route path="/account/my-target" element={<SalesAgentDashboard />} />

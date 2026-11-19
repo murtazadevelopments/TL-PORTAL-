@@ -19,6 +19,7 @@ function fullName(row) {
 
 const PERMISSION_LABELS = {
   'petty:cash': 'Petty cash',
+  'hardware:ledger': 'Hardware ledger',
   'staff:subordinate': 'Subordinate staff',
   'hr:add_employee': 'Add employees (HR)',
   'hr:followup': 'HR assignee',

@@ -37,6 +37,20 @@ function drawWatermark(ctx, width, height, lines) {
   ctx.restore();
 }
 
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.25;
+
+function watermarkDate() {
+  return new Date().toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function CnicProtectedViewerInner({
   open,
   userId,
@@ -50,20 +64,27 @@ function CnicProtectedViewerInner({
   const canvasRef = useRef(null);
   const bitmapRef = useRef(null);
   const restoreTimerRef = useRef(null);
+  const zoomRef = useRef(1);
+  const rotationRef = useRef(0);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
   const [paused, setPaused] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const sideLabel = cnicSideLabel(docType);
 
   const fitCanvas = useCallback((bitmap) => {
     const canvas = canvasRef.current;
     const source = bitmap || bitmapRef.current;
     if (!canvas || !source) return;
+    const sideways = rotationRef.current % 180 !== 0;
+    const srcW = sideways ? source.height : source.width;
+    const srcH = sideways ? source.width : source.height;
     const maxW = Math.min(920, Math.max(280, window.innerWidth - 72));
-    const maxH = Math.max(220, window.innerHeight - 200);
-    const scale = Math.min(1, maxW / source.width, maxH / source.height);
-    canvas.width = Math.max(1, Math.round(source.width * scale));
-    canvas.height = Math.max(1, Math.round(source.height * scale));
+    const maxH = Math.max(220, window.innerHeight - 250);
+    const scale = Math.min(1, maxW / srcW, maxH / srcH) * zoomRef.current;
+    canvas.width = Math.max(1, Math.round(srcW * scale));
+    canvas.height = Math.max(1, Math.round(srcH * scale));
   }, []);
 
   const paint = useCallback((hidden) => {
@@ -77,14 +98,41 @@ function CnicProtectedViewerInner({
     ctx.fillStyle = '#050814';
     ctx.fillRect(0, 0, width, height);
     if (hidden || !bitmap) return;
-    ctx.drawImage(bitmap, 0, 0, width, height);
+    const rot = rotationRef.current;
+    const sideways = rot % 180 !== 0;
+    const drawW = sideways ? height : width;
+    const drawH = sideways ? width : height;
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate((rot * Math.PI) / 180);
+    ctx.drawImage(bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
     drawWatermark(ctx, width, height, [
       sideLabel,
-      viewerLabel || 'admin',
+      `Viewed by: ${viewerLabel || 'admin'}`,
       subjectLabel || '',
-      new Date().toLocaleString(),
+      watermarkDate(),
     ]);
   }, [sideLabel, subjectLabel, viewerLabel]);
+
+  const applyView = useCallback(
+    (nextZoom, nextRotation) => {
+      zoomRef.current = nextZoom;
+      rotationRef.current = nextRotation;
+      setZoom(nextZoom);
+      setRotation(nextRotation);
+      fitCanvas();
+      paint(paused);
+    },
+    [fitCanvas, paint, paused]
+  );
+
+  const zoomIn = () =>
+    applyView(Math.min(ZOOM_MAX, zoomRef.current + ZOOM_STEP), rotationRef.current);
+  const zoomOut = () =>
+    applyView(Math.max(ZOOM_MIN, zoomRef.current - ZOOM_STEP), rotationRef.current);
+  const rotate = () => applyView(zoomRef.current, (rotationRef.current + 90) % 360);
+  const resetView = () => applyView(1, 0);
 
   useEffect(() => {
     if (!open || !userId || !docType) return undefined;
@@ -92,6 +140,10 @@ function CnicProtectedViewerInner({
     setStatus('loading');
     setError('');
     setPaused(false);
+    zoomRef.current = 1;
+    rotationRef.current = 0;
+    setZoom(1);
+    setRotation(0);
 
     async function load() {
       try {
@@ -247,6 +299,49 @@ function CnicProtectedViewerInner({
             ×
           </button>
         </header>
+
+        {status === 'ready' && (
+          <div className="cnic-viewer-toolbar">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={zoomOut}
+              disabled={zoom <= ZOOM_MIN}
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <span className="cnic-viewer-zoom">{Math.round(zoom * 100)}%</span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={zoomIn}
+              disabled={zoom >= ZOOM_MAX}
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={rotate}
+              aria-label="Rotate"
+              title="Rotate 90°"
+            >
+              ⟳ Rotate
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={resetView}
+              disabled={zoom === 1 && rotation === 0}
+            >
+              Reset
+            </button>
+          </div>
+        )}
 
         <div
           className="cnic-viewer-stage"

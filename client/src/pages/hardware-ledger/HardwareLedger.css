@@ -1,0 +1,54 @@
+.hw-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.hw-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.hw-pending-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.hw-due {
+  color: #f59e0b;
+}
+
+.hw-records-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hw-filter {
+  max-width: 200px;
+}
+
+.hw-kind {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hw-kind-total {
+  background: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+}
+
+.hw-kind-paid {
+  background: rgba(61, 255, 122, 0.12);
+  color: #86efac;
+}

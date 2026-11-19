@@ -132,6 +132,12 @@ export function canUsePettyCash(role, permissions) {
   return hasPermission(permissions, 'petty:cash', role);
 }
 
+/** Hardware vendor ledger — CEO, managers, and admins assigned the permission. */
+export function canUseHardwareLedger(role, permissions) {
+  if (isCeoOrManager(role)) return true;
+  return hasPermission(permissions, 'hardware:ledger', role);
+}
+
 /** Subordinate staff records + salary (separate from petty cash). */
 export function canManageSubordinateStaff(role, permissions) {
   return (
