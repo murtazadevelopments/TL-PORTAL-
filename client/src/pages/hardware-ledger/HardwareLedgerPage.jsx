@@ -3,7 +3,12 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router';
 import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
-import { formatMoney, useHardwareLedgerGuard } from './hardwareLedgerUtils';
+import {
+  currentMonthKey,
+  formatMoney,
+  useHardwareLedgerGuard,
+} from './hardwareLedgerUtils';
+import RemoveVendorModal from './RemoveVendorModal';
 import '../petty-cash/PettyCashDashboard.css';
 import './HardwareLedger.css';
 
@@ -13,27 +18,34 @@ function HardwareLedgerDashboard() {
   const [success, setSuccess] = useState('');
   const [vendors, setVendors] = useState([]);
   const [summary, setSummary] = useState({ total_amount: 0, paid_amount: 0, pending_amount: 0 });
+  const [canRemoveVendors, setCanRemoveVendors] = useState(false);
+  const [month, setMonth] = useState(currentMonthKey);
   const [search, setSearch] = useState('');
   const [adding, setAdding] = useState(false);
   const [vendorName, setVendorName] = useState('');
   const [addError, setAddError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const [removeError, setRemoveError] = useState('');
+  const [removingId, setRemovingId] = useState(null);
   useFlashSuccess(success);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.get('/api/hardware-ledger/vendors');
+      const { data } = await api.get('/api/hardware-ledger/vendors', { params: { month } });
       setVendors(Array.isArray(data.vendors) ? data.vendors : []);
       setSummary(data.summary || { total_amount: 0, paid_amount: 0, pending_amount: 0 });
+      setCanRemoveVendors(Boolean(data.can_remove_vendors));
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load vendors.');
       setVendors([]);
+      setCanRemoveVendors(false);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => {
     load();
@@ -72,6 +84,38 @@ function HardwareLedgerDashboard() {
     }
   }
 
+  function openRemoveVendor(vendor) {
+    if (!canRemoveVendors || !vendor?.id) return;
+    setRemoveError('');
+    setRemoveTarget(vendor);
+  }
+
+  function closeRemoveVendor() {
+    if (removingId) return;
+    setRemoveTarget(null);
+    setRemoveError('');
+  }
+
+  async function confirmRemoveVendor(password) {
+    if (!canRemoveVendors || !removeTarget?.id) return;
+    setRemovingId(removeTarget.id);
+    setRemoveError('');
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.delete(`/api/hardware-ledger/vendors/${removeTarget.id}`, {
+        data: { password },
+      });
+      setSuccess(data.message || 'Vendor removed.');
+      setRemoveTarget(null);
+      await load();
+    } catch (err) {
+      setRemoveError(err.response?.data?.message || 'Could not remove vendor.');
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   const query = search.trim().toLowerCase();
   const visible = query
     ? vendors.filter((v) => v.name.toLowerCase().includes(query))
@@ -80,11 +124,23 @@ function HardwareLedgerDashboard() {
   return (
     <div className="petty-page">
       <h1>Hardware Ledger</h1>
-      <p className="petty-sub">
-        Vendors and their amounts. Pending amount = Total amount − Paid amount.
-      </p>
+      <p className="petty-sub">Vendors and their amounts for the selected month.</p>
 
       {error ? <p className="error">{error}</p> : null}
+
+      <div className="petty-toolbar">
+        <label className="petty-month">
+          <span>Month</span>
+          <input
+            type="month"
+            className="hw-month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value || currentMonthKey())}
+            disabled={loading}
+          />
+        </label>
+        <p className="petty-formula">Pending amount = Total amount − Paid amount</p>
+      </div>
 
       <div className="petty-tabs" aria-label="All vendors amounts">
         <div className="petty-tab active">
@@ -123,24 +179,36 @@ function HardwareLedgerDashboard() {
       ) : (
         <div className="petty-holders">
           {visible.map((v) => (
-            <Link key={v.id} to={`/hardware-ledger/${v.id}`} className="petty-holder-card">
-              <div>
-                <div className="petty-holder-name">{v.name}</div>
-                <div className="petty-holder-meta">
-                  Total {formatMoney(v.total_amount)} · Paid {formatMoney(v.paid_amount)}
+            <div key={v.id} className="hw-vendor-row">
+              <Link to={`/hardware-ledger/${v.id}`} className="petty-holder-card">
+                <div>
+                  <div className="petty-holder-name">{v.name}</div>
+                  <div className="petty-holder-meta">
+                    Total {formatMoney(v.total_amount)} · Paid {formatMoney(v.paid_amount)}
+                  </div>
                 </div>
-              </div>
-              <div className="hw-pending">
-                <span className="hw-pending-label">Pending</span>
-                <span
-                  className={
-                    v.pending_amount > 0 ? 'petty-holder-balance hw-due' : 'petty-holder-balance'
-                  }
+                <div className="hw-pending">
+                  <span className="hw-pending-label">Pending</span>
+                  <span
+                    className={
+                      v.pending_amount > 0 ? 'petty-holder-balance hw-due' : 'petty-holder-balance'
+                    }
+                  >
+                    {formatMoney(v.pending_amount)}
+                  </span>
+                </div>
+              </Link>
+              {canRemoveVendors ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost hw-remove-vendor"
+                  disabled={Boolean(removingId)}
+                  onClick={() => openRemoveVendor(v)}
                 >
-                  {formatMoney(v.pending_amount)}
-                </span>
-              </div>
-            </Link>
+                  Remove vendor
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       )}
@@ -190,6 +258,14 @@ function HardwareLedgerDashboard() {
             document.body
           )
         : null}
+
+      <RemoveVendorModal
+        vendor={removeTarget}
+        busy={Boolean(removingId)}
+        error={removeError}
+        onCancel={closeRemoveVendor}
+        onConfirm={confirmRemoveVendor}
+      />
     </div>
   );
 }

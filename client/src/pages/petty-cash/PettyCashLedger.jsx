@@ -31,6 +31,26 @@ function toDateTimeLocalValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Device clock as ISO so the server stores the correct moment (not server-local). */
+function deviceNowIso() {
+  return new Date().toISOString();
+}
+
+/**
+ * Convert datetime-local (browser local) or ISO to an exact ISO timestamp.
+ * Bare YYYY-MM-DDTHH:mm values are treated as this device's local time.
+ */
+function localInputToIso(value) {
+  if (value == null || String(value).trim() === '') return deviceNowIso();
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? deviceNowIso() : d.toISOString();
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? deviceNowIso() : d.toISOString();
+}
+
 function formatDateTime(value) {
   if (!value) return '—';
   const d = new Date(value);
@@ -148,7 +168,7 @@ const emptyForm = () => ({
   price: '',
   branch: '',
   person_name: '',
-  occurred_at: toDateTimeLocalValue(new Date()),
+  occurred_at: '',
 });
 
 /**
@@ -178,9 +198,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
   const [totalDraft, setTotalDraft] = useState('');
-  const [totalOccurredAt, setTotalOccurredAt] = useState(() =>
-    toDateTimeLocalValue(new Date())
-  );
   const [editingTotal, setEditingTotal] = useState(false);
   const [savingTotal, setSavingTotal] = useState(false);
   const [exporting, setExporting] = useState('');
@@ -295,7 +312,7 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     setEditForm(emptyForm());
   }
 
-  function buildFormData(source, file, shouldClearReceipt = false) {
+  function buildFormData(source, file, shouldClearReceipt = false, { useDeviceNow = false } = {}) {
     const fd = new FormData();
     fd.append('item_name', String(source.item_name || '').trim());
     fd.append('price', source.price);
@@ -303,7 +320,10 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     if (String(source.person_name || '').trim()) {
       fd.append('person_name', String(source.person_name).trim());
     }
-    fd.append('occurred_at', source.occurred_at);
+    fd.append(
+      'occurred_at',
+      useDeviceNow ? deviceNowIso() : localInputToIso(source.occurred_at)
+    );
     if (file) fd.append('receipt', file);
     if (shouldClearReceipt) fd.append('clear_receipt', '1');
     return fd;
@@ -316,7 +336,10 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     setError('');
     setSuccess('');
     try {
-      await api.post('/api/petty-cash/me', buildFormData(form, receiptFile));
+      await api.post(
+        '/api/petty-cash/me',
+        buildFormData(form, receiptFile, false, { useDeviceNow: true })
+      );
       setSuccess('Entry added.');
       setForm(emptyForm());
       setReceiptFile(null);
@@ -351,7 +374,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
 
   function openAddTotal() {
     setTotalDraft('');
-    setTotalOccurredAt(toDateTimeLocalValue(new Date()));
     setEditingTotal(true);
   }
 
@@ -364,13 +386,12 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     try {
       const { data } = await api.put('/api/petty-cash/me/total', {
         amount: totalDraft,
-        occurred_at: totalOccurredAt,
+        occurred_at: deviceNowIso(),
         month,
       });
       if (data.summary) setSummary(data.summary);
       if (Array.isArray(data.fund_additions)) setFundAdditions(data.fund_additions);
       setTotalDraft('');
-      setTotalOccurredAt(toDateTimeLocalValue(new Date()));
       setEditingTotal(false);
       setSuccess(data.message || 'Amount added to total.');
       await load();
@@ -424,7 +445,7 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
     try {
       await api.put(`/api/petty-cash/me/fund-additions/${fundEdit.id}`, {
         amount: fundEdit.amount,
-        occurred_at: fundEdit.occurred_at,
+        occurred_at: localInputToIso(fundEdit.occurred_at),
         month,
       });
       setSuccess('Amount updated.');
@@ -579,15 +600,9 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                   required
                 />
               </label>
-              <label>
-                Date & time
-                <input
-                  type="datetime-local"
-                  value={totalOccurredAt}
-                  onChange={(e) => setTotalOccurredAt(e.target.value)}
-                  required
-                />
-              </label>
+              <p className="petty-device-time">
+                Date &amp; time is taken from this device when you save.
+              </p>
               <div className="petty-form-actions">
                 <button type="submit" className="btn btn-primary" disabled={savingTotal}>
                   {savingTotal ? 'Saving…' : 'Add to total'}
@@ -598,7 +613,6 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
                   onClick={() => {
                     setEditingTotal(false);
                     setTotalDraft('');
-                    setTotalOccurredAt(toDateTimeLocalValue(new Date()));
                   }}
                 >
                   Cancel
@@ -700,15 +714,9 @@ export default function PettyCashLedger({ mode, holderUserId, backTo }) {
               placeholder="Optional"
             />
           </label>
-          <label>
-            Date & time *
-            <input
-              type="datetime-local"
-              value={form.occurred_at}
-              onChange={(e) => setForm((f) => ({ ...f, occurred_at: e.target.value }))}
-              required
-            />
-          </label>
+          <p className="petty-device-time">
+            Date &amp; time is taken from this device when you save.
+          </p>
           <label className="full">
             Receipt
             <input

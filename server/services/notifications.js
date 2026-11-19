@@ -637,6 +637,9 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson, to: toOv
     emailType: 'birthday_ceo_preview',
     to,
     subject: `Tomorrow is ${who}'s birthday`,
+    meta: {
+      birthdayUserId: user?.id != null ? String(user.id) : null,
+    },
     html: birthdayEmailWrap(`
       <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Birthday reminder</p>
       <h1 style="margin:0 0 12px;font-size:24px;color:#f4f8ff;">${escapeHtml(who)} has a birthday tomorrow</h1>

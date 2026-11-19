@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
 import {
+  currentMonthKey,
   formatDate,
   formatMoney,
   formatTime,
@@ -11,65 +12,42 @@ import {
   toDateTimeLocalValue,
   useHardwareLedgerGuard,
 } from './hardwareLedgerUtils';
+import RemoveVendorModal from './RemoveVendorModal';
 import '../petty-cash/PettyCashDashboard.css';
 import './HardwareLedger.css';
 
-const KIND_LABELS = { total: 'Total amount', paid: 'Paid amount' };
+const KIND_LABELS = { total: 'Item', paid: 'Paid amount' };
 
-const emptyRecord = (kind = 'total') => ({
-  kind,
+const emptyItem = () => ({
+  item: '',
   amount: '',
-  occurred_at: toDateTimeLocalValue(new Date()),
 });
 
-function RecordFields({ value, setValue }) {
-  return (
-    <>
-      <label>
-        Type *
-        <select
-          value={value.kind}
-          onChange={(e) => setValue((f) => ({ ...f, kind: e.target.value }))}
-          required
-        >
-          <option value="total">Total amount</option>
-          <option value="paid">Paid amount</option>
-        </select>
-      </label>
-      <label>
-        Amount *
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          value={value.amount}
-          onChange={(e) => setValue((f) => ({ ...f, amount: e.target.value }))}
-          placeholder="Enter amount"
-          required
-        />
-      </label>
-      <label>
-        Date &amp; time *
-        <input
-          type="datetime-local"
-          value={value.occurred_at}
-          onChange={(e) => setValue((f) => ({ ...f, occurred_at: e.target.value }))}
-          required
-        />
-      </label>
-    </>
-  );
+const emptyPaid = () => ({
+  amount: '',
+});
+
+function deviceNowIso() {
+  return new Date().toISOString();
 }
 
 function HardwareVendorLedger({ vendorId }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [vendor, setVendor] = useState(null);
   const [summary, setSummary] = useState({ total_amount: 0, paid_amount: 0, pending_amount: 0 });
   const [records, setRecords] = useState([]);
-  const [form, setForm] = useState(() => emptyRecord());
-  const [saving, setSaving] = useState(false);
+  const [month, setMonth] = useState(currentMonthKey);
+  const [canRemoveVendor, setCanRemoveVendor] = useState(false);
+  const [itemForm, setItemForm] = useState(() => emptyItem());
+  const [paidForm, setPaidForm] = useState(() => emptyPaid());
+  const [savingItem, setSavingItem] = useState(false);
+  const [savingPaid, setSavingPaid] = useState(false);
+  const [removingVendor, setRemovingVendor] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeError, setRemoveError] = useState('');
   const [editForm, setEditForm] = useState(null);
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -80,13 +58,19 @@ function HardwareVendorLedger({ vendorId }) {
     setVendor(data.vendor || null);
     setSummary(data.summary || { total_amount: 0, paid_amount: 0, pending_amount: 0 });
     setRecords(Array.isArray(data.records) ? data.records : []);
+    if (data.month) setMonth(data.month);
+    if (typeof data.can_remove_vendor === 'boolean') {
+      setCanRemoveVendor(data.can_remove_vendor);
+    }
   }
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const { data } = await api.get(`/api/hardware-ledger/vendors/${vendorId}`);
+      const { data } = await api.get(`/api/hardware-ledger/vendors/${vendorId}`, {
+        params: { month },
+      });
       applyPayload(data);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load vendor.');
@@ -94,35 +78,70 @@ function HardwareVendorLedger({ vendorId }) {
     } finally {
       setLoading(false);
     }
-  }, [vendorId]);
+  }, [vendorId, month]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function handleAdd(e) {
+  async function handleAddItem(e) {
     e.preventDefault();
-    const amount = Number(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError('Enter an amount greater than 0.');
+    const item = String(itemForm.item || '').trim();
+    const amount = Number(itemForm.amount);
+    if (!item) {
+      setError('Enter an item name.');
       return;
     }
-    setSaving(true);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter a price greater than 0.');
+      return;
+    }
+    setSavingItem(true);
     setError('');
     setSuccess('');
     try {
       const { data } = await api.post(`/api/hardware-ledger/vendors/${vendorId}/records`, {
-        kind: form.kind,
-        amount: form.amount,
-        occurred_at: localInputToIso(form.occurred_at),
+        kind: 'total',
+        item,
+        amount: itemForm.amount,
+        occurred_at: deviceNowIso(),
+        month,
       });
       applyPayload(data);
-      setSuccess(data.message || 'Saved.');
-      setForm(emptyRecord(form.kind));
+      setSuccess(data.message || 'Item added.');
+      setItemForm(emptyItem());
     } catch (err) {
-      setError(err.response?.data?.message || 'Could not save record.');
+      setError(err.response?.data?.message || 'Could not add item.');
     } finally {
-      setSaving(false);
+      setSavingItem(false);
+    }
+  }
+
+  async function handleAddPaid(e) {
+    e.preventDefault();
+    const amount = Number(paidForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('Enter a paid amount greater than 0.');
+      return;
+    }
+    setSavingPaid(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.post(`/api/hardware-ledger/vendors/${vendorId}/records`, {
+        kind: 'paid',
+        item: '',
+        amount: paidForm.amount,
+        occurred_at: deviceNowIso(),
+        month,
+      });
+      applyPayload(data);
+      setSuccess(data.message || 'Paid amount saved.');
+      setPaidForm(emptyPaid());
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not save paid amount.');
+    } finally {
+      setSavingPaid(false);
     }
   }
 
@@ -131,6 +150,7 @@ function HardwareVendorLedger({ vendorId }) {
     setEditForm({
       id: record.id,
       kind: record.kind,
+      item: record.item || '',
       amount: String(record.amount ?? ''),
       occurred_at: toDateTimeLocalValue(record.occurred_at),
     });
@@ -149,6 +169,10 @@ function HardwareVendorLedger({ vendorId }) {
       setEditError('Enter an amount greater than 0.');
       return;
     }
+    if (editForm.kind === 'total' && !String(editForm.item || '').trim()) {
+      setEditError('Enter an item name.');
+      return;
+    }
     setSavingEdit(true);
     setEditError('');
     setSuccess('');
@@ -157,8 +181,10 @@ function HardwareVendorLedger({ vendorId }) {
         `/api/hardware-ledger/vendors/${vendorId}/records/${editForm.id}`,
         {
           kind: editForm.kind,
+          item: editForm.kind === 'total' ? String(editForm.item || '').trim() : '',
           amount: editForm.amount,
           occurred_at: localInputToIso(editForm.occurred_at),
+          month,
         }
       );
       applyPayload(data);
@@ -171,24 +197,55 @@ function HardwareVendorLedger({ vendorId }) {
     }
   }
 
-  async function handleRemove(record) {
-    if (
-      !window.confirm(
-        `Remove this ${KIND_LABELS[record.kind].toLowerCase()} of ${formatMoney(record.amount)}?`
-      )
-    ) {
-      return;
-    }
+  async function handleRemoveRecord(record) {
+    const label =
+      record.kind === 'total'
+        ? `item “${record.item || 'Untitled'}” (${formatMoney(record.amount)})`
+        : `paid amount of ${formatMoney(record.amount)}`;
+    if (!window.confirm(`Remove this ${label}?`)) return;
     setError('');
     setSuccess('');
     try {
+      // Item/paid remove — no account password (password is only for remove vendor).
       const { data } = await api.delete(
-        `/api/hardware-ledger/vendors/${vendorId}/records/${record.id}`
+        `/api/hardware-ledger/vendors/${vendorId}/records/${record.id}`,
+        { params: { month } }
       );
       applyPayload(data);
       setSuccess('Record removed.');
     } catch (err) {
       setError(err.response?.data?.message || 'Could not remove record.');
+    }
+  }
+
+  function openRemoveVendor() {
+    if (!canRemoveVendor || !vendor) return;
+    setRemoveError('');
+    setRemoveOpen(true);
+  }
+
+  function closeRemoveVendor() {
+    if (removingVendor) return;
+    setRemoveOpen(false);
+    setRemoveError('');
+  }
+
+  async function confirmRemoveVendor(password) {
+    if (!canRemoveVendor || !vendor) return;
+    setRemovingVendor(true);
+    setRemoveError('');
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.delete(`/api/hardware-ledger/vendors/${vendorId}`, {
+        data: { password },
+      });
+      setSuccess(data.message || 'Vendor removed.');
+      setRemoveOpen(false);
+      navigate('/hardware-ledger', { replace: true });
+    } catch (err) {
+      setRemoveError(err.response?.data?.message || 'Could not remove vendor.');
+      setRemovingVendor(false);
     }
   }
 
@@ -199,10 +256,35 @@ function HardwareVendorLedger({ vendorId }) {
       <p className="petty-sub">
         <Link to="/hardware-ledger">← All vendors</Link>
       </p>
-      <h1>{vendor?.name || 'Vendor'}</h1>
+      <div className="hw-vendor-title-row">
+        <h1>{vendor?.name || 'Vendor'}</h1>
+        {canRemoveVendor ? (
+          <button
+            type="button"
+            className="btn btn-ghost hw-remove-vendor"
+            disabled={removingVendor || loading}
+            onClick={openRemoveVendor}
+          >
+            Remove vendor
+          </button>
+        ) : null}
+      </div>
       <p className="petty-sub">Pending amount = Total amount − Paid amount.</p>
 
       {error ? <p className="error">{error}</p> : null}
+
+      <div className="petty-toolbar">
+        <label className="petty-month">
+          <span>Month</span>
+          <input
+            type="month"
+            className="hw-month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value || currentMonthKey())}
+            disabled={loading}
+          />
+        </label>
+      </div>
 
       <div className="petty-tabs" aria-label="Vendor amounts">
         <div className="petty-tab">
@@ -219,11 +301,55 @@ function HardwareVendorLedger({ vendorId }) {
         </div>
       </div>
 
-      <form className="petty-form" onSubmit={handleAdd}>
-        <RecordFields value={form} setValue={setForm} />
+      <form className="petty-form" onSubmit={handleAddItem}>
+        <label className="full">
+          Item name *
+          <input
+            type="text"
+            value={itemForm.item}
+            onChange={(e) => setItemForm((f) => ({ ...f, item: e.target.value }))}
+            maxLength={200}
+            placeholder="Enter item name"
+            required
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Price *
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={itemForm.amount}
+            onChange={(e) => setItemForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="Enter price"
+            required
+          />
+        </label>
+        <p className="hw-device-time">Date &amp; time is taken from this device when you save.</p>
         <div className="petty-form-actions">
-          <button type="submit" className="btn btn-primary" disabled={saving || loading}>
-            {saving ? 'Saving…' : `Add ${KIND_LABELS[form.kind].toLowerCase()}`}
+          <button type="submit" className="btn btn-primary" disabled={savingItem || loading}>
+            {savingItem ? 'Saving…' : '+ Add new item'}
+          </button>
+        </div>
+      </form>
+
+      <form className="petty-form hw-paid-form" onSubmit={handleAddPaid}>
+        <label>
+          Paid amount *
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={paidForm.amount}
+            onChange={(e) => setPaidForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="Enter paid amount"
+            required
+          />
+        </label>
+        <div className="petty-form-actions">
+          <button type="submit" className="btn btn-ghost" disabled={savingPaid || loading}>
+            {savingPaid ? 'Saving…' : 'Add paid amount'}
           </button>
         </div>
       </form>
@@ -238,7 +364,7 @@ function HardwareVendorLedger({ vendorId }) {
             aria-label="Filter records"
           >
             <option value="all">All records</option>
-            <option value="total">Total amounts</option>
+            <option value="total">Items</option>
             <option value="paid">Paid amounts</option>
           </select>
         </div>
@@ -254,6 +380,7 @@ function HardwareVendorLedger({ vendorId }) {
                   <th>Date</th>
                   <th>Time</th>
                   <th>Type</th>
+                  <th>Item</th>
                   <th>Amount</th>
                   <th>Actions</th>
                 </tr>
@@ -266,6 +393,7 @@ function HardwareVendorLedger({ vendorId }) {
                     <td>
                       <span className={`hw-kind hw-kind-${r.kind}`}>{KIND_LABELS[r.kind]}</span>
                     </td>
+                    <td>{r.kind === 'total' ? r.item || '—' : '—'}</td>
                     <td>{formatMoney(r.amount)}</td>
                     <td>
                       <div className="petty-row-actions">
@@ -279,9 +407,9 @@ function HardwareVendorLedger({ vendorId }) {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => handleRemove(r)}
+                          onClick={() => handleRemoveRecord(r)}
                         >
-                          Remove
+                          {r.kind === 'total' ? 'Remove item' : 'Remove paid'}
                         </button>
                       </div>
                     </td>
@@ -305,17 +433,53 @@ function HardwareVendorLedger({ vendorId }) {
                 aria-labelledby="hw-edit-title"
               >
                 <div className="petty-modal-header">
-                  <h2 id="hw-edit-title">Edit record</h2>
+                  <h2 id="hw-edit-title">
+                    {editForm.kind === 'total' ? 'Edit item' : 'Edit paid amount'}
+                  </h2>
                   <button type="button" className="btn btn-ghost" onClick={cancelEdit}>
                     Close
                   </button>
                 </div>
                 {editError ? <p className="error">{editError}</p> : null}
                 <div className="petty-form petty-form-modal">
-                  <RecordFields value={editForm} setValue={setEditForm} />
+                  {editForm.kind === 'total' ? (
+                    <label className="full">
+                      Item name *
+                      <input
+                        type="text"
+                        value={editForm.item}
+                        onChange={(e) => setEditForm((f) => ({ ...f, item: e.target.value }))}
+                        maxLength={200}
+                        placeholder="Enter item name"
+                        required
+                      />
+                    </label>
+                  ) : null}
+                  <label>
+                    {editForm.kind === 'total' ? 'Price *' : 'Amount *'}
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={editForm.amount}
+                      onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Date &amp; time *
+                    <input
+                      type="datetime-local"
+                      value={editForm.occurred_at}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, occurred_at: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
                   <div className="petty-form-actions">
                     <button type="submit" className="btn btn-primary" disabled={savingEdit}>
-                      {savingEdit ? 'Saving…' : 'Update record'}
+                      {savingEdit ? 'Saving…' : 'Update'}
                     </button>
                     <button type="button" className="btn btn-ghost" onClick={cancelEdit}>
                       Cancel
@@ -327,6 +491,14 @@ function HardwareVendorLedger({ vendorId }) {
             document.body
           )
         : null}
+
+      <RemoveVendorModal
+        vendor={removeOpen ? vendor : null}
+        busy={removingVendor}
+        error={removeError}
+        onCancel={closeRemoveVendor}
+        onConfirm={confirmRemoveVendor}
+      />
     </div>
   );
 }

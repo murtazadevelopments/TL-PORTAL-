@@ -1,7 +1,34 @@
+.hw-search,
+.hw-filter,
+.hw-month {
+  min-height: 2.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-h);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  box-sizing: border-box;
+  color-scheme: dark;
+}
+
 .hw-search {
   flex: 1;
   min-width: 180px;
   max-width: 320px;
+}
+
+.hw-search::placeholder {
+  color: var(--muted);
+  opacity: 0.9;
+}
+
+.hw-search:focus,
+.hw-filter:focus,
+.hw-month:focus {
+  outline: none;
+  border-color: rgba(61, 255, 122, 0.45);
+  box-shadow: 0 0 0 2px rgba(61, 255, 122, 0.12);
 }
 
 .hw-pending {
@@ -32,6 +59,18 @@
 
 .hw-filter {
   max-width: 200px;
+  min-width: 140px;
+  cursor: pointer;
+}
+
+.hw-filter option {
+  background: #0f1520;
+  color: var(--text-h);
+}
+
+.petty-page .petty-empty {
+  text-align: left;
+  width: 100%;
 }
 
 .hw-kind {
@@ -51,4 +90,44 @@
 .hw-kind-paid {
   background: rgba(61, 255, 122, 0.12);
   color: #86efac;
+}
+
+.hw-device-time {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.hw-paid-form {
+  margin-top: 0.75rem;
+}
+
+.hw-vendor-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.hw-vendor-row .petty-holder-card {
+  flex: 1;
+  min-width: 0;
+}
+
+.hw-remove-vendor {
+  align-self: center;
+  flex-shrink: 0;
+  color: #fca5a5;
+}
+
+.hw-vendor-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.hw-vendor-title-row h1 {
+  margin: 0;
 }

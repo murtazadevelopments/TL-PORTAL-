@@ -148,11 +148,8 @@ function canManageLowerStaff(req) {
   const role = String(req.user?.role || '').toLowerCase();
   if (role === 'ceo' || role === 'manager') return true;
   const perms = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-  return (
-    perms.includes('staff:subordinate') ||
-    perms.includes('hr:add_employee') ||
-    perms.includes('*')
-  );
+  // Subordinate staff is a dedicated grant — do not imply it from HR add-employee.
+  return perms.includes('staff:subordinate') || perms.includes('*');
 }
 
 function canAddPortalEmployees(req) {
@@ -168,11 +165,9 @@ function directoryAccess(req) {
   const ceo = role === 'ceo' || role === 'manager' || perms.includes('*');
   return {
     ceo,
+    // Portal employee directory — not granted by staff:subordinate alone.
     canOnsiteDirectory:
-      ceo ||
-      perms.includes('employees:view') ||
-      perms.includes('hr:add_employee') ||
-      perms.includes('staff:subordinate'),
+      ceo || perms.includes('employees:view') || perms.includes('hr:add_employee'),
     canRemoteDirectory: ceo || perms.includes('employees:remote'),
     canEditOnsite: ceo || perms.includes('employees:edit') || perms.includes('hr:add_employee'),
     canEditRemote: ceo || perms.includes('employees:remote'),
@@ -278,15 +273,15 @@ async function listEmployees(req, res) {
     await ensureSalaryColumn();
     const scopes = await resolvePermissionScopes(req);
     const access = directoryAccess(req);
-    const filter = employmentAccessWhere({
-      canOnsite: access.canOnsiteDirectory,
-      canRemote: access.canRemoteDirectory,
-      onsiteScope: scopeForPermission(scopes, 'employees:view'),
-      remoteScope: scopeForPermission(scopes, 'employees:remote'),
-      startIndex: 1,
-    });
-    const nextIndex = filter.params.length + 1;
     const canSeeLower = canManageLowerStaff(req);
+    const hasPortalDirectory = access.canOnsiteDirectory || access.canRemoteDirectory;
+
+    if (!hasPortalDirectory && !canSeeLower) {
+      return res.status(403).json({
+        message:
+          'You do not have permission to view employees. Ask the CEO to grant View employees, Remote employees, Subordinate staff, or Add employees (HR).',
+      });
+    }
 
     // Optional pagination: ?page=&limit= (default limit 50 when page/limit present).
     // Omitting both keeps the legacy full-array response for EmployeesPage tab counts.
@@ -297,12 +292,31 @@ async function listEmployees(req, res) {
     const limit = Math.min(200, Math.max(1, Number(limitRaw) || 50));
     const offset = (page - 1) * limit;
 
-    const whereSql = `
+    let whereSql;
+    let baseParams;
+    if (!hasPortalDirectory && canSeeLower) {
+      // Assigned Subordinate staff only — never return portal employees.
+      whereSql = `
+        WHERE is_active = true
+          AND COALESCE(staff_kind, 'portal') = 'lower'
+      `;
+      baseParams = [];
+    } else {
+      const filter = employmentAccessWhere({
+        canOnsite: access.canOnsiteDirectory,
+        canRemote: access.canRemoteDirectory,
+        onsiteScope: scopeForPermission(scopes, 'employees:view'),
+        remoteScope: scopeForPermission(scopes, 'employees:remote'),
+        startIndex: 1,
+      });
+      const nextIndex = filter.params.length + 1;
+      whereSql = `
         WHERE is_active = true
         ${filter.sql}
         AND (COALESCE(staff_kind, 'portal') <> 'lower' OR $${nextIndex}::boolean)
-    `;
-    const baseParams = [...filter.params, canSeeLower];
+      `;
+      baseParams = [...filter.params, canSeeLower];
+    }
 
     let total = null;
     if (paged) {
@@ -394,26 +408,28 @@ async function getEmployeeById(req, res) {
       return res.status(404).json({ message: 'Employee not found.' });
     }
 
-    if (isLowerStaff(rows[0]) && !canManageLowerStaff(req)) {
-      return res.status(404).json({ message: 'Employee not found.' });
-    }
-
-    const scopes = await resolvePermissionScopes(req);
-    const access = directoryAccess(req);
-    const remote = isRemoteEmployment(rows[0].employment_type);
-    if (remote && !access.canRemoteDirectory) {
-      return res.status(404).json({ message: 'Employee not found.' });
-    }
-    if (!remote && !access.canOnsiteDirectory) {
-      return res.status(404).json({ message: 'Employee not found.' });
-    }
-    const viewScope = remote
-      ? scopeForPermission(scopes, 'employees:remote')
-      : scopeForPermission(scopes, 'employees:view');
-    if (!employeeMatchesScope(rows[0], viewScope)) {
-      return res.status(403).json({
-        message: 'This employee is outside your assigned view scope.',
-      });
+    if (isLowerStaff(rows[0])) {
+      if (!canManageLowerStaff(req)) {
+        return res.status(404).json({ message: 'Employee not found.' });
+      }
+    } else {
+      const scopes = await resolvePermissionScopes(req);
+      const access = directoryAccess(req);
+      const remote = isRemoteEmployment(rows[0].employment_type);
+      if (remote && !access.canRemoteDirectory) {
+        return res.status(404).json({ message: 'Employee not found.' });
+      }
+      if (!remote && !access.canOnsiteDirectory) {
+        return res.status(404).json({ message: 'Employee not found.' });
+      }
+      const viewScope = remote
+        ? scopeForPermission(scopes, 'employees:remote')
+        : scopeForPermission(scopes, 'employees:view');
+      if (!employeeMatchesScope(rows[0], viewScope)) {
+        return res.status(403).json({
+          message: 'This employee is outside your assigned view scope.',
+        });
+      }
     }
 
     const withDocs = withDocumentPresence(await attachReadableUrls(rows[0]));

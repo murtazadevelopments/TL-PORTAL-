@@ -687,9 +687,29 @@ function EmployeesPage() {
   const [editingLowerId, setEditingLowerId] = useState(null);
   const [deletingLowerId, setDeletingLowerId] = useState(null);
 
+  const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
+  const canManageSubordinate = canManageSubordinateStaff(role, permissions);
+  const canRemoteEmployees = hasPermission(permissions, 'employees:remote', role);
+  const canViewPortalDirectory =
+    hasPermission(permissions, 'employees:view', role) ||
+    canAddEmployees ||
+    canRemoteEmployees;
+  /** Assigned Subordinate staff only — hide portal employee directory entirely. */
+  const subordinateOnly = canManageSubordinate && !canViewPortalDirectory;
+  const canEditOnsiteEmployees =
+    hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
+  const canEditEmployees = canEditOnsiteEmployees || canRemoteEmployees;
+
   useEffect(() => {
     setStatusTab(parseEmployeeStatusTab(searchParams.get('status')));
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!subordinateOnly) return;
+    if (statusTab === 'subordinate-staff') return;
+    setStatusTab('subordinate-staff');
+    setSearchParams({ status: 'subordinate-staff' }, { replace: true });
+  }, [subordinateOnly, statusTab, setSearchParams]);
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 60_000);
@@ -799,12 +819,6 @@ function EmployeesPage() {
     }
   }
 
-  const canAddEmployees = hasPermission(permissions, 'hr:add_employee', role);
-  const canManageSubordinate = canManageSubordinateStaff(role, permissions);
-  const canRemoteEmployees = hasPermission(permissions, 'employees:remote', role);
-  const canEditOnsiteEmployees =
-    hasPermission(permissions, 'employees:edit', role) || canAddEmployees;
-  const canEditEmployees = canEditOnsiteEmployees || canRemoteEmployees;
   function canEditEmploymentType(type) {
     return String(type || '').trim().toLowerCase() === 'remote'
       ? canRemoteEmployees
@@ -2035,9 +2049,11 @@ function EmployeesPage() {
       <div className="admin-page page-panel">
         <div className="admin-toolbar" style={{ marginTop: 0 }}>
           <div>
-            <h1>Employees</h1>
+            <h1>{subordinateOnly ? 'Subordinate staff' : 'Employees'}</h1>
             <p className="muted" style={{ margin: 0 }}>
-              Directory, filters, and employee admin fields
+              {subordinateOnly
+                ? 'Add and manage subordinate staff records and salary'
+                : 'Directory, filters, and employee admin fields'}
             </p>
           </div>
           {canAddEmployees && (
@@ -2055,6 +2071,7 @@ function EmployeesPage() {
           )}
         </div>
 
+        {!subordinateOnly ? (
         <section className="stat-grid">
           <article className="stat-card">
             <span className="stat-label">Total Employees</span>
@@ -2115,8 +2132,11 @@ function EmployeesPage() {
             <span className="stat-value">{stats.incomplete}</span>
           </article>
         </section>
+        ) : null}
 
         <div className="status-tabs">
+          {!subordinateOnly ? (
+            <>
           <button
             type="button"
             className={`status-tab ${statusTab === 'all' ? 'active' : ''}`}
@@ -2197,6 +2217,8 @@ function EmployeesPage() {
           >
             Terminated <span className="tab-badge">{tabCounts.terminated}</span>
           </button>
+            </>
+          ) : null}
           {canManageSubordinate && (
             <button
               type="button"

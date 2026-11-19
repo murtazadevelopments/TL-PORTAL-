@@ -32,20 +32,26 @@ async function findTomorrowBirthdayUsers(now = new Date()) {
 
 /**
  * True if we already logged a successful send for this email type since Karachi midnight.
- * Optional subject match keeps CEO previews unique per birthday person.
+ * CEO previews are keyed by birthdayUserId (stable); subject is a legacy fallback.
+ * On DB errors during catch-up we fail closed (treat as sent) to avoid spam.
  */
-async function alreadySentOk({ emailType, recipient, dayKey, subject }) {
+async function alreadySentOk({ emailType, recipient, dayKey, subject, birthdayUserId, failClosed }) {
   const email = String(recipient || '')
     .trim()
     .toLowerCase();
   if (!email) return false;
   try {
     const params = [emailType, email, dayKey];
-    let subjectClause = '';
+    const clauses = [];
+    if (birthdayUserId != null && String(birthdayUserId).trim() !== '') {
+      params.push(String(birthdayUserId));
+      clauses.push(`(meta->>'birthdayUserId') = $${params.length}`);
+    }
     if (subject) {
       params.push(String(subject));
-      subjectClause = `AND meta->>'subject' = $${params.length}`;
+      clauses.push(`meta->>'subject' = $${params.length}`);
     }
+    const identityClause = clauses.length ? `AND (${clauses.join(' OR ')})` : '';
     const { rows } = await pool.query(
       `
         SELECT 1
@@ -55,7 +61,7 @@ async function alreadySentOk({ emailType, recipient, dayKey, subject }) {
           AND (meta->>'ok') = 'true'
           AND created_at >= ($3::date AT TIME ZONE 'Asia/Karachi')
           AND created_at < (($3::date + 1) AT TIME ZONE 'Asia/Karachi')
-          ${subjectClause}
+          ${identityClause}
         LIMIT 1
       `,
       params
@@ -63,7 +69,7 @@ async function alreadySentOk({ emailType, recipient, dayKey, subject }) {
     return Boolean(rows[0]);
   } catch (err) {
     console.warn('[birthday-job] alreadySentOk check failed:', err.message || err);
-    return false;
+    return Boolean(failClosed);
   }
 }
 
@@ -93,8 +99,9 @@ async function runBirthdayEmails(now = new Date(), options = {}) {
     now = coerced;
   }
   // Midnight Karachi: employees whose birthday is today; CEO preview for tomorrow (24h notice).
+  // Catch-up only retries employee emails — CEO preview is once per day on the primary run.
   const todayKey = birthdayKey(now);
-  const tomorrowPeople = await findTomorrowBirthdayUsers(now);
+  const tomorrowPeople = catchUp ? [] : await findTomorrowBirthdayUsers(now);
   const todayPeople = await findBirthdayUsers(now);
   console.log(
     `[birthday-job] fired ${new Date().toISOString()}${catchUp ? ' catch-up' : ''} ` +
@@ -106,7 +113,7 @@ async function runBirthdayEmails(now = new Date(), options = {}) {
   let employeeSkipped = 0;
   let pushSent = 0;
 
-  const ceoEmails = await getCeoEmails();
+  const ceoEmails = catchUp ? [] : await getCeoEmails();
 
   for (const user of tomorrowPeople) {
     const who = user.name || user.username || `Employee ${user.id}`;
@@ -127,6 +134,8 @@ async function runBirthdayEmails(now = new Date(), options = {}) {
         recipient: email,
         dayKey: todayKey,
         subject,
+        birthdayUserId: user.id,
+        failClosed: true,
       });
       if (!done) pending.push(email);
     }
@@ -149,6 +158,7 @@ async function runBirthdayEmails(now = new Date(), options = {}) {
         emailType: 'birthday',
         recipient: email,
         dayKey: todayKey,
+        failClosed: catchUp,
       }))
     ) {
       employeeSkipped += 1;

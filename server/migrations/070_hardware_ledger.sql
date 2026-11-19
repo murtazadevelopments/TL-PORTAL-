@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS hardware_vendor_records (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE hardware_vendor_records
+  ADD COLUMN IF NOT EXISTS item TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS hardware_vendor_records_vendor_occurred_idx
   ON hardware_vendor_records (vendor_id, occurred_at DESC, id DESC);
 

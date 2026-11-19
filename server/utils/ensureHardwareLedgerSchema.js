@@ -33,6 +33,11 @@ async function runEnsureHardwareLedgerSchema() {
   `);
 
   await pool.query(`
+    ALTER TABLE hardware_vendor_records
+      ADD COLUMN IF NOT EXISTS item TEXT NOT NULL DEFAULT ''
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS hardware_vendor_records_vendor_occurred_idx
       ON hardware_vendor_records (vendor_id, occurred_at DESC, id DESC)
   `);

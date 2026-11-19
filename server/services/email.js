@@ -107,7 +107,12 @@ async function sendEmailSafe(opts) {
         await logEmail({
           emailType: opts.emailType,
           recipient,
-          meta: { ok: true, id: data?.id || null, subject: opts.subject },
+          meta: {
+            ok: true,
+            id: data?.id || null,
+            subject: opts.subject,
+            ...(opts.meta && typeof opts.meta === 'object' ? opts.meta : {}),
+          },
         });
       }
     } catch (err) {
@@ -123,6 +128,7 @@ async function sendEmailSafe(opts) {
           error: err.message || String(err),
           subject: opts.subject || null,
           from: getFrom(),
+          ...(opts.meta && typeof opts.meta === 'object' ? opts.meta : {}),
         },
       });
     }

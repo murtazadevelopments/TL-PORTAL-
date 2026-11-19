@@ -11,6 +11,11 @@ export function formatMoney(n) {
   });
 }
 
+/** YYYY-MM in Asia/Karachi (same month basis as petty cash). */
+export function currentMonthKey() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }).slice(0, 7);
+}
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }

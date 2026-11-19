@@ -138,12 +138,9 @@ export function canUseHardwareLedger(role, permissions) {
   return hasPermission(permissions, 'hardware:ledger', role);
 }
 
-/** Subordinate staff records + salary (separate from petty cash). */
+/** Subordinate staff records + salary (separate from portal HR / petty cash). */
 export function canManageSubordinateStaff(role, permissions) {
-  return (
-    hasPermission(permissions, 'staff:subordinate', role) ||
-    hasPermission(permissions, 'hr:add_employee', role)
-  );
+  return hasPermission(permissions, 'staff:subordinate', role);
 }
 
 /** CEO/manager can open every assigned petty cash dashboard by name. */
