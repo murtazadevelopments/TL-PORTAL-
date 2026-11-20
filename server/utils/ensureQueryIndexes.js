@@ -17,6 +17,11 @@ const STATEMENTS = [
        AND status = 'active'`,
   `CREATE INDEX IF NOT EXISTS onsite_attendance_user_work_date_idx
      ON onsite_attendance (user_id, work_date)`,
+  `CREATE INDEX IF NOT EXISTS messages_recipient_unread_idx
+     ON messages (recipient_id)
+     WHERE read_at IS NULL`,
+  `CREATE INDEX IF NOT EXISTS push_subscriptions_user_id_idx
+     ON push_subscriptions (user_id)`,
 ];
 
 async function runEnsureQueryIndexes() {

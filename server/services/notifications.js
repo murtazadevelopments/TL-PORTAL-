@@ -22,18 +22,37 @@ async function getAdminEmails() {
 }
 
 async function getCeoEmails() {
+  const rows = await getCeoUsers();
+  return [
+    ...new Set(rows.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean)),
+  ];
+}
+
+/** Active CEO accounts (id + email) for email and push fan-out. */
+async function getCeoUsers() {
   const { rows } = await pool.query(
     `
-      SELECT email
+      SELECT id, email, name
       FROM users
       WHERE LOWER(TRIM(role)) = 'ceo'
         AND is_active IS NOT FALSE
-        AND NULLIF(TRIM(email), '') IS NOT NULL
     `
   );
-  return [
-    ...new Set(rows.map((r) => String(r.email).trim().toLowerCase()).filter(Boolean)),
-  ];
+  return rows;
+}
+
+async function notifyCeosPush(payload, opts = {}) {
+  const ceos = await getCeoUsers();
+  if (!ceos.length) return { sent: 0, recipients: 0 };
+  let sent = 0;
+  await Promise.all(
+    ceos.map(async (ceo) => {
+      if (!ceo?.id) return;
+      const result = await notifyApp(ceo.id, payload, opts);
+      sent += Number(result?.sent) || 0;
+    })
+  );
+  return { sent, recipients: ceos.length };
 }
 
 async function notifyCeoIfBranchManagerWork(
@@ -627,20 +646,18 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson, to: toOv
   if (!includeBirthdayPerson) {
     to = to.filter((email) => email && email !== selfEmail);
   }
-  if (!to.length) {
-    console.warn('[birthday-ceo] SKIP — no CEO email on file');
-    return null;
-  }
-
   const who = user?.name || user?.username || `Employee ${user?.id}`;
-  return sendEmailSafe({
-    emailType: 'birthday_ceo_preview',
-    to,
-    subject: `Tomorrow is ${who}'s birthday`,
-    meta: {
-      birthdayUserId: user?.id != null ? String(user.id) : null,
-    },
-    html: birthdayEmailWrap(`
+  const year = calendarYearNow();
+
+  const emailResult = to.length
+    ? await sendEmailSafe({
+        emailType: 'birthday_ceo_preview',
+        to,
+        subject: `Tomorrow is ${who}'s birthday`,
+        meta: {
+          birthdayUserId: user?.id != null ? String(user.id) : null,
+        },
+        html: birthdayEmailWrap(`
       <p style="margin:0 0 8px;letter-spacing:.14em;text-transform:uppercase;font-size:12px;color:#7ecbff;">Birthday reminder</p>
       <h1 style="margin:0 0 12px;font-size:24px;color:#f4f8ff;">${escapeHtml(who)} has a birthday tomorrow</h1>
       <p style="margin:0 0 12px;line-height:1.6;">This is your 24-hour notice so you can wish them in time.</p>
@@ -652,7 +669,29 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson, to: toOv
       </ul>
       <p style="margin:0;color:#8b97ad;">They will receive their birthday email from Textured Lab at 12:00 AM on the day.</p>
     `),
-  });
+      })
+    : null;
+
+  if (!to.length) {
+    console.warn('[birthday-ceo] SKIP email — no CEO email on file');
+  }
+
+  const pushResult = await notifyCeosPush(
+    {
+      title: `Birthday tomorrow: ${who}`,
+      body: '24-hour notice — wish them in time.',
+      url: '/admin/employees',
+      tag: `birthday-ceo-${user?.id || 'x'}-${year}`,
+      collapse: true,
+    },
+    { urgency: 'high' }
+  );
+
+  return {
+    ok: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    email: emailResult,
+    push: pushResult,
+  };
 }
 
 function remoteFaceEvent(challenge = {}) {
@@ -683,12 +722,6 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
   const employment = String(user?.employment_type || '').trim().toLowerCase();
   if (employment && employment !== 'remote') return { sent: false, reason: 'not-remote' };
 
-  const to = await getCeoEmails();
-  if (!to.length) {
-    console.warn('[ceo-remote-face] SKIP — no CEO email on file');
-    return { sent: false, reason: 'no-ceo-email' };
-  }
-
   const who = user?.name || user?.username || `User ${user?.id}`;
   const event = remoteFaceEvent(challenge);
   const status = String(challenge.status || 'verified').toLowerCase();
@@ -699,11 +732,14 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
       ? `<li><strong>Today’s duration:</strong> ${escapeHtml(challenge.durationLabel)}</li>`
       : '';
 
-  const result = await sendEmailSafe({
-    emailType: 'ceo_remote_face_attendance',
-    to,
-    subject: `Remote attendance: ${who} ${event.subjectVerb}`,
-    html: `
+  const to = await getCeoEmails();
+  let emailResult = null;
+  if (to.length) {
+    emailResult = await sendEmailSafe({
+      emailType: 'ceo_remote_face_attendance',
+      to,
+      subject: `Remote attendance: ${who} ${event.subjectVerb}`,
+      html: `
       <p>A remote employee completed face attendance.</p>
       <ul>
         <li><strong>Event:</strong> ${escapeHtml(event.title)}</li>
@@ -717,34 +753,66 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
       </ul>
       <p>Sent to CEO only. This is a face attendance punch, not a portal login.</p>
     `,
-  });
+    });
 
-  await logEmail({
-    emailType: 'ceo_remote_face_attendance',
-    recipient: to.join(','),
-    meta: {
-      userId: user?.id,
-      event: event.key,
-      kind: challenge.kind || null,
-      seq: challenge.seq || null,
-      status,
-      hourKey: challenge.hourKey || null,
-      ok: Boolean(result),
+    await logEmail({
+      emailType: 'ceo_remote_face_attendance',
+      recipient: to.join(','),
+      meta: {
+        userId: user?.id,
+        event: event.key,
+        kind: challenge.kind || null,
+        seq: challenge.seq || null,
+        status,
+        hourKey: challenge.hourKey || null,
+        ok: Boolean(emailResult),
+      },
+    });
+  } else {
+    console.warn('[ceo-remote-face] SKIP email — no CEO email on file');
+  }
+
+  const pushResult = await notifyCeosPush(
+    {
+      title: `Remote: ${who} ${event.subjectVerb}`,
+      body: `${event.title} · ${statusLabel} · ${when}`,
+      url: '/admin/attendance',
+      tag: `ceo-remote-face-${user?.id || 'x'}-${challenge.hourKey || Date.now()}`,
+      collapse: true,
     },
-  });
+    { urgency: 'high' }
+  );
 
-  return result;
+  // Confirm to the employee on their phone as well.
+  if (user?.id) {
+    await notifyApp(user.id, {
+      title: event.title,
+      body:
+        status === 'late'
+          ? 'Attendance recorded (late).'
+          : 'Attendance recorded successfully.',
+      url: '/attendance',
+      tag: `attendance-ok-${challenge.hourKey || Date.now()}`,
+      collapse: true,
+    });
+  }
+
+  return {
+    sent: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    email: emailResult,
+    push: pushResult,
+  };
 }
 
 async function notifyAttendanceFailed(user, hourKey) {
   const emails = await getAdminEmails();
-  if (!emails.length) return null;
-
   const who = user?.name || user?.username || `User ${user?.id}`;
-  const result = await sendEmailSafe({
-    to: emails,
-    subject: `Attendance check-in failed: ${who}`,
-    html: `
+  let emailResult = null;
+  if (emails.length) {
+    emailResult = await sendEmailSafe({
+      to: emails,
+      subject: `Attendance check-in failed: ${who}`,
+      html: `
       <p>A remote employee failed face verification after multiple attempts.</p>
       <ul>
         <li><strong>Name:</strong> ${escapeHtml(who)}</li>
@@ -753,15 +821,31 @@ async function notifyAttendanceFailed(user, hourKey) {
       </ul>
       <p>No face image was stored. Review Attendance in the admin portal if a manual mark is needed.</p>
     `,
-  });
+    });
 
-  await logEmail({
-    emailType: 'attendance_failed',
-    recipient: emails.join(','),
-    meta: { userId: user?.id, hourKey, ok: Boolean(result) },
-  });
+    await logEmail({
+      emailType: 'attendance_failed',
+      recipient: emails.join(','),
+      meta: { userId: user?.id, hourKey, ok: Boolean(emailResult) },
+    });
+  }
 
-  return result;
+  const pushResult = await notifyCeosPush(
+    {
+      title: `Attendance failed: ${who}`,
+      body: `Face check failed after multiple attempts (${hourKey || '—'}).`,
+      url: '/admin/attendance',
+      tag: `attendance-failed-${user?.id || 'x'}-${hourKey || Date.now()}`,
+      collapse: true,
+    },
+    { urgency: 'high' }
+  );
+
+  return {
+    ok: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    email: emailResult,
+    push: pushResult,
+  };
 }
 
 function buildRemoteAttendanceNotice(user, challenge) {
@@ -843,6 +927,7 @@ async function notifyRemoteAttendanceCheck(user, challenge, opts = {}) {
 module.exports = {
   getAdminEmails,
   getCeoEmails,
+  getCeoUsers,
   notifyCeoIfBranchManagerWork,
   queueCeoBranchManagerNotice,
   notifyAdminsNewSignup,

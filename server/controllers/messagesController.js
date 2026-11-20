@@ -557,20 +557,31 @@ async function listMyMessages(req, res) {
   }
 }
 
+/** Short in-memory cache — cuts repeated Supabase round-trips from open tabs. */
+const unreadCountCache = new Map();
+const UNREAD_CACHE_MS = 8000;
+
 /**
  * GET /api/messages/unread-count
  */
 async function unreadCount(req, res) {
   try {
+    const userId = req.user.id;
+    const cached = unreadCountCache.get(userId);
+    if (cached && Date.now() - cached.at < UNREAD_CACHE_MS) {
+      return res.json({ count: cached.count });
+    }
     const { rows } = await pool.query(
       `
         SELECT COUNT(*)::int AS count
         FROM messages
         WHERE recipient_id = $1 AND read_at IS NULL
       `,
-      [req.user.id]
+      [userId]
     );
-    return res.json({ count: rows[0]?.count || 0 });
+    const count = rows[0]?.count || 0;
+    unreadCountCache.set(userId, { count, at: Date.now() });
+    return res.json({ count });
   } catch (err) {
     console.error('unreadCount error:', err);
     return res.status(500).json({ message: 'Server error counting unread messages.' });

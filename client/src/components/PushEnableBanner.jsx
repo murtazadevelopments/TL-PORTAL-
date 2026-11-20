@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   dismissPushBannerForWeek,
   enablePushNotifications,
+  fetchPushStatus,
+  markPushEverEnabled,
   shouldShowIosInstallHint,
   shouldShowPushEnableBanner,
 } from '../utils/pushNotifications';
@@ -12,9 +14,28 @@ export default function PushEnableBanner() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (shouldShowPushEnableBanner()) setMode('enable');
-    else if (shouldShowIosInstallHint()) setMode('ios-install');
-    else setMode(null);
+    let active = true;
+    (async () => {
+      // Account already has push on another/this device — never nag again here.
+      try {
+        const status = await fetchPushStatus();
+        if (!active) return;
+        if (status?.enabled || Number(status?.subscriptionCount) > 0) {
+          markPushEverEnabled();
+          setMode(null);
+          return;
+        }
+      } catch {
+        /* fall through to local checks */
+      }
+      if (!active) return;
+      if (shouldShowPushEnableBanner()) setMode('enable');
+      else if (shouldShowIosInstallHint()) setMode('ios-install');
+      else setMode(null);
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (!mode) return null;
@@ -28,6 +49,7 @@ export default function PushEnableBanner() {
     setBusy(true);
     try {
       await enablePushNotifications();
+      markPushEverEnabled();
       showSuccess('Notifications enabled on this device.');
       setMode(null);
     } catch {

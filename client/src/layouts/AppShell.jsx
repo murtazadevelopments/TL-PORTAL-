@@ -191,7 +191,8 @@ function ShellInner() {
       refreshUnread();
     };
     tick();
-    timer = window.setInterval(tick, 60_000);
+    // Push SW already refreshes the badge on PORTAL_PUSH; poll less often to ease DB load.
+    timer = window.setInterval(tick, 120_000);
     const onVisible = () => {
       if (document.visibilityState === 'visible') tick();
     };
@@ -331,7 +332,8 @@ function ShellInner() {
             className="btn btn-ghost sidebar-logout"
             onClick={() => {
               if (!trySalesLeave({ type: 'logout' })) return;
-              logout({ clearPush: true });
+              // Keep push subscription so alerts keep working and we never re-prompt.
+              logout();
             }}
           >
             Logout

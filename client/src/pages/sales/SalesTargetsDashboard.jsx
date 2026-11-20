@@ -493,7 +493,7 @@ export default function SalesTargetsDashboard() {
     release();
     if (action?.type === 'logout') {
       storeSalesPin('');
-      logout({ clearPush: true });
+      logout();
       return;
     }
     lockDashboard();

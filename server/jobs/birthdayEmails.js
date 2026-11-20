@@ -145,7 +145,9 @@ async function runBirthdayEmails(now = new Date(), options = {}) {
     }
 
     const result = await notifyCeoBirthdayTomorrow(user, { to: pending });
-    if (result) ceoSent += 1;
+    if (result?.ok || result?.email || Number(result?.push?.sent) > 0 || result === true) {
+      ceoSent += 1;
+    }
   }
 
   for (const user of todayPeople) {

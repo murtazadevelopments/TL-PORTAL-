@@ -9,6 +9,7 @@ import {
   ensurePushSubscription,
   fetchPushStatus,
   isInstalledPwa,
+  markPushEverEnabled,
   notificationBlockedHelp,
 } from '../utils/pushNotifications';
 
@@ -56,6 +57,7 @@ export default function SettingsPage() {
     ensurePushSubscription({ silent: true })
       .then(async (result) => {
         if (!active || !result?.ok) return;
+        markPushEverEnabled();
         const data = await fetchPushStatus();
         if (!active) return;
         setPushStatus(data);
@@ -76,6 +78,7 @@ export default function SettingsPage() {
     setPushSuccess('');
     try {
       await enablePushNotifications();
+      markPushEverEnabled();
       const data = await fetchPushStatus();
       setPushStatus(data);
       setPushSuccess('Notifications enabled on this device.');

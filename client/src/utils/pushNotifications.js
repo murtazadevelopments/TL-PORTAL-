@@ -18,10 +18,13 @@ const LAST_ENDPOINT_KEY = 'tl-push-last-endpoint';
 const RESUBSCRIBE_AT_KEY = 'tl-push-resub-at';
 const FAIL_AT_KEY = 'tl-push-fail-at';
 const BANNER_DISMISS_UNTIL_KEY = 'tl-push-banner-dismiss-until';
+/** Set after a successful enable/subscribe — never re-nag this browser. */
+const EVER_ENABLED_KEY = 'tl-push-ever-enabled';
 const HOUR_MS = 60 * 60 * 1000;
 const SIX_HOURS_MS = 6 * HOUR_MS;
 const TEN_MIN_MS = 10 * 60 * 1000;
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** "Not now" on the enable banner — stay quiet for 90 days. */
+const BANNER_DISMISS_MS = 90 * 24 * 60 * 60 * 1000;
 const PUSH_ENSURE_LOCK = 'tl-push-ensure';
 
 let ensureInflight = null;
@@ -151,18 +154,41 @@ export function isPushBannerDismissed() {
 
 export function dismissPushBannerForWeek() {
   try {
-    localStorage.setItem(BANNER_DISMISS_UNTIL_KEY, String(Date.now() + WEEK_MS));
+    localStorage.setItem(BANNER_DISMISS_UNTIL_KEY, String(Date.now() + BANNER_DISMISS_MS));
   } catch {
     /* ignore */
   }
 }
 
+export function markPushEverEnabled() {
+  try {
+    localStorage.setItem(EVER_ENABLED_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hasPushEverEnabled() {
+  try {
+    if (localStorage.getItem(EVER_ENABLED_KEY) === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  // Already granted in this browser — treat as enabled; never re-prompt.
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    return Notification.permission === 'granted';
+  }
+  return false;
+}
+
 export function shouldShowPushEnableBanner() {
   if (typeof window === 'undefined') return false;
+  // Phone/tablet only — desktop users manage alerts in Settings if needed.
+  if (!canUseMobilePushUi()) return false;
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return false;
   }
-  if (hasPushOptOut() || isPushBannerDismissed()) return false;
+  if (hasPushOptOut() || isPushBannerDismissed() || hasPushEverEnabled()) return false;
   if (Notification.permission !== 'default') return false;
   if (isIosDevice() && !isStandalonePwa()) return false;
   return true;
@@ -170,8 +196,9 @@ export function shouldShowPushEnableBanner() {
 
 export function shouldShowIosInstallHint() {
   if (typeof window === 'undefined') return false;
+  if (!canUseMobilePushUi()) return false;
   if (!isIosDevice() || isStandalonePwa()) return false;
-  if (isPushBannerDismissed()) return false;
+  if (isPushBannerDismissed() || hasPushEverEnabled()) return false;
   if (!('Notification' in window)) return false;
   return Notification.permission === 'default';
 }
@@ -265,6 +292,7 @@ async function syncSubscriptionToServer(subscription, { force = false } = {}) {
   markSyncNow();
   rememberEndpoint(endpoint);
   setPushOptOut(false);
+  markPushEverEnabled();
   return { endpoint, skipped: false };
 }
 
@@ -370,6 +398,7 @@ async function runEnsureBody({ silent, throttle }) {
     }
     await subscribeAndSave(vapidKey);
     markEnsureNow();
+    markPushEverEnabled();
     return { ok: true };
   } catch (err) {
     markFailNow();
