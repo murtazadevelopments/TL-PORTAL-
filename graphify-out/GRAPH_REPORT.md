@@ -1,190 +1,190 @@
-# Graph Report - Portal TL  (2026-11-20)
+# Graph Report - Portal TL  (2026-11-21)
 
 ## Corpus Check
-- 420 files · ~287,565 words
+- 420 files · ~288,320 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 77 file(s) not represented in the graph (top: .css 53, (none) 14, .example 4)
 
 ## Summary
-- 7074 nodes · 19429 edges · 217 communities (170 shown, 47 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 1958 edges (avg confidence: 0.85)
+- 7107 nodes · 19302 edges · 217 communities (169 shown, 48 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 1890 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9455385a`
+- Built from commit: `ba48f08a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - Bundled PDF Worker
-- Built SPA Assets
+- EmploymentFormViewer-C7ZXdp1_.js
 - Client Admin UI
-- attendanceController.js
+- isCeoOrManagerRole
 - Server Controllers: attendanceController.j
 - Client Admin UI: LazyAuthImage.jsx
 - Bundled Face API: face-api-DnQ3bP_c.js
-- EmployeesPage-B3xAeEAa.js
+- PhotoLightbox-B5zl91E7.js
 - Built SPA Assets 3
 - adminController.js
-- index-DoImIoK3.js
+- index-BLudYU_s.js
 - Client Components: AttendanceGuideModal.j
 - Server Utils: attendanceDays.js
-- Built SPA Assets 5
+- za
 - Bundled PDF Worker 2
-- dr
+- f
 - utils/pushNotifications.js
 - attendanceDays.js
-- render
+- n
 - requestMeta.js
-- extractCidKeyedFontProgram
-- a
+- #m
+- nc
 - parse
 - Server Controllers: employeeTransferContro
-- Bundled PDF Worker 5
+- b
 - #t
-- normalizeScope
-- Built SPA Assets 8
-- Built SPA Assets 9
-- Built SPA Assets: ResetPassword-BgIfL23F
+- adminRoutes.js
+- I
+- R
+- SalesTargetsDashboard-DV0CFCjS.js
 - Bundled PDF Worker 7
 - Client Admin UI: AttendanceAdminPage.js
-- f
-- wd
+- t
+- a
 - SalesTargetsDashboard.jsx
 - Client Source: AttendanceAdminPage
 - server/index.js
-- Built SPA Assets: AttendanceAdminPage-B5
-- Built SPA Assets 10
-- n
-- adminRoutes.js
+- #a
+- AttendanceAdminPage-q7mW0Fvm.js
+- pushNotifications-DrSEmWue.js
+- R
 - Server Core 2
-- ref_fs
-- Built SPA Assets 13
-- Bundled Face API
-- Built SPA Assets 14
+- ref_path
+- e
+- a
+- compose
 - client/package.json
 - Bundled PDF Worker 8
 - Client App: Attendance
 - TeamLeaderDashboard
 - Bundled PDF Worker 9
-- updateMode
+- Z
 - Client Components
 - Bundled PDF Worker 10
-- authController.js
+- webauthnController.js
 - localStorage.js
 - Server Controllers: pettyCashController.js
-- ShiftsPage
+- v
 - Server Controllers
-- utils/permissions.js
+- SidebarNav.jsx
 - Bundled PDF Worker: _compileBitshiftNode
-- Built SPA Assets: TeamLeaderDashboard-Br
+- render
 - db.js
 - notifications.js
 - ge
 - Client Hardware Ledger UI: @simplewebauthn/browse
-- employeeExportController.js
+- fixAndSetPosition
 - Server Controllers: salesTargetsController
-- Built SPA Assets 16
+- F
 - Bundled PDF Worker 11
 - AppShell.jsx
 - staffPayrollController.js
 - Bundled PDF Worker 12
 - #u
-- l
+- T
 - withAuthDocumentUrl
 - Server Utils: employeeExportFiles.js
 - db.js
-- Built SPA Assets 18
+- HardwareVendorPage-oXnWL4NF.js
 - Client Assets
-- RolesPage-BOmyVdIp.js
-- Built SPA Assets: PettyCashLedger-DBJY-t
-- hu
+- LoginLogs-CqmzQkDw.js
+- PettyCashLedger-DmouqY_E.js
+- pp
 - Public Static Assets
 - PettyCashLedger
 - docs
 - main.jsx
-- pm
+- i
 - Server Controllers: messagesController.js
 - services/notificationOutbox.js
 - middleware/permissions.js
 - Bundled Face API 5
 - Server Core 3
-- services/pushNotifications.js
-- AttendancePage-BG4d7iTN.js
+- pushController.js
+- AttendancePage-CuJsEfHr.js
 - Server Controllers: leaveRequestsControlle
 - workHours.js
 - Server Utils: attendanceExportFiles.
-- Built SPA Assets 20
-- Bundled PDF Worker 14
-- Built SPA Assets 21
-- addOp
+- EmployeesPage-BqToRkIJ.js
+- g
+- d
+- pwaInstall.js
 - RolesPage.jsx
 - Server Jobs: attendanceMissed.js
 - faceMath.js
 - Built SPA Assets 23
 - uploadMiddleware.js
-- Built SPA Assets 24
-- Built SPA Assets 25
+- l
+- Ba
 - overrides
 - si
 - gh
 - Bundled PDF Worker 16
 - te
 - package.json
-- V
-- AccountProfile-CADlmt5g.js
-- Bundled Face API 8
-- birthdayEmails.js
-- Built SPA Assets 27
+- updateMode
+- pettyCashExportFiles.js
+- we
+- getPattern
+- RolesPage-ZCpPRX6g.js
 - Server Core 4
-- deviceLabel.js
-- sync-client-dist.js
+- serialize
+- fillStroke
 - Built SPA Assets 28
 - Client Components 2
-- Built SPA Assets 29
-- attendanceWindows.js
+- T
+- SettingsPage.jsx
 - Built SPA Assets 31
 - Client Public Assets
 - Bundled PDF Worker 17
 - Public Static Assets 2
 - Built SPA Assets 32
-- yn
-- build-meta.js
+- vapid.js
+- ShiftsPage-DnGUtxbA.js
 - Server Core 6
 - Built SPA Assets 33
-- Client Admin UI 2
-- ftp-deploy.mjs
+- startDrawing
+- test-keyToB64u.mjs
 - e
 - Bundled PDF Worker 18
 - Public Static Assets 3
 - Built SPA Assets 35
 - parseXml
 - userController.js
-- render
+- deviceHints.js
 - xg
 - Built SPA Assets 37
-- overrides
+- hangDiagnostics.js
 - Client App
 - remoteAttendancePings.js
-- _requestChunks
+- supabaseClient.js
 - buildEmployeePdf
 - workDays.js
 - Built SPA Assets 41
 - faceCheckCapture.js
-- cm
+- employeeTransferController.js
 - Server Core: requireSupabaseAuth
-- Built SPA Assets 42
-- Bundled Face API 11
+- Nt
+- PushEnableBanner.jsx
 - Client Source: TEAM_LEAD_LIKE_DESIGNA
 - Server Core 8
-- notificationSettings.js
-- vite.config.js
-- scripts
-- Built SPA Assets 45
-- Built SPA Assets 46
+- h
+- services/pushNotifications.js
+- DesignationsPage
+- get
+- pdf-lib
 - Built SPA Assets 47
 - .cursor
-- Built SPA Assets 48
+- jh
 - Client Public Assets 2
 - Client Public Assets 3
 - Client Public Assets 4
@@ -205,34 +205,34 @@
 - Client Public Assets 22
 - Client Public Assets 23
 - Client Public Assets 24
-- Built SPA Assets 49
-- _guessMax
+- UploadEmploymentFormModal
+- y
 - h
+- u
 - Client Public Assets 25
 - Client Public Assets 26
 - Client Public Assets 27
-- u
 - d
+- sanitizePublicError.js
 - deviceHints-CcLCjzh0.js
 - hooks-B5POo9NP.js
-- updateProperty
+- show
 - createTtlCache
-- getPathBoundingBox
-- cg
-- Sh
+- i
+- altTextFinish
 - getFullReader
 
 ## God Nodes (most connected - your core abstractions)
 1. `_` - 1339 edges
 2. `g()` - 155 edges
-3. `f()` - 130 edges
-4. `t()` - 125 edges
-5. `b()` - 105 edges
-6. `O()` - 101 edges
+3. `t()` - 109 edges
+4. `b()` - 105 edges
+5. `o()` - 104 edges
+6. `O()` - 102 edges
 7. `EmployeesPage()` - 97 edges
-8. `constructor()` - 93 edges
-9. `a()` - 83 edges
-10. `R()` - 83 edges
+8. `constructor()` - 92 edges
+9. `R()` - 82 edges
+10. `a()` - 82 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `PWA reset page (served)` --semantically_similar_to--> `PWA reset page`  [INFERRED] [semantically similar]
@@ -247,135 +247,135 @@
   client/src/assets/logo.png → server/assets/logo.png
 
 ## Import Cycles
-- 2-file cycle: `client/src/pages/attendance/AttendancePage.jsx -> client/src/pages/attendance/OnsiteAttendancePage.jsx -> client/src/pages/attendance/AttendancePage.jsx`
 - 2-file cycle: `server/utils/attendanceSchema.js -> server/utils/flexibleHours.js -> server/utils/attendanceSchema.js`
+- 2-file cycle: `client/src/pages/attendance/AttendancePage.jsx -> client/src/pages/attendance/OnsiteAttendancePage.jsx -> client/src/pages/attendance/AttendancePage.jsx`
 
 ## Hyperedges (group relationships)
 - **Social and docs UI icon symbols** — server_public_icons_bluesky_icon, server_public_icons_discord_icon, server_public_icons_documentation_icon, server_public_icons_github_icon, server_public_icons_social_icon, server_public_icons_x_icon [EXTRACTED 1.00]
 - **Textured Lab favicon and PWA brand icon set** — server_public_favicon_192_favicon_192px, server_public_favicon_favicon_base, server_public_pwa_192_pwa_icon_192px, server_public_pwa_512_maskable_pwa_maskable_512px, server_public_pwa_512_pwa_icon_512px [INFERRED 0.85]
 - **Textured Lab Brand Logo Variants** — client_public_pwa_512_textured_lab_logo, client_src_assets_tl_textured_lab_logo, client_src_assets_logo_textured_lab_logo, client_src_assets_logo_textured_lab_logo_webp, server_assets_logo_textured_lab_logo, server_public_apple_touch_icon_textured_lab_logo, server_public_assets_logo_swdkmx6e_textured_lab_logo [INFERRED 0.95]
 
-## Communities (217 total, 47 thin omitted)
+## Communities (217 total, 48 thin omitted)
 
 ### Community 0 - "Bundled PDF Worker"
 Cohesion: 0.00
-Nodes (36): _, carriageReturn(), _createPages(), _createPagesHelper(), _decrypt(), decryptBlock(), _decryptBlock2(), encrypt() (+28 more)
+Nodes (35): _, carriageReturn(), _createPages(), _createPagesHelper(), _decrypt(), decryptBlock(), _decryptBlock2(), encrypt() (+27 more)
 
-### Community 1 - "Built SPA Assets"
+### Community 1 - "EmploymentFormViewer-C7ZXdp1_.js"
 Cohesion: 0.00
-Nodes (50): addChangedExistingAnnotation(), addDeletedAnnotationElement(), addHighlightArea(), beginMarkedContentProps(), build(), cancelAllRequests(), clonePage(), _continue() (+42 more)
+Nodes (52): addChangedExistingAnnotation(), addDeletedAnnotationElement(), addHighlightArea(), beginMarkedContentProps(), build(), cancelAllRequests(), clonePage(), _continue() (+44 more)
 
 ### Community 2 - "Client Admin UI"
-Cohesion: 0.05
-Nodes (73): api, baseURL, normalizeBaseUrl(), resolveBaseUrl(), SESSION_ENDED_CODES, STAY_SIGNED_IN_CODES, ApplyLeaveModal(), AUDIENCE_OPTIONS (+65 more)
+Cohesion: 0.04
+Nodes (96): api, baseURL, normalizeBaseUrl(), resolveBaseUrl(), SESSION_ENDED_CODES, STAY_SIGNED_IN_CODES, ApplyLeaveModal(), AUDIENCE_OPTIONS (+88 more)
 
-### Community 3 - "attendanceController.js"
-Cohesion: 0.10
-Nodes (62): adminDeleteRemoteDay(), adminDeleteRemoteLast(), adminEmployeeDays(), adminManualMark(), adminOverview(), adminRequestCheckIn(), adminSetHours(), adminUpdateCheckTime() (+54 more)
+### Community 3 - "isCeoOrManagerRole"
+Cohesion: 0.22
+Nodes (33): adminDeleteRemoteDay(), adminDeleteRemoteLast(), adminManualMark(), adminRequestCheckIn(), adminSetHours(), adminUpdateCheckTime(), canUseFullAttendanceDays(), deleteFaceCheckCapture() (+25 more)
 
 ### Community 4 - "Server Controllers: attendanceController.j"
-Cohesion: 0.12
-Nodes (33): checkIn(), endBreak(), getMyAttendance(), getMyHistory(), isFaceMatch, monthHistory, notifyAttendanceFailed, parseEmbedding (+25 more)
+Cohesion: 0.07
+Nodes (63): adminEmployeeDays(), adminOverview(), canCheckInHourKey, CHECK_DONE_STATES, checkIn(), checkInAttempts, checkInRequestGate(), currentHourKey (+55 more)
 
 ### Community 5 - "Client Admin UI: LazyAuthImage.jsx"
 Cohesion: 0.04
-Nodes (84): DesignationField(), designationSelectOptions(), UploadEmploymentFormModal(), ADMIN_FIELD_LABELS, currentTransferValue(), daysInMonth(), DetailFact(), EmployeesPage() (+76 more)
+Nodes (80): DesignationField(), designationSelectOptions(), ADMIN_FIELD_LABELS, currentTransferValue(), daysInMonth(), DetailFact(), EmployeesPage(), applyAccountPatch() (+72 more)
 
 ### Community 6 - "Bundled Face API: face-api-DnQ3bP_c.js"
-Cohesion: 0.03
-Nodes (58): Ct(), ae(), bc(), Br(), ce(), de(), _e(), ea() (+50 more)
+Cohesion: 0.02
+Nodes (53): Ct(), ae(), ag(), Br(), de(), ea(), ee(), Eg() (+45 more)
 
-### Community 7 - "EmployeesPage-B3xAeEAa.js"
-Cohesion: 0.05
-Nodes (96): bn(), Sn(), i(), n(), r(), t(), A(), be() (+88 more)
+### Community 7 - "PhotoLightbox-B5zl91E7.js"
+Cohesion: 0.33
+Nodes (9): i(), n(), r(), t(), o(), d(), u(), s() (+1 more)
 
 ### Community 8 - "Built SPA Assets 3"
 Cohesion: 0.03
-Nodes (85): accessor(), r(), ar(), at(), bt(), clear(), constructor(), delete() (+77 more)
+Nodes (85): accessor(), r(), ar(), at(), bn(), bt(), C(), clear() (+77 more)
 
 ### Community 9 - "adminController.js"
 Cohesion: 0.07
-Nodes (67): ALLOWED_UPDATE_FIELDS, bcrypt, blockAccount(), canAddPortalEmployees(), canManageLowerStaff(), createEmployee(), createLowerStaff(), crypto (+59 more)
+Nodes (85): ALLOWED_UPDATE_FIELDS, bcrypt, blockAccount(), canAddPortalEmployees(), canManageLowerStaff(), createEmployee(), createLowerStaff(), crypto (+77 more)
 
-### Community 10 - "index-DoImIoK3.js"
+### Community 10 - "index-BLudYU_s.js"
 Cohesion: 0.04
-Nodes (100): initialize(), as(), ba(), bl(), Bo(), bs(), cl(), constructor() (+92 more)
+Nodes (97): _a(), ad(), as(), Au(), Bo(), bs(), bu(), cd() (+89 more)
 
 ### Community 11 - "Client Components: AttendanceGuideModal.j"
 Cohesion: 0.06
-Nodes (63): AttendanceGuideModal(), attendanceGuideSeenKey(), hasSeenAttendanceGuide(), markAttendanceGuideSeen(), onsiteSteps(), remoteSteps(), ClockHourSelect(), setClock() (+55 more)
+Nodes (68): AttendanceGuideModal(), attendanceGuideSeenKey(), hasSeenAttendanceGuide(), markAttendanceGuideSeen(), onsiteSteps(), remoteSteps(), ClockHourSelect(), setClock() (+60 more)
 
 ### Community 12 - "Server Utils: attendanceDays.js"
-Cohesion: 0.11
-Nodes (43): persistRemoteCheckCount(), cancelPendingFollowUps(), DONE_STATES, ensureChallengesForUser(), ensureFlexibleChallenges(), insertPlan(), loadChallenges(), loadUserHours() (+35 more)
+Cohesion: 0.10
+Nodes (45): persistRemoteCheckCount(), cancelPendingFollowUps(), DONE_STATES, ensureChallengesForUser(), ensureFlexibleChallenges(), insertPlan(), loadChallenges(), loadUserHours() (+37 more)
 
-### Community 13 - "Built SPA Assets 5"
-Cohesion: 0.03
-Nodes (96): je(), si(), ae(), be(), beginImageData(), beginInlineImage(), bezierBoundingBox(), box() (+88 more)
+### Community 13 - "za"
+Cohesion: 0.28
+Nodes (8): Ba(), Ia(), La(), za(), n(), r(), t(), Fa()
 
 ### Community 14 - "Bundled PDF Worker 2"
 Cohesion: 0.03
-Nodes (86): loadMeshShader(), add(), addCodespaceRange(), addPdfFont(), An(), Au(), bv(), collectAnnotationsByType() (+78 more)
+Nodes (86): add(), addCodespaceRange(), addPdfFont(), asyncGetBytes(), asyncGetBytesFromDecompressionStream(), Au(), bv(), collectAnnotationsByType() (+78 more)
 
-### Community 15 - "dr"
-Cohesion: 0.10
-Nodes (53): cr(), b(), C(), S(), v(), w(), x(), y() (+45 more)
+### Community 15 - "f"
+Cohesion: 0.14
+Nodes (28): n(), d(), _e(), f(), h(), g(), h(), m() (+20 more)
 
 ### Community 16 - "utils/pushNotifications.js"
-Cohesion: 0.06
-Nodes (74): buf, encoded, expected, roundTrip, InstallAppButton(), handleInstall(), PushEnableBanner(), dismiss() (+66 more)
+Cohesion: 0.15
+Nodes (26): canResubscribeNow(), createSubscription(), enablePushNotificationsSafe(), formatPushError(), guardResubscribe(), hasPushOptOut(), inFailureBackoff(), lastEnsureAt() (+18 more)
 
 ### Community 17 - "attendanceDays.js"
 Cohesion: 0.16
-Nodes (28): buildDayRecord(), challengeSlotState(), computeDayStatus(), emptyRemoteSlots(), GRACE_MINUTES, hourFromKey(), hourKeyFor, hoursBetween (+20 more)
+Nodes (27): buildDayRecord(), challengeSlotState(), computeDayStatus(), emptyRemoteSlots(), GRACE_MINUTES, hourFromKey(), hourKeyFor, hoursBetween (+19 more)
 
-### Community 18 - "render"
-Cohesion: 0.05
-Nodes (49): addEventListener(), addNativeFontFace(), bind(), _bindResetFormAction(), constructPath(), copyCanvas(), decompressSignature(), drag() (+41 more)
+### Community 18 - "n"
+Cohesion: 0.07
+Nodes (84): ae(), i(), r(), ei(), pr(), N(), at(), b() (+76 more)
 
 ### Community 19 - "requestMeta.js"
-Cohesion: 0.12
-Nodes (37): RFC-7239, ensureLoginLogColumns(), fillMissingGeo(), listLoginLogs(), recordLoginLog(), runLoginLogsPrune(), formatLoginWhen(), loginIp() (+29 more)
+Cohesion: 0.09
+Nodes (51): RFC-7239, ensureLoginLogColumns(), fillMissingGeo(), listLoginLogs(), recordLoginLog(), runLoginLogsPrune(), formatLoginWhen(), loginIp() (+43 more)
 
-### Community 20 - "extractCidKeyedFontProgram"
-Cohesion: 0.24
-Nodes (13): extractCidKeyedFontProgram(), extractFontHeader(), extractFontProgram(), getToken(), Na(), prevChar(), readBoolean(), readCharStrings() (+5 more)
+### Community 20 - "#m"
+Cohesion: 0.04
+Nodes (65): add(), addAlphaFilter(), addContainer(), addEditToolbar(), addFilter(), addHighlightHCMFilter(), addKnockoutFilter(), addLuminosityFilter() (+57 more)
 
-### Community 21 - "a"
-Cohesion: 0.06
-Nodes (77): create(), Bd(), ff(), ji(), l_(), no(), ro(), Sa() (+69 more)
+### Community 21 - "nc"
+Cohesion: 0.07
+Nodes (69): b(), create(), Bd(), no(), oo(), Sa(), to(), aa() (+61 more)
 
 ### Community 22 - "parse"
 Cohesion: 0.06
-Nodes (47): Ei(), _advance(), bn(), canUseImageDecoder(), constructInterpolated(), constructPostScript(), constructSampled(), constructStiched() (+39 more)
+Nodes (49): Ei(), addNode(), addTopLevelNode(), _advance(), bn(), canUseImageDecoder(), constructInterpolated(), constructPostScript() (+41 more)
 
 ### Community 23 - "Server Controllers: employeeTransferContro"
-Cohesion: 0.11
-Nodes (55): resolveCatalogValue(), adminDeleteOnsite(), adminGetOnsiteMonth(), adminListOnsite(), adminManualOnsite(), adminOverrideOnsite(), ALLOWED_STATUS, assertManualWorkDate() (+47 more)
+Cohesion: 0.10
+Nodes (58): resolveCatalogValue(), adminDeleteOnsite(), adminGetOnsiteMonth(), adminListOnsite(), adminManualOnsite(), adminOverrideOnsite(), ALLOWED_STATUS, assertManualWorkDate() (+50 more)
 
-### Community 24 - "Bundled PDF Worker 5"
+### Community 24 - "b"
 Cohesion: 0.02
-Nodes (139): Ti(), acroForm(), acroFormRef(), addGlyph(), annotationGlobals(), attachments(), attributes(), b() (+131 more)
+Nodes (104): Ti(), acroFormRef(), addGlyph(), annotationGlobals(), _areGoodDims(), at(), attachmentContent(), attachments() (+96 more)
 
 ### Community 25 - "#t"
 Cohesion: 0.03
-Nodes (94): aa(), _addNamespacePrefix(), addNode(), addTopLevelNode(), annotations(), at(), bezierBoundingBox(), bt() (+86 more)
+Nodes (94): loadMeshShader(), aa(), acroForm(), _addNamespacePrefix(), An(), annotations(), bezierBoundingBox(), bt() (+86 more)
 
-### Community 26 - "normalizeScope"
-Cohesion: 0.09
-Nodes (35): assignablePermissionsCatalog(), normalizePermissionKeys(), PERMISSION_KEYS, PERMISSIONS_CATALOG, assertCanTransfer(), directoryAccess(), ensureTransferTable(), isRemoteEmployment() (+27 more)
+### Community 26 - "adminRoutes.js"
+Cohesion: 0.06
+Nodes (73): assignablePermissionsCatalog(), normalizePermissionKeys(), PERMISSION_KEYS, PERMISSIONS_CATALOG, listLockedAccounts(), assertFilterAllowed(), attachmentDisposition(), buildMonthDays() (+65 more)
 
-### Community 27 - "Built SPA Assets 8"
+### Community 27 - "I"
+Cohesion: 0.05
+Nodes (60): beginImageData(), beginInlineImage(), bezierBoundingBox(), box(), br(), _callOnProgress(), cancel(), cn() (+52 more)
+
+### Community 28 - "R"
 Cohesion: 0.04
-Nodes (72): add(), addAlphaFilter(), addContainer(), addEditToolbar(), addFilter(), addHCMFilter(), addHighlightHCMFilter(), addKnockoutFilter() (+64 more)
+Nodes (57): _allowedHtmlElements(), _allowedRichTextAttributes(), _allowedRichTextElements(), _allowedRichTextStyles(), _allowedSvgElements(), annotationStorage(), _bakeSMaskCanvas(), _colors() (+49 more)
 
-### Community 28 - "Built SPA Assets 9"
+### Community 29 - "SalesTargetsDashboard-DV0CFCjS.js"
 Cohesion: 0.10
-Nodes (50): b(), xr(), Cr(), fe(), lr(), a(), y(), a() (+42 more)
-
-### Community 29 - "Built SPA Assets: ResetPassword-BgIfL23F"
-Cohesion: 0.08
-Nodes (51): ge(), Ht(), mt(), nn(), Q(), _t(), f(), m() (+43 more)
+Nodes (43): m(), a(), b(), S(), n(), Q(), X(), Z() (+35 more)
 
 ### Community 30 - "Bundled PDF Worker 7"
 Cohesion: 0.10
@@ -383,135 +383,140 @@ Nodes (37): amendSavedDict(), _buildFlags(), _computeFontSize(), createAppearanc
 
 ### Community 31 - "Client Admin UI: AttendanceAdminPage.js"
 Cohesion: 0.07
-Nodes (53): AttendanceAdminPage(), deleteOnsiteRecord(), deleteRemoteDay(), deleteRemoteLast(), load(), openDaysEditor(), openOnsiteMonth(), openTimeEdit() (+45 more)
+Nodes (55): clock(), ShiftHoursDetail(), AttendanceAdminPage(), deleteOnsiteRecord(), deleteRemoteDay(), deleteRemoteLast(), load(), openDaysEditor() (+47 more)
 
-### Community 32 - "f"
+### Community 32 - "t"
 Cohesion: 0.07
-Nodes (83): P(), l(), o(), f(), g(), n(), Z(), h() (+75 more)
+Nodes (69): P(), l(), f(), g(), n(), Z(), h(), m() (+61 more)
 
-### Community 33 - "wd"
-Cohesion: 0.11
-Nodes (30): br(), ad(), bn(), br(), dp(), Ed(), Er(), fr() (+22 more)
+### Community 33 - "a"
+Cohesion: 0.09
+Nodes (45): o(), br(), Sr(), Ft(), a(), an(), ar(), bn() (+37 more)
 
 ### Community 34 - "SalesTargetsDashboard.jsx"
 Cohesion: 0.10
-Nodes (41): maybeShowSuccessPopup(), useRegisterSalesLeaveLock(), ConfirmPinModal(), SalesAgentDashboard(), dayStatusLabel(), formatDayDate(), SalesDailyTargetsPage(), finishLeave() (+33 more)
+Nodes (43): maybeShowSuccessPopup(), useRegisterSalesLeaveLock(), SalesAgentDashboard(), dayStatusLabel(), formatDayDate(), SalesDailyTargetsPage(), finishLeave(), handleLeaveSave() (+35 more)
 
 ### Community 35 - "Client Source: AttendanceAdminPage"
-Cohesion: 0.07
-Nodes (46): AccountDocuments, AccountProfile, AccountSecurity, App(), AttendanceAdminPage, AttendanceAdminRedirect, AttendanceExportPage, AttendancePage (+38 more)
+Cohesion: 0.06
+Nodes (49): AccountDocuments, AccountProfile, AccountSecurity, App(), AttendanceAdminPage, AttendanceAdminRedirect, AttendanceExportPage, AttendancePage (+41 more)
 
 ### Community 36 - "server/index.js"
-Cohesion: 0.07
-Nodes (30): publicKey, allowedOrigins, app, clientDistDir, compression, cors, defaultOrigins, express (+22 more)
-
-### Community 37 - "Built SPA Assets: AttendanceAdminPage-B5"
-Cohesion: 0.10
-Nodes (51): b(), be(), ce(), de(), _e(), Ee(), fe(), g() (+43 more)
-
-### Community 38 - "Built SPA Assets 10"
-Cohesion: 0.04
-Nodes (52): _allowedHtmlElements(), _allowedRichTextAttributes(), _allowedRichTextElements(), _allowedRichTextStyles(), _allowedSvgElements(), annotationStorage(), _colors(), commentForegroundColor() (+44 more)
-
-### Community 39 - "n"
 Cohesion: 0.09
-Nodes (78): i(), a(), an(), b(), bd(), Bt(), c(), ce() (+70 more)
+Nodes (17): allowedOrigins, app, clientDistDir, compression, cors, defaultOrigins, express, fs (+9 more)
 
-### Community 40 - "adminRoutes.js"
+### Community 37 - "#a"
+Cohesion: 0.05
+Nodes (53): #a(), addCommands(), addEditor(), addToAnnotationStorage(), addUndoableEditor(), #C(), center(), commit() (+45 more)
+
+### Community 38 - "AttendanceAdminPage-q7mW0Fvm.js"
+Cohesion: 0.10
+Nodes (50): b(), be(), ce(), de(), _e(), Ee(), fe(), g() (+42 more)
+
+### Community 39 - "pushNotifications-DrSEmWue.js"
 Cohesion: 0.11
-Nodes (29): BRANCH_OPTIONS, listLockedAccounts(), markEmployeeResigned(), markEmployeeTerminated(), canEditBranchIp(), createBranch(), deleteBranch(), invalidateBranchesCache() (+21 more)
+Nodes (48): c(), fr(), qo(), a(), B(), be(), c(), ce() (+40 more)
+
+### Community 40 - "R"
+Cohesion: 0.08
+Nodes (47): be(), F(), j(), je(), Le(), N(), O(), P() (+39 more)
 
 ### Community 41 - "Server Core 2"
+Cohesion: 0.07
+Nodes (41): compression, dotenv, ipaddr.js, jsonwebtoken, multer, node-cron, node-zklib, nodemailer (+33 more)
+
+### Community 42 - "ref_path"
+Cohesion: 0.05
+Nodes (34): client, clientRoot, __dirname, localDir, port, { execSync }, fs, getBuildMeta() (+26 more)
+
+### Community 43 - "e"
 Cohesion: 0.06
-Nodes (46): compression, dotenv, ipaddr.js, jsonwebtoken, multer, node-cron, node-zklib, nodemailer (+38 more)
+Nodes (49): addHCMFilter(), addNewEditor(), at(), #b(), buildFocusOutline(), clone(), createAndAddNewEditor(), draw() (+41 more)
 
-### Community 42 - "ref_fs"
-Cohesion: 0.15
-Nodes (9): clientPkg, { execSync }, fs, path, root, { execSync }, fs, hostingerBuild (+1 more)
+### Community 44 - "a"
+Cohesion: 0.12
+Nodes (26): a(), c(), o(), s(), ah(), Bm(), Cf(), cg() (+18 more)
 
-### Community 43 - "Built SPA Assets 13"
+### Community 45 - "compose"
 Cohesion: 0.06
 Nodes (49): _applySMaskOOBAlpha(), applyTransferMapsToBitmap(), applyTransferMapsToCanvas(), beginGroup(), beginSMaskMode(), checkSMaskState(), compose(), composeSMask() (+41 more)
 
-### Community 44 - "Bundled Face API"
-Cohesion: 0.09
-Nodes (45): s(), a(), c(), o(), s(), ah(), ai(), ao() (+37 more)
-
-### Community 45 - "Built SPA Assets 14"
-Cohesion: 0.06
-Nodes (45): #a(), addCommands(), addEditor(), addToAnnotationStorage(), addUndoableEditor(), center(), commit(), commitOrRemove() (+37 more)
-
 ### Community 46 - "client/package.json"
-Cohesion: 0.12
-Nodes (21): allowScripts, fsevents@2.3.3, face-api.js@^0.22.2, devDependencies, oxlint@^1.75.0, rollup-plugin-visualizer@^6.0.11, @types/react@^19.2.17, @types/react-dom@^19.2.3 (+13 more)
+Cohesion: 0.05
+Nodes (43): allowScripts, fsevents@2.3.3, face-api.js@^0.22.2, devDependencies, basic-ftp@^6.2.1, oxlint@^1.75.0, rollup-plugin-visualizer@^6.0.11, @types/react@^19.2.17 (+35 more)
 
 ### Community 47 - "Bundled PDF Worker 8"
 Cohesion: 0.04
-Nodes (54): al(), breakNode(), buildImage(), buildPaintImageXObject(), cl(), _convertCmykToRgb(), _convertCmykToRgba(), _convertYcckToCmyk() (+46 more)
+Nodes (55): al(), breakNode(), buildImage(), buildPaintImageXObject(), cl(), _convertCmykToRgb(), _convertCmykToRgba(), _convertYcckToCmyk() (+47 more)
 
 ### Community 48 - "Client App: Attendance"
 Cohesion: 0.05
 Nodes (46): Attendance, Documents, Internal employee workspace, Fredoka font, src/main.jsx entry, noindex nofollow robots meta, Nunito font, Web app manifest (+38 more)
 
 ### Community 49 - "TeamLeaderDashboard"
-Cohesion: 0.03
-Nodes (45): Navbar(), EyeIcon(), PasswordInput(), firstName(), SignupWelcomeModal(), AccountSecurity(), handleEnablePasskey(), refreshPasskeys() (+37 more)
+Cohesion: 0.05
+Nodes (23): TeamFilterSelect(), useTeamOptions(), CopyButton(), linkHref(), normalizeCategories(), RecoverViewerPinPanel(), SECTIONS, TeamLeaderDashboard() (+15 more)
 
 ### Community 50 - "Bundled PDF Worker 9"
-Cohesion: 0.07
-Nodes (40): A(), ai(), attachmentContent(), buildCharCodeToWidth(), dc(), de(), Ds(), dump() (+32 more)
+Cohesion: 0.15
+Nodes (21): A(), ai(), buildCharCodeToWidth(), dc(), Ds(), es(), extractWidths(), fc() (+13 more)
 
-### Community 51 - "updateMode"
-Cohesion: 0.09
-Nodes (26): addEditListeners(), addNewEditorFromKeyboard(), addOrRebuild(), deleteComment(), disable(), disableClick(), disableTextSelection(), disableUserSelect() (+18 more)
+### Community 51 - "Z"
+Cohesion: 0.08
+Nodes (47): bl(), cl(), df(), dl(), ec(), ef(), el(), eo() (+39 more)
 
 ### Community 52 - "Client Components"
 Cohesion: 0.07
-Nodes (33): dependencies, axios@^1.20.0, pdfjs-dist@^6.3.289, react@^19.2.8, react-dom@^19.2.8, react-router@8.3.0, @simplewebauthn/browser@^13.3.0, CnicProtectedViewer() (+25 more)
+Nodes (32): dependencies, axios@^1.20.0, pdfjs-dist@^6.3.289, react@^19.2.8, react-dom@^19.2.8, react-router@8.3.0, @simplewebauthn/browser@^13.3.0, CnicProtectedViewer() (+24 more)
 
 ### Community 53 - "Bundled PDF Worker 10"
-Cohesion: 0.07
-Nodes (30): asyncGetBytes(), asyncGetBytesFromDecompressionStream(), clone(), decodeImage(), ensureBuffer(), ensureByte(), ensureRange(), generateHuffmanTable() (+22 more)
+Cohesion: 0.06
+Nodes (42): clone(), decodeImage(), ensureBuffer(), ensureByte(), ensureRange(), extractCidKeyedFontProgram(), extractFontHeader(), extractFontProgram() (+34 more)
 
-### Community 54 - "authController.js"
-Cohesion: 0.08
-Nodes (40): bcrypt, changePassword(), crypto, findRecoveryUsers(), forgotPassword(), forgotUsername(), getFile(), jwt (+32 more)
+### Community 54 - "webauthnController.js"
+Cohesion: 0.17
+Nodes (20): changePassword(), resetPassword(), consumeChallenge(), deleteCredential(), {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+}, getWebAuthnConfig(), hasCredential(), { isoBase64URL } (+12 more)
 
 ### Community 55 - "localStorage.js"
-Cohesion: 0.05
-Nodes (57): BUCKETS, cleanEnv(), { createClient }, normalizeSupabaseUrl(), path, previewUrl(), supabase, supabaseKey (+49 more)
+Cohesion: 0.09
+Nodes (36): alreadyLocal(), candidateFolders(), DOC_FILE_RE, downloadObject(), dryRun, extFromObjectPath(), FIELD_BUCKET, FIELD_DOC (+28 more)
 
 ### Community 56 - "Server Controllers: pettyCashController.js"
-Cohesion: 0.08
-Nodes (69): assertAssignee(), assertOverseer(), attachmentDisposition(), createMyEntry(), deleteMyEntry(), deleteMyFundAddition(), exportHolderLedger(), exportMyLedger() (+61 more)
+Cohesion: 0.12
+Nodes (49): assertAssignee(), assertOverseer(), attachmentDisposition(), createMyEntry(), deleteMyEntry(), deleteMyFundAddition(), exportHolderLedger(), exportMyLedger() (+41 more)
 
-### Community 57 - "ShiftsPage"
-Cohesion: 0.19
-Nodes (10): HOURS, MINUTES, TimeAmPmInput(), emit(), ShiftsPage(), verify(), formatTimeAmPm(), joinTimeAmPm() (+2 more)
+### Community 57 - "v"
+Cohesion: 0.06
+Nodes (20): d(), ee(), g(), h(), ie(), ie(), v(), ne() (+12 more)
 
 ### Community 58 - "Server Controllers"
 Cohesion: 0.07
-Nodes (65): catalogDesignationLabel(), DESIGNATION_OPTIONS, isAllowedDesignation(), isBranchManagerDesignation(), isCatalogDesignation(), normalizeDesignation(), TEAM_LEAD_LIKE_DESIGNATIONS, TEAM_LEAD_LIKE_NORMALIZED (+57 more)
+Nodes (67): bcryptjs, catalogDesignationLabel(), DESIGNATION_OPTIONS, isAllowedDesignation(), isBranchManagerDesignation(), isCatalogDesignation(), normalizeDesignation(), TEAM_LEAD_LIKE_DESIGNATIONS (+59 more)
 
-### Community 59 - "utils/permissions.js"
-Cohesion: 0.14
-Nodes (33): buildSidebarGroups(), Chevron(), groupHasActive(), groupUnreadBadge(), isItemActive(), SidebarNav(), AttendanceAdminRedirect(), EmployeeExportLogsPage() (+25 more)
+### Community 59 - "SidebarNav.jsx"
+Cohesion: 0.06
+Nodes (37): Balloon(), BirthdayCelebration(), firstName(), ExamCelebration(), firstName(), HardRefreshButton(), Navbar(), EyeIcon() (+29 more)
 
 ### Community 60 - "Bundled PDF Worker: _compileBitshiftNode"
 Cohesion: 0.12
 Nodes (41): _allocLocal(), compile(), _compileAtanNode(), _compileBinary(), _compileBinaryNode(), _compileBitshiftNode(), _compileBitwiseNode(), _compileBitwiseOperandI32() (+33 more)
 
-### Community 61 - "Built SPA Assets: TeamLeaderDashboard-Br"
-Cohesion: 0.07
-Nodes (20): d(), ee(), o(), g(), h(), ie(), ie(), v() (+12 more)
+### Community 61 - "render"
+Cohesion: 0.05
+Nodes (39): _abortOperatorList(), addCommentButton(), addCommentButtonInToolbar(), addStandaloneCommentButton(), _bindJSAction(), _bindLink(), _bindNamedAction(), cleanup() (+31 more)
 
 ### Community 62 - "db.js"
 Cohesion: 0.13
-Nodes (12): dns, originalQuery, path, { Pool }, startPoolKeepAlive(), path, main(), path (+4 more)
+Nodes (11): dns, originalQuery, path, { Pool }, startPoolKeepAlive(), getNotificationSettings(), updateNotificationSettings(), getSetting() (+3 more)
 
 ### Community 63 - "notifications.js"
-Cohesion: 0.14
-Nodes (32): sendSignupNotifications(), main(), sendEmailSafe(), birthdayEmailWrap(), buildRemoteAttendanceNotice(), calendarYearNow(), escapeHtml(), firstName() (+24 more)
+Cohesion: 0.06
+Nodes (72): bcrypt, crypto, findRecoveryUsers(), forgotPassword(), forgotUsername(), getFile(), jwt, LAST_JOB_STATUSES (+64 more)
 
 ### Community 64 - "ge"
 Cohesion: 0.10
@@ -519,75 +524,75 @@ Nodes (31): Ar(), br(), ca(), create(), Dr(), Er(), fetch(), fetchAsync() (+23 m
 
 ### Community 65 - "Client Hardware Ledger UI: @simplewebauthn/browse"
 Cohesion: 0.10
-Nodes (24): HardwareLedgerDashboard(), HardwareLedgerPage(), currentMonthKey(), formatDate(), formatMoney(), formatTime(), localInputToIso(), pad() (+16 more)
+Nodes (25): HardwareLedgerDashboard(), HardwareLedgerPage(), currentMonthKey(), formatDate(), formatMoney(), formatTime(), localInputToIso(), pad() (+17 more)
 
-### Community 66 - "employeeExportController.js"
-Cohesion: 0.20
-Nodes (21): assertFilterAllowed(), attachmentDisposition(), buildExportBaseName(), buildQuery(), cleanFilter(), dataLimitLabel(), describeFilters(), ensureExportLogTable() (+13 more)
+### Community 66 - "fixAndSetPosition"
+Cohesion: 0.07
+Nodes (36): CMYK_HTML(), CMYK_RGB(), createOrUpdatePopup(), _createPopup(), drag(), fixAndSetPosition(), G_HTML(), G_RGB() (+28 more)
 
 ### Community 67 - "Server Controllers: salesTargetsController"
 Cohesion: 0.11
-Nodes (46): bcryptjs, allocateDailyAchieved(), bcrypt, crypto, currentPeriod(), dailyTargetAmount(), daysInPeriod(), dayStatus() (+38 more)
+Nodes (45): allocateDailyAchieved(), bcrypt, crypto, currentPeriod(), dailyTargetAmount(), daysInPeriod(), dayStatus(), ensureDailySplits() (+37 more)
 
-### Community 68 - "Built SPA Assets 16"
-Cohesion: 0.11
-Nodes (28): addNewEditor(), #b(), _bakeSMaskCanvas(), createAndAddNewEditor(), endGroup(), exec(), g(), a() (+20 more)
+### Community 68 - "F"
+Cohesion: 0.07
+Nodes (30): addEventListener(), addNativeFontFace(), bind(), _bindResetFormAction(), constructPath(), copyCanvas(), decompressSignature(), F() (+22 more)
 
 ### Community 69 - "Bundled PDF Worker 11"
-Cohesion: 0.09
-Nodes (32): ab(), Bc(), checkFirstPage(), checkLastPage(), cleanup(), createDocumentHandler(), b(), p() (+24 more)
+Cohesion: 0.07
+Nodes (39): ab(), Bc(), checkFirstPage(), checkLastPage(), cleanup(), createDocumentHandler(), b(), p() (+31 more)
 
 ### Community 70 - "AppShell.jsx"
-Cohesion: 0.05
-Nodes (68): ADMIN_INCOMPLETE_EVENT, AdminIncompleteGate(), buildIncomplete(), Balloon(), BirthdayCelebration(), firstName(), ExamCelebration(), firstName() (+60 more)
+Cohesion: 0.07
+Nodes (52): ADMIN_INCOMPLETE_EVENT, AdminIncompleteGate(), buildIncomplete(), EmploymentFormViewer(), useInactivityGuard(), PhotoAlertLock(), PortalAlertModal(), ProfileIncompleteLock() (+44 more)
 
 ### Community 71 - "staffPayrollController.js"
 Cohesion: 0.07
-Nodes (91): assertAssignee(), bcrypt, createRecord(), createVendor(), deleteRecord(), deleteVendor(), getVendor(), listRecords() (+83 more)
+Nodes (90): assertAssignee(), bcrypt, createRecord(), createVendor(), deleteRecord(), deleteVendor(), getVendor(), listRecords() (+82 more)
 
 ### Community 72 - "Bundled PDF Worker 12"
-Cohesion: 0.08
-Nodes (34): Da(), Ea(), ka(), Ta(), ao(), buildToUnicode(), checkAndRepair(), a() (+26 more)
+Cohesion: 0.07
+Nodes (37): ae(), ao(), buildToUnicode(), checkAndRepair(), a(), c(), i(), s() (+29 more)
 
 ### Community 73 - "#u"
-Cohesion: 0.07
-Nodes (35): jd(), Ad(), baseUrl(), bd(), be(), Bu(), Cd(), Dd() (+27 more)
+Cohesion: 0.08
+Nodes (28): jd(), Ad(), bd(), be(), Cd(), Dd(), Eu(), Gd() (+20 more)
 
-### Community 74 - "l"
-Cohesion: 0.10
-Nodes (33): an(), be(), bi(), Bt(), cn(), D(), dn(), Dt() (+25 more)
+### Community 74 - "T"
+Cohesion: 0.13
+Nodes (26): an(), _c(), ce(), cn(), dn(), en(), gc(), gn() (+18 more)
 
 ### Community 75 - "withAuthDocumentUrl"
 Cohesion: 0.23
 Nodes (12): acquireSlot(), LazyAuthImage(), waiters, FaceCheckCapturesPage(), deleteCapture(), FaceCheckShot(), formatWhen(), karachiDateKey() (+4 more)
 
 ### Community 76 - "Server Utils: employeeExportFiles.js"
-Cohesion: 0.16
-Nodes (16): buildExcelXml(), cellValue(), displayRows(), excelSheetPasswordHash(), fontkit, formatDate(), formatWorkHours(), fs (+8 more)
+Cohesion: 0.14
+Nodes (18): buildExcelXml(), cellValue(), displayRows(), embedExportFonts(), excelSheetPasswordHash(), EXPORT_COLUMNS, fontkit, formatDate() (+10 more)
 
 ### Community 77 - "db.js"
-Cohesion: 0.16
-Nodes (16): ensureAttendanceEnabledColumn(), isUserAttendanceEnabled(), rejectIfUserAttendanceStopped(), setUserAttendanceEnabled(), ensureAttendanceReviewEmailColumn(), addWorkHourColumns(), compactName(), persistUserWorkHours() (+8 more)
+Cohesion: 0.15
+Nodes (17): ensureAttendanceEnabledColumn(), isUserAttendanceEnabled(), setUserAttendanceEnabled(), ensureAttendanceReviewEmailColumn(), addWorkHourColumns(), compactName(), persistUserWorkHours(), runEnsureAttendanceTables() (+9 more)
 
-### Community 78 - "Built SPA Assets 18"
-Cohesion: 0.21
-Nodes (30): re(), rn(), fi(), _i(), Ma(), Ni(), oa(), pi() (+22 more)
+### Community 78 - "HardwareVendorPage-oXnWL4NF.js"
+Cohesion: 0.15
+Nodes (25): D(), d(), f(), g(), h(), m(), p(), u() (+17 more)
 
 ### Community 79 - "Client Assets"
 Cohesion: 0.07
 Nodes (30): Dual Corked Flasks Mark, Neon Green Cyan Purple Palette, Textured Lab PWA 512 Logo, TEXTURED LAB Wordmark, Dual Corked Flasks Mark, Dual Corked Flasks Mark, Neon Green Cyan Purple Palette, Neon Green Cyan Purple Palette (+22 more)
 
-### Community 80 - "RolesPage-BOmyVdIp.js"
-Cohesion: 0.10
-Nodes (33): i(), n(), r(), qt(), m(), n(), p(), d() (+25 more)
+### Community 80 - "LoginLogs-CqmzQkDw.js"
+Cohesion: 0.21
+Nodes (14): d(), f(), g(), h(), m(), p(), v(), r() (+6 more)
 
-### Community 81 - "Built SPA Assets: PettyCashLedger-DBJY-t"
+### Community 81 - "PettyCashLedger-DmouqY_E.js"
 Cohesion: 0.12
-Nodes (26): C(), D(), n(), d(), f(), ie(), m(), ne() (+18 more)
+Nodes (26): U(), ae(), d(), f(), h(), ie(), m(), ne() (+18 more)
 
-### Community 82 - "hu"
-Cohesion: 0.09
-Nodes (39): gp(), _p(), Oe(), ap(), at(), Au(), bu(), cd() (+31 more)
+### Community 82 - "pp"
+Cohesion: 0.24
+Nodes (11): gp(), _p(), ap(), dp(), kp(), np(), pp(), n() (+3 more)
 
 ### Community 83 - "Public Static Assets"
 Cohesion: 0.09
@@ -602,72 +607,72 @@ Cohesion: 0.07
 Nodes (27): defaults, runs-on, steps, run, VITE_API_BASE_URL, jobs, build-and-deploy, name (+19 more)
 
 ### Community 86 - "main.jsx"
-Cohesion: 0.22
-Nodes (11): cacheClearDue(), clearAppCache(), LEGACY_SW_SUFFIXES, markCacheCleared(), startAutoCacheClear(), startPwaUpdateWatcher(), applyFilteredValue(), fieldKind() (+3 more)
+Cohesion: 0.19
+Nodes (13): handleClick(), cacheClearDue(), clearAppCache(), hardEmptyCacheAndReload(), LEGACY_SW_SUFFIXES, markCacheCleared(), startAutoCacheClear(), startPwaUpdateWatcher() (+5 more)
 
-### Community 87 - "pm"
-Cohesion: 0.17
-Nodes (14): am(), i(), r(), ap(), cp(), _g(), gg(), hm() (+6 more)
+### Community 87 - "i"
+Cohesion: 0.07
+Nodes (42): am(), i(), r(), ap(), Ch(), cm(), cp(), dh() (+34 more)
 
 ### Community 88 - "Server Controllers: messagesController.js"
-Cohesion: 0.14
-Nodes (23): AUDIENCE, deliverOneMessage(), DELIVERY, ensureMessagesSchema(), escapeHtml(), fs, fsp, listMessageRecipients() (+15 more)
+Cohesion: 0.13
+Nodes (24): AUDIENCE, deliverOneMessage(), DELIVERY, ensureMessagesSchema(), escapeHtml(), fs, fsp, listMessageRecipients() (+16 more)
 
 ### Community 89 - "services/notificationOutbox.js"
-Cohesion: 0.16
-Nodes (18): listNotificationOutbox(), runNotificationOutbox(), startNotificationOutboxWorker(), challengeSnapshot(), claimBatch(), deliverRow(), enqueueAttendanceReminder(), ensureEmailRow() (+10 more)
+Cohesion: 0.14
+Nodes (22): listNotificationOutbox(), runNotificationOutbox(), startNotificationOutboxWorker(), htmlToText(), sendEmail(), sendOne(), uniqueRecipients(), challengeSnapshot() (+14 more)
 
 ### Community 90 - "middleware/permissions.js"
-Cohesion: 0.12
-Nodes (38): managerPermissionKeys(), signupIdentityTaken(), attachManagerAccess(), isCeoRole(), isManagerRole(), isStaffAdminRole(), loadAdminPermissions(), normalizeRole() (+30 more)
+Cohesion: 0.06
+Nodes (69): express, BRANCH_OPTIONS, managerPermissionKeys(), canEditBranchIp(), createBranch(), deleteBranch(), invalidateBranchesCache(), listBranches() (+61 more)
 
 ### Community 91 - "Bundled Face API 5"
 Cohesion: 0.12
-Nodes (26): Dg(), Em(), Fg(), ig(), jg(), kg(), km(), Mg() (+18 more)
+Nodes (30): ao(), bg(), c(), Dg(), dp(), Em(), Fg(), fh() (+22 more)
 
 ### Community 92 - "Server Core 3"
-Cohesion: 0.14
-Nodes (26): bumpDailyCount(), env(), getFrom(), getReplyTo(), getTransporter(), htmlToText(), isRateLimitedError(), logMailerStatus() (+18 more)
+Cohesion: 0.17
+Nodes (22): bumpDailyCount(), env(), getFrom(), getReplyTo(), getTransporter(), htmlToText(), isRateLimitedError(), logMailerStatus() (+14 more)
 
-### Community 93 - "services/pushNotifications.js"
-Cohesion: 0.11
-Nodes (23): crypto, envPublicKey, privateKey, subject, webpush, deleteSubscription(), ensureEndpointUnique(), getPublicKey() (+15 more)
+### Community 93 - "pushController.js"
+Cohesion: 0.24
+Nodes (14): deleteSubscription(), ensureEndpointUnique(), getPublicKey(), getStatus(), setPreferences(), subscribe(), unsubscribe(), express (+6 more)
 
-### Community 94 - "AttendancePage-BG4d7iTN.js"
+### Community 94 - "AttendancePage-CuJsEfHr.js"
 Cohesion: 0.10
-Nodes (41): C(), ce(), D(), bt(), gt(), ht(), n(), _t() (+33 more)
+Nodes (44): C(), ce(), D(), gt(), ht(), _t(), yt(), de() (+36 more)
 
 ### Community 95 - "Server Controllers: leaveRequestsControlle"
-Cohesion: 0.14
-Nodes (25): express, approveLeaveRequest(), canReviewLeave(), createLeaveRequest(), decideLeaveRequest(), fs, leaveTypeLabel(), listLeaveRequests() (+17 more)
+Cohesion: 0.18
+Nodes (21): approveLeaveRequest(), canReviewLeave(), createLeaveRequest(), decideLeaveRequest(), fs, leaveTypeLabel(), listLeaveRequests(), listMyLeaveRequests() (+13 more)
 
 ### Community 96 - "workHours.js"
 Cohesion: 0.33
 Nodes (6): clampHour(), formatHourLabel(), hoursBetween(), normalizeWorkHours(), pickUserHour(), slotsForWorkHours()
 
 ### Community 97 - "Server Utils: attendanceExportFiles."
-Cohesion: 0.10
-Nodes (39): assertFilterAllowed(), attachmentDisposition(), buildMonthDays(), cleanFilter(), describeAttendanceFilters(), exportAttendance(), exportScope(), formatMonthLabel() (+31 more)
+Cohesion: 0.16
+Nodes (20): margin(), ATTENDANCE_SUMMARY_COLUMNS, buildAttendanceExcelXml(), buildAttendancePdf(), addPage(), drawRight(), drawTableHeader(), displayAttendanceRows() (+12 more)
 
-### Community 98 - "Built SPA Assets 20"
-Cohesion: 0.19
-Nodes (17): c(), d(), f(), l(), o(), s(), u(), f() (+9 more)
+### Community 98 - "EmployeesPage-BqToRkIJ.js"
+Cohesion: 0.11
+Nodes (25): Ce(), et(), I(), Ie(), it(), Ke(), L(), M() (+17 more)
 
-### Community 99 - "Bundled PDF Worker 14"
-Cohesion: 0.13
-Nodes (22): ae(), bind(), _bindElement(), _bindItems(), _bindOccurrences(), _bindValue(), cm(), _createOccurrences() (+14 more)
+### Community 99 - "g"
+Cohesion: 0.03
+Nodes (95): addDependencies(), addDependency(), addImageOps(), addOp(), addOpList(), bind(), _bindElement(), _bindItems() (+87 more)
 
-### Community 100 - "Built SPA Assets 21"
-Cohesion: 0.12
-Nodes (21): ai(), areConic(), clipBbox(), _createGradient(), _createMeshCanvas(), createPatternCanvas(), _createReversedGradient(), drawPattern() (+13 more)
+### Community 100 - "d"
+Cohesion: 0.09
+Nodes (28): ae(), be(), ce(), combinedSignal(), commentSelection(), d(), #de(), #ee() (+20 more)
 
-### Community 101 - "addOp"
-Cohesion: 0.25
-Nodes (8): addDependencies(), addDependency(), addImageOps(), addOp(), addOpList(), flush(), _optimize(), push()
+### Community 101 - "pwaInstall.js"
+Cohesion: 0.18
+Nodes (20): InstallAppButton(), handleInstall(), canNativeInstall(), getDeferredInstallPrompt(), getInstallKind(), isAndroidDevice(), isInAppBrowser(), isIosChromeOrOther() (+12 more)
 
 ### Community 102 - "RolesPage.jsx"
-Cohesion: 0.09
-Nodes (35): AssignRoleModal(), handleSubmit(), renderScopeControls(), setScopeType(), togglePermission(), toggleScopeValue(), defaultScopesFromUser(), employeeLabel() (+27 more)
+Cohesion: 0.08
+Nodes (34): AssignRoleModal(), handleSubmit(), renderScopeControls(), setScopeType(), togglePermission(), toggleScopeValue(), defaultScopesFromUser(), employeeLabel() (+26 more)
 
 ### Community 103 - "Server Jobs: attendanceMissed.js"
 Cohesion: 0.21
@@ -685,29 +690,29 @@ Nodes (10): $, B(), get(), it(), P(), rt(), s, T() (+2 more)
 Cohesion: 0.18
 Nodes (19): bufferLooksLikePdf(), CLEARLY_NOT_PDF, documentUpload(), employmentFormUpload(), fileFilter(), IMAGE_TYPES, isInterruptedUpload(), leavePrescriptionUpload() (+11 more)
 
-### Community 107 - "Built SPA Assets 24"
-Cohesion: 0.12
-Nodes (18): addAltText(), addButton(), addButtonBefore(), addColorPicker(), addComment(), addDeleteButton(), addEditSignatureButton(), commentButtonPositionInPage() (+10 more)
+### Community 107 - "l"
+Cohesion: 0.10
+Nodes (26): bc(), be(), bi(), D(), Dt(), _e(), fn(), ge() (+18 more)
 
-### Community 108 - "Built SPA Assets 25"
-Cohesion: 0.13
-Nodes (18): beginAnnotation(), beginDrawing(), closeEOFillStroke(), closeFillStroke(), closeStroke(), consumePath(), endPath(), eoFill() (+10 more)
+### Community 108 - "Ba"
+Cohesion: 0.28
+Nodes (24): Ba(), b(), c(), d(), f(), i(), l(), m() (+16 more)
 
 ### Community 109 - "overrides"
 Cohesion: 0.33
 Nodes (6): overrides, body-parser, brace-expansion, minimatch, proxy-addr, qs
 
 ### Community 110 - "si"
-Cohesion: 0.13
-Nodes (29): b(), ci(), ct(), di(), F(), fi(), g(), h() (+21 more)
+Cohesion: 0.11
+Nodes (37): f(), s(), ai(), b(), ci(), ct(), di(), F() (+29 more)
 
 ### Community 111 - "gh"
 Cohesion: 0.18
 Nodes (17): ep(), gh(), _h(), hh(), nh(), a(), c(), i() (+9 more)
 
 ### Community 112 - "Bundled PDF Worker 16"
-Cohesion: 0.29
-Nodes (16): getTextContent(), C(), ce(), de(), _e(), ge(), he(), L() (+8 more)
+Cohesion: 0.22
+Nodes (19): getTextContent(), be(), C(), ce(), de(), _e(), fe(), ge() (+11 more)
 
 ### Community 113 - "te"
 Cohesion: 0.12
@@ -717,57 +722,57 @@ Nodes (21): by(), checkOwnerPassword(), checkUserPassword(), cy(), dy(), fy(), g
 Cohesion: 0.13
 Nodes (15): dependencies, cors@^2.8.6, description, engines, node, cors, name, private (+7 more)
 
-### Community 115 - "V"
-Cohesion: 0.11
-Nodes (20): #C(), CMYK_HTML(), CMYK_RGB(), destroy(), extractPages(), G_HTML(), G_RGB(), getPageId() (+12 more)
+### Community 115 - "updateMode"
+Cohesion: 0.10
+Nodes (23): addEditListeners(), addNewEditorFromKeyboard(), addOrRebuild(), deleteComment(), disable(), disableClick(), disableTextSelection(), disableUserSelect() (+15 more)
 
-### Community 116 - "AccountProfile-CADlmt5g.js"
-Cohesion: 0.19
-Nodes (16): b(), T(), n(), Q(), Z(), v(), w(), x() (+8 more)
-
-### Community 117 - "Bundled Face API 8"
+### Community 116 - "pettyCashExportFiles.js"
 Cohesion: 0.17
-Nodes (16): _c(), gc(), hc(), hl(), ii(), li(), me(), mi() (+8 more)
+Nodes (22): buildPettyCashExcelXml(), buildPettyCashPdf(), addPage(), drawRight(), drawTableHeader(), drawWatermark(), COLUMNS, displayRows() (+14 more)
 
-### Community 118 - "birthdayEmails.js"
-Cohesion: 0.34
-Nodes (12): alreadySentOk(), coerceBirthdayNow(), findBirthdayUsers(), findTomorrowBirthdayUsers(), findUsersBornOn(), runBirthdayEmails(), addCalendarDays(), birthdayKey() (+4 more)
+### Community 117 - "we"
+Cohesion: 0.21
+Nodes (21): A(), D(), E(), fe(), ge(), he(), a(), Se() (+13 more)
 
-### Community 119 - "Built SPA Assets 27"
-Cohesion: 0.14
-Nodes (17): commentSelection(), #de(), #ee(), getSelectionBoxes(), highlightSelection(), onEditingAction(), #Q(), registerEditorTypes() (+9 more)
+### Community 118 - "getPattern"
+Cohesion: 0.13
+Nodes (20): areConic(), clipBbox(), _createGradient(), _createMeshCanvas(), createPatternCanvas(), _createReversedGradient(), drawPattern(), Fn() (+12 more)
+
+### Community 119 - "RolesPage-ZCpPRX6g.js"
+Cohesion: 0.24
+Nodes (15): i(), n(), r(), C(), r(), g(), S(), C() (+7 more)
 
 ### Community 120 - "Server Core 4"
 Cohesion: 0.19
 Nodes (14): COMM, { createClient }, DEVICE_PORT, ensureTable(), fetchDeviceLogs(), IN_TIMEOUT, INTERVAL_MS, normalizePunch() (+6 more)
 
-### Community 121 - "deviceLabel.js"
-Cohesion: 0.29
-Nodes (13): cleanHint(), describeDevice(), friendlyBrowser(), friendlyOs(), headerHint(), hintsFromRequest(), macHardware(), modelFromUserAgent() (+5 more)
+### Community 121 - "serialize"
+Cohesion: 0.12
+Nodes (18): addAltText(), addButton(), addButtonBefore(), addColorPicker(), addComment(), addDeleteButton(), addEditSignatureButton(), commentButtonPositionInPage() (+10 more)
 
-### Community 122 - "sync-client-dist.js"
-Cohesion: 0.17
-Nodes (9): clientBundle, copyDir(), dest, fs, info, meta, path, serverMetaDir (+1 more)
+### Community 122 - "fillStroke"
+Cohesion: 0.13
+Nodes (18): beginAnnotation(), beginDrawing(), closeEOFillStroke(), closeFillStroke(), closeStroke(), consumePath(), endPath(), eoFill() (+10 more)
 
 ### Community 124 - "Client Components 2"
 Cohesion: 0.24
 Nodes (8): AvatarEditor(), nudge(), onImageLoad(), onPointerMove(), resetAdjust(), clampOffset(), coverMetrics(), faceBiasOffset()
 
-### Community 125 - "Built SPA Assets 29"
-Cohesion: 0.22
-Nodes (13): _addDrawingListeners(), _cleanup(), _clearPreparedSMask(), createDrawerInstance(), _drawMove(), _endDraw(), endDrawing(), _endDrawingSession() (+5 more)
+### Community 125 - "T"
+Cohesion: 0.19
+Nodes (16): b(), T(), n(), Q(), Z(), v(), w(), x() (+8 more)
 
-### Community 126 - "attendanceWindows.js"
-Cohesion: 0.30
-Nodes (11): canCheckInHourKey(), currentHourKey(), GRACE_MINUTES, hourKeyFor(), isShiftHour(), SHIFT_END, SHIFT_START, shiftHours() (+3 more)
+### Community 126 - "SettingsPage.jsx"
+Cohesion: 0.33
+Nodes (13): handleEnable(), SettingsPage(), handleDisablePush(), handleEnablePush(), syncPermission(), currentNotificationPermission(), disablePushNotifications(), enablePushNotifications() (+5 more)
 
 ### Community 128 - "Client Public Assets"
 Cohesion: 0.17
 Nodes (11): background_color, description, display, display_override, icons, id, name, scope (+3 more)
 
 ### Community 129 - "Bundled PDF Worker 17"
-Cohesion: 0.18
-Nodes (10): compileGlyph(), compileGlyphImpl(), d(), i(), fa(), i(), getPath(), jsActions() (+2 more)
+Cohesion: 0.14
+Nodes (12): compileGlyph(), compileGlyphImpl(), d(), da(), i(), fa(), i(), getPath() (+4 more)
 
 ### Community 130 - "Public Static Assets 2"
 Cohesion: 0.17
@@ -777,29 +782,29 @@ Nodes (11): background_color, description, display, display_override, icons, id,
 Cohesion: 0.18
 Nodes (6): constructor(), D(), deleteCacheAndMetadata(), H, J, V()
 
-### Community 132 - "yn"
-Cohesion: 0.23
-Nodes (12): ii(), oi(), Gn(), Hn(), jn(), _n(), qn(), vn() (+4 more)
+### Community 132 - "vapid.js"
+Cohesion: 0.15
+Nodes (8): crypto, envPublicKey, privateKey, publicKey, subject, webpush, readBuildInfo(), startHttpServer()
 
-### Community 133 - "build-meta.js"
+### Community 133 - "ShiftsPage-DnGUtxbA.js"
 Cohesion: 0.25
-Nodes (10): { execSync }, fs, getBuildMeta(), path, readGitShortSha(), resolveBuiltAt(), resolveCommit(), resolveSwBuildId() (+2 more)
+Nodes (9): g(), v(), B(), V(), z(), e(), n(), r() (+1 more)
 
 ### Community 134 - "Server Core 6"
 Cohesion: 0.18
 Nodes (11): scripts, build, dev, exam:congrats, migrate:storage, migrate:storage:dry, migrate:storage:inventory, start (+3 more)
 
-### Community 136 - "Client Admin UI 2"
-Cohesion: 0.36
-Nodes (8): BranchesPage(), canEditBranchIp(), closeEditor(), handleDelete(), handleSaveIps(), openEditor(), verify(), ipsFromBranch()
+### Community 136 - "startDrawing"
+Cohesion: 0.22
+Nodes (13): _addDrawingListeners(), _cleanup(), _clearPreparedSMask(), createDrawerInstance(), _drawMove(), _endDraw(), endDrawing(), _endDrawingSession() (+5 more)
 
-### Community 137 - "ftp-deploy.mjs"
-Cohesion: 0.20
-Nodes (7): basic-ftp@^6.2.1, client, clientRoot, __dirname, localDir, port, basic-ftp
+### Community 137 - "test-keyToB64u.mjs"
+Cohesion: 0.26
+Nodes (8): buf, encoded, expected, roundTrip, applicationServerKeyMatches(), keyToB64u(), normalizeVapidKey(), urlBase64ToUint8Array()
 
 ### Community 138 - "e"
-Cohesion: 0.10
-Nodes (33): at(), bh(), a(), i(), n(), o(), r(), e() (+25 more)
+Cohesion: 0.11
+Nodes (30): at(), bh(), a(), i(), n(), o(), r(), Bt() (+22 more)
 
 ### Community 139 - "Bundled PDF Worker 18"
 Cohesion: 0.33
@@ -815,11 +820,11 @@ Nodes (18): _getNameAndPrefix(), Hc(), _mkAttributes(), onBeginElement(), onCdat
 
 ### Community 143 - "userController.js"
 Cohesion: 0.10
-Nodes (50): dispatchProfileAlert(), profileAlertSkipReason(), sendProfileAlert(), signup(), ackExamCongrats(), ackPhotoAlertSeen(), decorateProfileAlert(), EMPLOYEE_IGNORED_FIELDS (+42 more)
+Nodes (38): relativeStoragePath(), uploadEmploymentForm(), ackExamCongrats(), ackPhotoAlertSeen(), decorateProfileAlert(), EMPLOYEE_IGNORED_FIELDS, EMPLOYEE_UPDATE_WHITELIST, getMe() (+30 more)
 
-### Community 144 - "render"
-Cohesion: 0.05
-Nodes (41): _abortOperatorList(), addCommentButton(), addCommentButtonInToolbar(), addStandaloneCommentButton(), _bindJSAction(), _bindLink(), _bindNamedAction(), cleanup() (+33 more)
+### Community 144 - "deviceHints.js"
+Cohesion: 0.31
+Nodes (9): collectDeviceHints(), ensurePortalGps(), GPS_REQUIRED_MESSAGE, gpsErrorMessage(), onceGps(), readGps(), readPublicIp(), requireLoginGps() (+1 more)
 
 ### Community 145 - "xg"
 Cohesion: 0.64
@@ -829,37 +834,37 @@ Nodes (8): xg(), a(), c(), i(), l(), o(), r(), s()
 Cohesion: 0.32
 Nodes (4): h(), i, r, st
 
-### Community 147 - "overrides"
-Cohesion: 0.22
-Nodes (9): overrides, brace-expansion, fast-uri, follow-redirects, minimatch, node-fetch, source-map-js, workbox-build (+1 more)
+### Community 147 - "hangDiagnostics.js"
+Cohesion: 0.35
+Nodes (7): requestTiming(), hungRequest(), { monitorEventLoopDelay }, requestTimingEnabled(), routeOf(), startHangDiagnostics(), startProcessLifecycle()
 
 ### Community 148 - "Client App"
 Cohesion: 0.33
 Nodes (5): plugins, rules, react/only-export-components, react/rules-of-hooks, $schema
 
 ### Community 149 - "remoteAttendancePings.js"
-Cohesion: 0.17
-Nodes (18): markMissedSlots(), runAttendanceMissed(), dispatchDueNotifications(), ensureActiveShiftChallenges(), loadRemotesByIds(), markExpiredChallenges(), openBreakUserIds(), probeAttendanceWork() (+10 more)
-
-### Community 150 - "_requestChunks"
 Cohesion: 0.18
-Nodes (14): ensure(), ensureCatalog(), ensureDoc(), getBeginChunk(), getEndChunk(), groupChunks(), initDocument(), Le() (+6 more)
+Nodes (17): markMissedSlots(), runAttendanceMissed(), dispatchDueNotifications(), ensureActiveShiftChallenges(), loadRemotesByIds(), markExpiredChallenges(), openBreakUserIds(), probeAttendanceWork() (+9 more)
+
+### Community 150 - "supabaseClient.js"
+Cohesion: 0.22
+Nodes (9): BUCKETS, cleanEnv(), { createClient }, normalizeSupabaseUrl(), path, previewUrl(), supabase, supabaseKey (+1 more)
 
 ### Community 151 - "buildEmployeePdf"
-Cohesion: 0.31
-Nodes (13): font(), buildEmployeePdf(), addPage(), cardHeight(), drawField(), drawRight(), fieldHeight(), identityBlockHeight() (+5 more)
+Cohesion: 0.35
+Nodes (12): font(), buildEmployeePdf(), addPage(), cardHeight(), drawField(), drawRight(), fieldHeight(), identityBlockHeight() (+4 more)
 
 ### Community 152 - "workDays.js"
-Cohesion: 0.22
-Nodes (13): EMPLOYMENT_TYPES, DAY_KEYS, DEFAULT_WORK_DAYS, ensureWorkDaysColumn(), isAttendanceHoliday(), isWorkDayOn(), JS_DAY_TO_KEY, normalizeWorkDays() (+5 more)
+Cohesion: 0.25
+Nodes (13): DAY_KEYS, DEFAULT_WORK_DAYS, ensureWorkDaysColumn(), isAttendanceHoliday(), isWorkDayOn(), JS_DAY_TO_KEY, normalizeWorkDays(), setUserWorkDays() (+5 more)
 
 ### Community 154 - "faceCheckCapture.js"
-Cohesion: 0.23
-Nodes (15): absoluteFromRelative(), deleteRelativeFile(), fileExists(), captureFilePath(), deleteAllFaceCheckCaptures(), deleteFaceCheckCaptureById(), ensureFaceCheckCapture(), fs (+7 more)
+Cohesion: 0.22
+Nodes (13): attachDayFaceChecks(), fileExists(), captureFilePath(), deleteAllFaceCheckCaptures(), deleteFaceCheckCaptureById(), ensureFaceCheckCapture(), fs, listCapturesForUserMonth() (+5 more)
 
-### Community 155 - "cm"
+### Community 155 - "employeeTransferController.js"
 Cohesion: 0.33
-Nodes (9): ag(), cm(), dm(), Eg(), ng(), om(), rh(), sm() (+1 more)
+Nodes (10): assertCanTransfer(), directoryAccess(), ensureTransferTable(), isRemoteEmployment(), KIND_COLUMN, KIND_LABEL, listEmployeeTransfers(), loadTarget() (+2 more)
 
 ### Community 156 - "Server Core: requireSupabaseAuth"
 Cohesion: 0.50
@@ -869,97 +874,93 @@ Nodes (3): credentialsFromExpress(), requireSupabaseAuth(), {
   createAdminClient,
 }
 
-### Community 157 - "Built SPA Assets 42"
-Cohesion: 0.50
-Nodes (5): inheritPendingDependenciesAsFutureForcedDependencies(), inheritSimpleDataAsFutureForcedDependencies(), recordFutureForcedDependency(), recordIncrementalData(), Nt()
+### Community 157 - "Nt"
+Cohesion: 0.32
+Nodes (8): inheritPendingDependenciesAsFutureForcedDependencies(), inheritSimpleDataAsFutureForcedDependencies(), recordDependencies(), recordFutureForcedDependency(), recordIncrementalData(), recordOperation(), recordShowTextOperation(), Nt()
 
-### Community 158 - "Bundled Face API 11"
-Cohesion: 0.70
-Nodes (5): q(), c(), i(), o(), s()
+### Community 158 - "PushEnableBanner.jsx"
+Cohesion: 0.36
+Nodes (9): PushEnableBanner(), dismiss(), canUseMobilePushUi(), dismissPushBannerForWeek(), hasPushEverEnabled(), isMobileDevice(), isPushBannerDismissed(), shouldShowIosInstallHint() (+1 more)
 
-### Community 161 - "notificationSettings.js"
-Cohesion: 0.43
-Nodes (5): getNotificationSettings(), updateNotificationSettings(), getSetting(), resolveNewSignupRecipientEmail(), upsertSetting()
-
-### Community 162 - "vite.config.js"
+### Community 161 - "h"
 Cohesion: 0.29
-Nodes (4): vite-plugin-pwa@^1.3.0, buildMeta, require, vite-plugin-pwa
+Nodes (8): me(), ae(), ie(), ne(), v(), h(), Q(), f()
 
-### Community 163 - "scripts"
+### Community 162 - "services/pushNotifications.js"
 Cohesion: 0.29
-Nodes (7): scripts, build, build:analyze, deploy:ftp, dev, lint, preview
+Nodes (7): dropStaleSubscription(), errorBodySnippet(), sendPushToUser(), sendPushToUserSafe(), durationMs(), extTimeoutMs(), withOutboundTimeout()
 
-### Community 165 - "Built SPA Assets 45"
+### Community 163 - "DesignationsPage"
+Cohesion: 0.36
+Nodes (6): DesignationsPage(), clearForm(), handleCreate(), handleDelete(), sortRows(), verify()
+
+### Community 165 - "get"
 Cohesion: 0.67
 Nodes (3): get(), resolve(), Jr()
 
-### Community 166 - "Built SPA Assets 46"
-Cohesion: 0.67
-Nodes (3): hide(), show(), updateOC()
+### Community 166 - "pdf-lib"
+Cohesion: 0.29
+Nodes (7): pdf-lib, sharp, pdf-lib@^1.17.1, sharp@^0.35.5, imagesToEmploymentFormPdf(), { PDFDocument }, sharp
 
-### Community 197 - "_guessMax"
+### Community 172 - "jh"
+Cohesion: 0.50
+Nodes (8): jh(), a(), i(), n(), o(), r(), s(), Mh()
+
+### Community 197 - "y"
 Cohesion: 0.33
-Nodes (7): _areGoodDims(), getReducePower(), getReducePowerForJPX(), _guessMax(), MAX_AREA(), MAX_DIM(), needsToBeResized()
+Nodes (5): f(), p(), n(), y(), D()
 
 ### Community 198 - "h"
 Cohesion: 0.47
 Nodes (5): h(), G(), K(), W(), m()
 
-### Community 207 - "u"
+### Community 202 - "u"
 Cohesion: 0.40
 Nodes (5): u(), a(), L(), R(), z()
 
-### Community 208 - "d"
+### Community 207 - "d"
 Cohesion: 0.40
 Nodes (4): d(), r(), ue(), u()
+
+### Community 208 - "sanitizePublicError.js"
+Cohesion: 0.60
+Nodes (4): attachNetworkErrorMessage(), isNetworkFailure(), sanitizePublicError(), sanitizePublicPayload()
 
 ### Community 209 - "deviceHints-CcLCjzh0.js"
 Cohesion: 0.60
 Nodes (5): a(), e(), i(), r(), t()
 
 ### Community 210 - "hooks-B5POo9NP.js"
-Cohesion: 0.09
-Nodes (39): F(), ae(), b(), c(), Ce(), de(), ee(), et() (+31 more)
+Cohesion: 0.08
+Nodes (55): F(), b(), C(), S(), v(), w(), x(), y() (+47 more)
 
-### Community 211 - "updateProperty"
-Cohesion: 0.40
-Nodes (6): buildFocusOutline(), getNewOutline(), newOutliner(), updateProperty(), updateSVGProperty(), updateThickness()
+### Community 211 - "show"
+Cohesion: 0.67
+Nodes (3): hide(), show(), updateOC()
 
 ### Community 212 - "createTtlCache"
 Cohesion: 0.50
 Nodes (3): createTtlCache(), get(), getOrSet()
 
-### Community 213 - "getPathBoundingBox"
-Cohesion: 0.50
-Nodes (4): getClippedPathBoundingBox(), getPathBoundingBox(), startNewPathAndClipBox(), updateClipFromPath()
-
-### Community 214 - "cg"
-Cohesion: 0.83
-Nodes (4): cg(), a(), i(), r()
-
-### Community 215 - "Sh"
-Cohesion: 0.83
-Nodes (4): Sh(), a(), i(), r()
-
 ## Knowledge Gaps
 - **82 isolated node(s):** `RFC-7239`, `src/main.jsx entry`, `__tlPwaPrompt install prompt`, `tl-pwa-bust localStorage key`, `face-api asset` (+77 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1851 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **47 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1868 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **48 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `_` connect `Bundled PDF Worker` to `Bundled PDF Worker 17`, `Client Admin UI`, `index-DoImIoK3.js`, `Bundled PDF Worker 18`, `Built SPA Assets 5`, `Bundled PDF Worker 2`, `parseXml`, `extractCidKeyedFontProgram`, `a`, `parse`, `_requestChunks`, `Bundled PDF Worker 5`, `#t`, `buildEmployeePdf`, `Bundled PDF Worker 7`, `Client Admin UI: AttendanceAdminPage.js`, `Bundled PDF Worker 8`, `Bundled PDF Worker 9`, `Bundled PDF Worker 10`, `Bundled PDF Worker: _compileBitshiftNode`, `ge`, `Bundled PDF Worker 11`, `_guessMax`, `Bundled PDF Worker 12`, `#u`, `PettyCashLedger`, `Server Utils: attendanceExportFiles.`, `Bundled PDF Worker 14`, `addOp`, `Bundled PDF Worker 16`, `te`?**
-  _High betweenness centrality (0.425) - this node is a cross-community bridge._
+- **Why does `_` connect `Bundled PDF Worker` to `Bundled PDF Worker 17`, `Client Admin UI`, `Bundled PDF Worker 18`, `Bundled PDF Worker 2`, `parseXml`, `parse`, `buildEmployeePdf`, `b`, `#t`, `Bundled PDF Worker 7`, `Client Admin UI: AttendanceAdminPage.js`, `Bundled PDF Worker 8`, `Bundled PDF Worker 9`, `Bundled PDF Worker 10`, `Bundled PDF Worker: _compileBitshiftNode`, `ge`, `Bundled PDF Worker 11`, `Bundled PDF Worker 12`, `#u`, `PettyCashLedger`, `Server Utils: attendanceExportFiles.`, `g`, `Bundled PDF Worker 16`, `te`?**
+  _High betweenness centrality (0.583) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `g()` (e.g. with `_getModule()` and `Re()`) actually correct?**
   _`g()` has 2 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `RFC-7239`, `src/main.jsx entry`, `__tlPwaPrompt install prompt` to the rest of the system?**
   _82 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Bundled PDF Worker` be split into smaller, more focused modules?**
-  _Cohesion score 0.0038337783254603955 - nodes in this community are weakly interconnected._
-- **Why does `bold()` connect `staffPayrollController.js` to `Server Controllers: pettyCashController.js`, `Built SPA Assets`, `Server Utils: attendanceExportFiles.`, `buildEmployeePdf`?**
-  _High betweenness centrality (0.181) - this node is a cross-community bridge._
-- **Are the 9 inferred relationships involving `f()` (e.g. with `ke()` and `gt()`) actually correct?**
-  _`f()` has 9 INFERRED edges - model-reasoned connections that need verification._
-- **Should `Built SPA Assets` be split into smaller, more focused modules?**
-  _Cohesion score 0.00448214852787733 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0038411324125609838 - nodes in this community are weakly interconnected._
+- **Why does `An()` connect `#t` to `Bundled PDF Worker`, `Bundled Face API: face-api-DnQ3bP_c.js`, `Bundled PDF Worker 2`?**
+  _High betweenness centrality (0.255) - this node is a cross-community bridge._
+- **Are the 23 inferred relationships involving `t()` (e.g. with `add()` and `addComment()`) actually correct?**
+  _`t()` has 23 INFERRED edges - model-reasoned connections that need verification._
+- **Should `EmploymentFormViewer-C7ZXdp1_.js` be split into smaller, more focused modules?**
+  _Cohesion score 0.004413085989112626 - nodes in this community are weakly interconnected._
