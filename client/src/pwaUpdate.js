@@ -3,12 +3,29 @@
  * registerSW.js (vite-plugin-pwa autoUpdate) also runs; this adds a hard reload
  * when a new worker takes control, plus periodic update checks.
  *
- * Also clears legacy workers (/sw.js, /tl-sw.js) and any cache that may hold
- * stale /api/document 404 responses from the old image CacheFirst rule.
+ * Unregisters legacy /sw.js + /tl-sw.js and any older hashed /tl-sw-<build>.js
+ * that is not the current build (phones were stuck on 0ee296b while server shipped newer).
  */
-const LEGACY_SW_SUFFIXES = ['/sw.js', '/tl-sw.js'];
+const LEGACY_SW_SUFFIXES = ['/sw.js', '/tl-sw.js', '/registerSW.js'];
+const CURRENT_SW_BUILD_ID =
+  typeof __APP_SW_BUILD_ID__ !== 'undefined' ? String(__APP_SW_BUILD_ID__ || '') : '';
 const CACHE_CLEAR_MS = 30 * 60 * 1000;
 const CACHE_CLEAR_KEY = 'tl-cache-cleared-at';
+
+function isOutdatedServiceWorker(scriptURL) {
+  if (!scriptURL) return false;
+  if (LEGACY_SW_SUFFIXES.some((suffix) => scriptURL.endsWith(suffix))) return true;
+  try {
+    const path = new URL(scriptURL).pathname;
+    const match = path.match(/\/tl-sw-([^/]+)\.js$/i);
+    if (!match) return false;
+    // Hashed worker from another build — drop it so only the current one controls.
+    if (CURRENT_SW_BUILD_ID && match[1] !== CURRENT_SW_BUILD_ID) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
 
 function cacheClearDue() {
   try {
@@ -86,7 +103,7 @@ export function startPwaUpdateWatcher() {
     })
     .catch(() => {});
 
-  // Drop legacy SW registrations + wipe old Workbox caches that stored API 404s
+  // Drop legacy + outdated hashed SWs; wipe old Workbox caches that stored API 404s
   Promise.resolve()
     .then(() => navigator.serviceWorker.getRegistrations())
     .then((regs) =>
@@ -97,27 +114,34 @@ export function startPwaUpdateWatcher() {
             reg.installing?.scriptURL ||
             reg.waiting?.scriptURL ||
             '';
-          const isLegacy = LEGACY_SW_SUFFIXES.some((suffix) =>
-            scriptURL.endsWith(suffix)
-          );
-          // Also drop any worker whose URL still looks like pre-build-id tl-sw.js
-          // without the dated filename (handled above). Keep dated tl-sw-*.js.
-          if (isLegacy) return reg.unregister().catch(() => {});
+          if (isOutdatedServiceWorker(scriptURL)) {
+            console.info('[pwa] unregister outdated worker', scriptURL);
+            return reg.unregister().catch(() => {});
+          }
           return null;
         })
       )
     )
     .then(() => (window.caches ? caches.keys() : []))
     .then((keys) => {
-      const stale = (keys || []).filter(
-        (k) =>
+      const keepPrefix = CURRENT_SW_BUILD_ID ? `tl-portal-${CURRENT_SW_BUILD_ID}` : null;
+      const stale = (keys || []).filter((k) => {
+        if (
           k.includes('tl-portal-images-v2') ||
           k.includes('tl-portal-pages-v2') ||
           k.includes('tl-portal-20260817') ||
-          k.includes('workbox-precache') ||
           // older unversioned / v1 caches
           /^tl-portal-(images|pages)(-v1)?$/.test(k)
-      );
+        ) {
+          return true;
+        }
+        // Any prior build's Workbox / app caches
+        if (k.startsWith('tl-portal-') || k.startsWith('workbox-precache')) {
+          if (keepPrefix && k.includes(CURRENT_SW_BUILD_ID)) return false;
+          return true;
+        }
+        return false;
+      });
       return Promise.all(stale.map((k) => caches.delete(k)));
     })
     .catch(() => {});
