@@ -682,7 +682,6 @@ async function notifyCeoBirthdayTomorrow(user, { includeBirthdayPerson, to: toOv
       body: '24-hour notice — wish them in time.',
       url: '/admin/employees',
       tag: `birthday-ceo-${user?.id || 'x'}-${year}`,
-      collapse: true,
     },
     { urgency: 'high' }
   );
@@ -751,7 +750,7 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
         <li><strong>Time:</strong> ${escapeHtml(when)}</li>
         ${extra}
       </ul>
-      <p>Sent to CEO only. This is a face attendance punch, not a portal login.</p>
+      <p>Sent to CEO. This is a face attendance punch, not a portal login.</p>
     `,
     });
 
@@ -772,20 +771,44 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
     console.warn('[ceo-remote-face] SKIP email — no CEO email on file');
   }
 
+  // Employee confirmation email (login-style self notify). Previously only CEOs got mail.
+  let employeeEmailResult = null;
+  const employeeEmail = String(user?.email || '')
+    .trim()
+    .toLowerCase();
+  if (employeeEmail) {
+    employeeEmailResult = await sendEmailSafe({
+      emailType: 'remote_face_attendance_self',
+      to: employeeEmail,
+      subject: `Attendance ${event.subjectVerb}: ${event.title}`,
+      html: `
+      <p>Hi ${escapeHtml(firstName(user?.name))},</p>
+      <p>Your face attendance was recorded.</p>
+      <ul>
+        <li><strong>Event:</strong> ${escapeHtml(event.title)}</li>
+        <li><strong>Status:</strong> ${escapeHtml(statusLabel)}</li>
+        <li><strong>Time:</strong> ${escapeHtml(when)}</li>
+        ${extra}
+      </ul>
+      <p>If this was not you, contact your administrator.</p>
+    `,
+    });
+  }
+
   const pushResult = await notifyCeosPush(
     {
       title: `Remote: ${who} ${event.subjectVerb}`,
       body: `${event.title} · ${statusLabel} · ${when}`,
       url: '/admin/attendance',
       tag: `ceo-remote-face-${user?.id || 'x'}-${challenge.hourKey || Date.now()}`,
-      collapse: true,
     },
     { urgency: 'high' }
   );
 
   // Confirm to the employee on their phone as well.
+  let employeePush = { sent: 0 };
   if (user?.id) {
-    await notifyApp(user.id, {
+    employeePush = await notifyApp(user.id, {
       title: event.title,
       body:
         status === 'late'
@@ -793,14 +816,31 @@ async function notifyCeoRemoteFaceAttendance(user, challenge = {}) {
           : 'Attendance recorded successfully.',
       url: '/attendance',
       tag: `attendance-ok-${challenge.hourKey || Date.now()}`,
-      collapse: true,
     });
   }
 
+  const ceoPushSent = Number(pushResult?.sent) || 0;
+  const empPushSent = Number(employeePush?.sent) || 0;
+  console.log(
+    `[ceo-remote-face] delivery user=${user?.id || '?'} ceoEmail=${Boolean(emailResult)} ` +
+      `selfEmail=${Boolean(employeeEmailResult)} ceoPush=${ceoPushSent} selfPush=${empPushSent}`
+  );
+  if (user?.id && empPushSent <= 0) {
+    console.warn(
+      `[ceo-remote-face] employee push missed user=${user.id} — no active push subscription on file`
+    );
+  }
+
   return {
-    sent: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    sent:
+      Boolean(emailResult) ||
+      Boolean(employeeEmailResult) ||
+      ceoPushSent > 0 ||
+      empPushSent > 0,
     email: emailResult,
+    employeeEmail: employeeEmailResult,
     push: pushResult,
+    employeePush,
   };
 }
 
@@ -836,7 +876,6 @@ async function notifyAttendanceFailed(user, hourKey) {
       body: `Face check failed after multiple attempts (${hourKey || '—'}).`,
       url: '/admin/attendance',
       tag: `attendance-failed-${user?.id || 'x'}-${hourKey || Date.now()}`,
-      collapse: true,
     },
     { urgency: 'high' }
   );
@@ -892,8 +931,10 @@ function buildRemoteAttendanceNotice(user, challenge) {
         ? `Check out now${when ? ` (${when})` : ''}.`
         : `Check in now (${which}). On time within ${START_ON_TIME_MINUTES} min; late after ${LATE_AFTER_MINUTES}; absent after ${ABSENT_AFTER_MINUTES}.`,
       url: '/attendance',
-      tag: `attendance-check-${challenge.id}`,
-      ttl: 40 * 60,
+      // Unique per challenge; do not collapse — OS must show every request.
+      tag: `attendance-check-${challenge.id || Date.now()}`,
+      // Match login alerts (12h). Short TTL was dropping offline deliveries.
+      ttl: 12 * 60 * 60,
       urgency: 'high',
     },
   };
@@ -917,10 +958,26 @@ async function notifyRemoteAttendanceCheck(user, challenge, opts = {}) {
       : Promise.resolve({ sent: 0 }),
   ]);
 
+  const pushSent = Number(pushResult?.sent) || 0;
+  if (sendPush && pushSent <= 0) {
+    console.warn(
+      `[attendance-notify] push missed user=${user?.id || '?'} challenge=${challenge?.id || '?'} ` +
+        `subs=${Array.isArray(pushResult?.results) ? pushResult.results.length : 0} ` +
+        `disabled=${Boolean(pushResult?.disabled)} error=${pushResult?.error || 'none-or-stale'}`
+    );
+  } else if (sendPush) {
+    console.log(
+      `[attendance-notify] ok user=${user?.id || '?'} challenge=${challenge?.id || '?'} ` +
+        `email=${Boolean(emailResult)} push=${pushSent}`
+    );
+  }
+
   return {
-    ok: Boolean(emailResult) || Number(pushResult?.sent) > 0,
+    ok: Boolean(emailResult) || pushSent > 0,
     email: emailResult,
     push: pushResult,
+    emailOk: Boolean(emailResult),
+    pushOk: pushSent > 0,
   };
 }
 

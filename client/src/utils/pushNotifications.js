@@ -21,7 +21,8 @@ const BANNER_DISMISS_UNTIL_KEY = 'tl-push-banner-dismiss-until';
 /** Set after a successful enable/subscribe — never re-nag this browser. */
 const EVER_ENABLED_KEY = 'tl-push-ever-enabled';
 const HOUR_MS = 60 * 60 * 1000;
-const SIX_HOURS_MS = 6 * HOUR_MS;
+/** Re-POST subscription to server at least this often (was 6h — left gaps after stale drops). */
+const SYNC_MAX_AGE_MS = HOUR_MS;
 const TEN_MIN_MS = 10 * 60 * 1000;
 /** "Not now" on the enable banner — stay quiet for 90 days. */
 const BANNER_DISMISS_MS = 90 * 24 * 60 * 60 * 1000;
@@ -274,7 +275,7 @@ async function syncSubscriptionToServer(subscription, { force = false } = {}) {
   if (!force && endpoint) {
     const sameEndpoint =
       rememberedEndpoint() === endpoint || lastSyncedEndpoint === endpoint;
-    if (sameEndpoint && Date.now() - lastSyncAt() < SIX_HOURS_MS) {
+    if (sameEndpoint && Date.now() - lastSyncAt() < SYNC_MAX_AGE_MS) {
       lastSyncedEndpoint = endpoint;
       return { endpoint, skipped: true };
     }
@@ -331,8 +332,16 @@ async function subscribeAndSave(vapidKey) {
   let subscription = await reg.pushManager.getSubscription();
 
   if (subscription && applicationServerKeyMatches(subscription, vapidKey)) {
-    // Key matches — never unsubscribe/resubscribe; re-POST only if >6h since last sync.
-    await syncSubscriptionToServer(subscription);
+    // If the server dropped this endpoint (stale/410) but the browser still has it,
+    // force a re-POST so attendance/login pushes have a row again.
+    let force = false;
+    try {
+      const status = await fetchPushStatus();
+      if (status && Number(status.subscriptionCount) === 0) force = true;
+    } catch {
+      /* ignore — still sync on normal schedule */
+    }
+    await syncSubscriptionToServer(subscription, { force });
     rememberVapidKey(vapidKey);
     return subscription;
   }

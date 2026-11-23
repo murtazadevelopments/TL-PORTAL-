@@ -1331,7 +1331,7 @@ async function adminRequestCheckIn(req, res) {
       return res.status(409).json({ message: 'Could not open a check for this employee.' });
     }
 
-    await notifications.notifyRemoteAttendanceCheck(target, opened);
+    const delivered = await notifications.notifyRemoteAttendanceCheck(target, opened);
     await remoteChallenges.markNotified(opened.id, now);
     await pool.query(`UPDATE users SET remote_check_request_at = $2 WHERE id = $1`, [target.id, now]);
 
@@ -1344,8 +1344,25 @@ async function adminRequestCheckIn(req, res) {
       reason: `Sent check-in request to employee id ${target.id} for shift ${shiftDate} check ${opened.seq}`,
     });
 
+    const emailOk = Boolean(delivered?.emailOk ?? delivered?.email);
+    const pushOk = Boolean(delivered?.pushOk ?? Number(delivered?.push?.sent) > 0);
+    let message = 'Check-in request sent.';
+    if (emailOk && pushOk) {
+      message = 'Check-in request sent by email and phone notification.';
+    } else if (emailOk && !pushOk) {
+      message =
+        'Check-in email sent, but this employee has no active phone notification subscription. Ask them to open the portal once while logged in (Settings → notifications stay on — no need to re-enable).';
+    } else if (!emailOk && pushOk) {
+      message = 'Check-in phone notification sent (no email on file or email failed).';
+    } else {
+      message =
+        'Could not reach this employee by email or phone notification. Add an email and ask them to open the portal once while logged in.';
+    }
+
     res.json({
-      message: 'Check-in request sent. The employee will get the usual attendance notification.',
+      message,
+      email_ok: emailOk,
+      push_ok: pushOk,
     });
     queueCeoBranchManagerNotice(req, {
       action: 'Sent remote check-in request',
