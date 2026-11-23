@@ -1,5 +1,7 @@
 const INTEGER_NAME_RE =
-  /(cnic|contact_number|emergency_contact_number|phone|mobile|pin|otp|salary|account_number|remote_check_count|work_start_hour|work_end_hour|qty|quantity|amount)/i;
+  /(pin|otp|salary|account_number|remote_check_count|work_start_hour|work_end_hour|qty|quantity|amount)/i;
+const CONTACT_NAME_RE = /(contact_number|emergency_contact_number|phone|mobile)/i;
+const CNIC_NAME_RE = /(^|_)cnic(_number)?$/i;
 const TEXT_NAME_RE =
   /^(name|full_name|bank_name|account_title|team|designation|department|branch|reference_person_name|emergency_contact_name|subject)$/i;
 const USERNAME_NAME_RE = /^(username)$/i;
@@ -23,6 +25,8 @@ function fieldKind(el) {
   if (USERNAME_NAME_RE.test(name)) return 'username';
   if (type === 'email' || name === 'email') return 'email';
   if (type === 'search') return 'mixed';
+  if (CNIC_NAME_RE.test(name) || name === 'cnic') return 'cnic';
+  if (CONTACT_NAME_RE.test(name)) return 'contact';
   if (INTEGER_NAME_RE.test(name) || type === 'tel') return 'integer';
   if (el.inputMode === 'decimal' || el.step === 'any' || el.step === '0.01') return 'decimal';
   if (type === 'number' || el.inputMode === 'numeric') return 'integer';
@@ -35,6 +39,12 @@ export function filterInputValue(kind, value) {
   switch (kind) {
     case 'integer':
       return raw.replace(/\D/g, '');
+    case 'cnic':
+      // Digits + dashes for XXXXX-XXXXXXX-X; React formatters structure the dashes.
+      return raw.replace(/[^\d-]/g, '');
+    case 'contact':
+      // Digits + dash for 03XZ-YYYYYYY; React formatters structure the dash.
+      return raw.replace(/[^\d-]/g, '');
     case 'decimal':
       return raw
         .replace(/[^\d.]/g, '')

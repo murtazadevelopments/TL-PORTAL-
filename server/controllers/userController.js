@@ -37,6 +37,18 @@ const {
   pendingExamCongrats,
   acknowledgeExamCongrats,
 } = require('../utils/examCongrats');
+const {
+  CNIC_INVALID_MESSAGE,
+  ensureCnicFormatted,
+  formatCnic,
+  normalizeCnicForStorage,
+} = require('../utils/cnicFormat');
+const {
+  CONTACT_INVALID_MESSAGE,
+  ensureContactFormatted,
+  formatContactDisplay,
+  normalizeContactForStorage,
+} = require('../utils/contactFormat');
 
 const USER_PUBLIC_COLUMNS = `
   id, employee_id, username, name, email, contact_number,
@@ -140,6 +152,8 @@ async function getMe(req, res) {
     await ensureEmploymentTypeColumn();
     await ensureDesignationsSchema();
     await ensureSalaryColumn();
+    await ensureCnicFormatted();
+    await ensureContactFormatted();
     const { rows } = await pool.query(
       `SELECT ${USER_PUBLIC_COLUMNS} FROM users WHERE id = $1 LIMIT 1`,
       [req.user.id]
@@ -177,6 +191,11 @@ async function getMe(req, res) {
     }
 
     const user = hideSalary(await decorateProfileAlert(await attachReadableUrls(rows[0])));
+    if (user.cnic_number) user.cnic_number = formatCnic(user.cnic_number);
+    if (user.contact_number) user.contact_number = formatContactDisplay(user.contact_number);
+    if (user.emergency_contact_number) {
+      user.emergency_contact_number = formatContactDisplay(user.emergency_contact_number);
+    }
     user.is_birthday = isBirthdayToday(user.date_of_birth);
     user.birthday_on = user.is_birthday ? birthdayKey() : null;
     const role = String(user.role || '')
@@ -387,7 +406,35 @@ async function updateMe(req, res) {
     next.email = normalizedEmail;
 
     if (next.cnic_number) {
-      next.cnic_number = String(next.cnic_number).trim();
+      const normalizedCnic = normalizeCnicForStorage(next.cnic_number);
+      if (!normalizedCnic) {
+        return res.status(400).json({ message: CNIC_INVALID_MESSAGE });
+      }
+      next.cnic_number = normalizedCnic;
+    } else {
+      next.cnic_number = null;
+    }
+
+    if (next.contact_number) {
+      const normalizedContact = normalizeContactForStorage(next.contact_number);
+      if (!normalizedContact) {
+        return res.status(400).json({ message: CONTACT_INVALID_MESSAGE });
+      }
+      next.contact_number = normalizedContact;
+    } else {
+      next.contact_number = null;
+    }
+
+    if (next.emergency_contact_number) {
+      const normalizedEmergency = normalizeContactForStorage(next.emergency_contact_number);
+      if (!normalizedEmergency) {
+        return res.status(400).json({
+          message: `Emergency ${CONTACT_INVALID_MESSAGE}`,
+        });
+      }
+      next.emergency_contact_number = normalizedEmergency;
+    } else {
+      next.emergency_contact_number = null;
     }
 
     // Identity uniqueness (email / contact / CNIC) is enforced at signup only.

@@ -3,6 +3,12 @@ import { Link } from 'react-router';
 import api from '../api/client';
 import Navbar from '../components/Navbar';
 import logo from '../assets/logo.webp';
+import {
+  CNIC_FORMAT_HINT,
+  CNIC_INVALID_MESSAGE,
+  formatCnic,
+  normalizeCnicForSubmit,
+} from '../utils/cnicFormat';
 
 function AccountRecovery({ mode }) {
   const isPassword = mode === 'password';
@@ -29,8 +35,9 @@ function AccountRecovery({ mode }) {
     event.preventDefault();
     setError('');
     setMessage('');
-    if (!cnic.trim()) {
-      setError('Invalid CNIC number.');
+    const normalizedCnic = normalizeCnicForSubmit(cnic);
+    if (!normalizedCnic) {
+      setError(CNIC_INVALID_MESSAGE);
       return;
     }
     setLoading(true);
@@ -39,7 +46,7 @@ function AccountRecovery({ mode }) {
       const { data } = await api.post(path, {
         email: email.trim().toLowerCase(),
         username: username.trim().toLowerCase(),
-        cnic: cnic.trim(),
+        cnic: normalizedCnic,
       });
       setMessage(data.message);
     } catch (err) {
@@ -100,14 +107,18 @@ function AccountRecovery({ mode }) {
                 type="text"
                 name="cnic_number"
                 value={cnic}
-                onChange={(e) => setCnic(e.target.value)}
+                onChange={(e) => setCnic(formatCnic(e.target.value))}
                 required
                 inputMode="numeric"
                 autoComplete="off"
-                data-input-kind="integer"
-                maxLength={13}
-                placeholder="13-digit CNIC"
+                data-input-kind="cnic"
+                maxLength={15}
+                minLength={15}
+                pattern="\d{5}-\d{7}-\d"
+                title={CNIC_INVALID_MESSAGE}
+                placeholder={CNIC_FORMAT_HINT}
               />
+              <span className="field-hint">{CNIC_FORMAT_HINT}</span>
             </label>
             {error && <p className="error">{error}</p>}
             {message && <p className="success">{message}</p>}

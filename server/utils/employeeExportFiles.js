@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
+const { formatCnic } = require('./cnicFormat');
+const { formatContactDisplay } = require('./contactFormat');
 
 const UNICODE_FONT_PATH = path.join(
   __dirname,
@@ -132,6 +134,12 @@ function formatWorkHours(row) {
 function cellValue(row, key) {
   if (key === 'date_of_birth' || key === 'date_of_joining') {
     return formatDate(row[key]);
+  }
+  if (key === 'cnic_number') {
+    return formatCnic(row[key]) || '';
+  }
+  if (key === 'contact_number' || key === 'emergency_contact_number') {
+    return formatContactDisplay(row[key]) || '';
   }
   if (key === 'last_job_status') {
     const raw = String(row.last_job_status || '').trim();

@@ -36,6 +36,19 @@ import ClockHourSelect from '../../components/ClockHourSelect';
 import DesignationField from '../../components/DesignationField';
 import PasswordInput from '../../components/PasswordInput';
 import { hoursRangeLabel } from '../../utils/clockHours';
+import {
+  CNIC_FORMAT_HINT,
+  CNIC_INVALID_MESSAGE,
+  formatCnic,
+  normalizeCnicForSubmit,
+} from '../../utils/cnicFormat';
+import {
+  CONTACT_FORMAT_HINT,
+  CONTACT_INVALID_MESSAGE,
+  formatContactDisplay,
+  formatContactNumber,
+  normalizeContactForSubmit,
+} from '../../utils/contactFormat';
 import LowerStaffPayroll from './LowerStaffPayroll';
 import './AdminDashboard.css';
 
@@ -104,6 +117,42 @@ const EMPTY_FILTERS = {
   branch: 'all',
   shift: 'all',
 };
+
+const EMPLOYEE_SORT_OPTIONS = [
+  { value: 'employee_id', label: 'Employee ID' },
+  { value: 'designation', label: 'Designation' },
+];
+
+function compareEmployeeIdAsc(a, b) {
+  const aId = String(a?.employee_id || '').trim();
+  const bId = String(b?.employee_id || '').trim();
+  if (!aId && !bId) {
+    return String(a?.name || '').localeCompare(String(b?.name || ''), undefined, {
+      sensitivity: 'base',
+    });
+  }
+  if (!aId) return 1;
+  if (!bId) return -1;
+  return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function compareDesignationAsc(a, b) {
+  const aDes = String(a?.designation || '').trim();
+  const bDes = String(b?.designation || '').trim();
+  if (!aDes && !bDes) return compareEmployeeIdAsc(a, b);
+  if (!aDes) return 1;
+  if (!bDes) return -1;
+  const byDes = aDes.localeCompare(bDes, undefined, { sensitivity: 'base' });
+  return byDes || compareEmployeeIdAsc(a, b);
+}
+
+function sortEmployeesList(list, sortBy) {
+  const rows = Array.isArray(list) ? [...list] : [];
+  if (sortBy === 'designation') {
+    return rows.sort(compareDesignationAsc);
+  }
+  return rows.sort(compareEmployeeIdAsc);
+}
 
 const EMPTY_LOWER = {
   name: '',
@@ -625,6 +674,7 @@ function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [sortBy, setSortBy] = useState('employee_id');
   const [statusTab, setStatusTab] = useState(() => {
     return parseEmployeeStatusTab(searchParams.get('status'));
   });
@@ -655,6 +705,7 @@ function EmployeesPage() {
 
   const [unlockingId, setUnlockingId] = useState(null);
   const [blockingId, setBlockingId] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
   const [alertingId, setAlertingId] = useState(null);
   const [bulkAlerting, setBulkAlerting] = useState(false);
   const [listNotice, setListNotice] = useState('');
@@ -1197,6 +1248,53 @@ function EmployeesPage() {
     return canDeactivateEmployees || canEditEmployees;
   }
 
+  const canShowExitColumn =
+    canDeactivateEmployees || canEditEmployees || canManageSubordinate;
+
+  async function handleRestoreClosed(userId, event) {
+    event?.stopPropagation?.();
+    if (!userId) return;
+    const target = employees.find((e) => String(e.id) === String(userId)) || detail;
+    if (!canExitEmployee(target)) {
+      setSaveError('You do not have permission to restore this employee.');
+      return;
+    }
+    if (!isClosedAccount(target)) return;
+    const label = target?.name || target?.username || 'this employee';
+    const kind = isTerminatedAccount(target) ? 'terminated' : 'resigned';
+    const ok = window.confirm(
+      `Restore ${label}? Their ${kind} status will be cleared and the profile will work normally again.`
+    );
+    if (!ok) return;
+    setRestoringId(userId);
+    setSaveError('');
+    try {
+      const { data } = await api.put(`/api/admin/employees/${userId}/restore-exit`);
+      const user = data?.user || {};
+      await applyAccountPatch(userId, {
+        status: user.status || 'active',
+        blocked_at: null,
+        blocked_reason: null,
+        last_day_in_office: null,
+        resigned_at: null,
+        terminated_at: null,
+        exit_remarks: null,
+      });
+      setEditForm((prev) => ({ ...prev, status: user.status || 'active' }));
+      if (isLowerStaffRow(target)) {
+        await loadEmployees();
+      }
+      setSaveSuccess(
+        data?.message ||
+          'Employee restored. The profile is active again and they can sign in.'
+      );
+    } catch (err) {
+      setSaveError(err.response?.data?.message || 'Failed to restore employee.');
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
   function openExit(row, kind, event) {
     event?.stopPropagation?.();
     if (!row?.id) return;
@@ -1399,7 +1497,7 @@ function EmployeesPage() {
           ? [...portalEmployees, ...closedLowerStaff]
           : portalEmployees;
 
-    return source.filter((e) => {
+    const matched = source.filter((e) => {
       if (statusTab === 'subordinate-staff') {
         if (!q) return true;
         const extra = `${e.staff_extra_1_label || ''} ${e.staff_extra_1_text || ''} ${e.staff_extra_2_label || ''} ${e.staff_extra_2_text || ''}`;
@@ -1478,7 +1576,9 @@ function EmployeesPage() {
           (contactDigits.includes(qDigits) || cnicDigits.includes(qDigits)))
       );
     });
-  }, [portalEmployees, lowerStaff, closedLowerStaff, debouncedSearch, filters, statusTab]);
+
+    return sortEmployeesList(matched, sortBy);
+  }, [portalEmployees, lowerStaff, closedLowerStaff, debouncedSearch, filters, statusTab, sortBy]);
 
   const selectedListRow = useMemo(
     () => employees.find((e) => String(e.id) === String(selectedId)) || null,
@@ -1541,7 +1641,7 @@ function EmployeesPage() {
         employment_type: data.employment_type === 'remote' ? 'remote' : 'onsite',
         work_start_hour: data.work_start_hour ?? 9,
         work_end_hour: data.work_end_hour ?? 18,
-        cnic_number: data.cnic_number ? String(data.cnic_number).replace(/\D/g, '').slice(0, 13) : '',
+        cnic_number: formatCnic(data.cnic_number || ''),
       });
       setShowAddTeam(false);
       setNewTeamName('');
@@ -1580,7 +1680,7 @@ function EmployeesPage() {
     if (name === 'cnic_number') {
       setEditForm((prev) => ({
         ...prev,
-        cnic_number: String(value || '').replace(/\D/g, '').slice(0, 13),
+        cnic_number: formatCnic(value),
       }));
       setFieldErrors((prev) => {
         if (!prev.cnic_number) return prev;
@@ -1635,6 +1735,7 @@ function EmployeesPage() {
   function clearFilters() {
     setSearch('');
     setFilters(EMPTY_FILTERS);
+    setSortBy('employee_id');
   }
 
   function validateAdminForm() {
@@ -1644,9 +1745,8 @@ function EmployeesPage() {
         errors[key] = `${ADMIN_FIELD_LABELS[key]} is required.`;
       }
     }
-    const cnicDigits = String(editForm.cnic_number || '').replace(/\D/g, '');
-    if (!errors.cnic_number && cnicDigits.length !== 13) {
-      errors.cnic_number = 'CNIC must be exactly 13 digits.';
+    if (!errors.cnic_number && !normalizeCnicForSubmit(editForm.cnic_number)) {
+      errors.cnic_number = CNIC_INVALID_MESSAGE;
     }
     return errors;
   }
@@ -1784,7 +1884,7 @@ function EmployeesPage() {
     setSaveError('');
     setSaveSuccess('');
 
-    const cnicDigits = String(editForm.cnic_number || '').replace(/\D/g, '').slice(0, 13);
+    const normalizedCnic = normalizeCnicForSubmit(editForm.cnic_number);
 
     const payload = {
       employee_id: editForm.employee_id.trim(),
@@ -1797,7 +1897,7 @@ function EmployeesPage() {
       employment_type: editForm.employment_type === 'remote' ? 'remote' : 'onsite',
       work_start_hour: Number(editForm.work_start_hour),
       work_end_hour: Number(editForm.work_end_hour),
-      cnic_number: cnicDigits,
+      cnic_number: normalizedCnic,
     };
 
     try {
@@ -1805,9 +1905,7 @@ function EmployeesPage() {
       setDetail(data);
       setEditForm((prev) => ({
         ...prev,
-        cnic_number: data.cnic_number
-          ? String(data.cnic_number).replace(/\D/g, '').slice(0, 13)
-          : '',
+        cnic_number: formatCnic(data.cnic_number || ''),
       }));
       setSaveSuccess('Changes saved.');
 
@@ -1843,7 +1941,14 @@ function EmployeesPage() {
     if (name === 'cnic_number') {
       setAddForm((prev) => ({
         ...prev,
-        cnic_number: String(value || '').replace(/\D/g, '').slice(0, 13),
+        cnic_number: formatCnic(value),
+      }));
+      return;
+    }
+    if (name === 'contact_number') {
+      setAddForm((prev) => ({
+        ...prev,
+        contact_number: formatContactNumber(value),
       }));
       return;
     }
@@ -1868,9 +1973,16 @@ function EmployeesPage() {
     }
     setAdding(true);
     setAddError('');
-    const addCnic = String(addForm.cnic_number || '').replace(/\D/g, '').slice(0, 13);
-    if (addCnic && addCnic.length !== 13) {
-      setAddError('CNIC must be exactly 13 digits when provided.');
+    const addContact = normalizeContactForSubmit(addForm.contact_number);
+    if (!addContact) {
+      setAddError(CONTACT_INVALID_MESSAGE);
+      setAdding(false);
+      return;
+    }
+    const addCnicRaw = String(addForm.cnic_number || '').trim();
+    const addCnic = addCnicRaw ? normalizeCnicForSubmit(addCnicRaw) : null;
+    if (addCnicRaw && !addCnic) {
+      setAddError(CNIC_INVALID_MESSAGE);
       setAdding(false);
       return;
     }
@@ -1879,7 +1991,7 @@ function EmployeesPage() {
       name: addForm.name.trim(),
       email: addForm.email.trim().toLowerCase(),
       password: addForm.password,
-      contact_number: addForm.contact_number.trim(),
+      contact_number: addContact,
       address: addForm.address.trim() || undefined,
       cnic_number: addCnic || undefined,
       employee_id: addForm.employee_id.trim(),
@@ -2302,6 +2414,20 @@ function EmployeesPage() {
             ))}
           </select>
 
+          <select
+            className="filter-select"
+            name="sortBy"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            aria-label="Sort employees by"
+          >
+            {EMPLOYEE_SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                Sort: {opt.label} (A→Z)
+              </option>
+            ))}
+          </select>
+
           <button type="button" className="btn btn-ghost" onClick={clearFilters}>
             Clear filters
           </button>
@@ -2690,7 +2816,7 @@ function EmployeesPage() {
                   <th>Status</th>
                   {statusTab === 'incomplete' && <th>Alerts</th>}
                   {canEditEmployees && <th>Transfer</th>}
-                  {canDeactivateEmployees && <th>Exit</th>}
+                  {canShowExitColumn && <th>Exit</th>}
                   {canSendMessages && <th>Message</th>}
                 </tr>
               </thead>
@@ -2934,14 +3060,27 @@ function EmployeesPage() {
                           )}
                         </td>
                       )}
-                      {canDeactivateEmployees && (
+                      {canShowExitColumn && (
                         <td>
-                          {isTerminatedAccount(row) ? (
-                            <span className="muted-cell">Terminated</span>
-                          ) : isResignedAccount(row) ? (
-                            <span className="muted-cell">Resigned</span>
+                          {isClosedAccount(row) ? (
+                            canExitEmployee(row) ? (
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                title={`Restore ${fullName(row)} to active`}
+                                disabled={restoringId === row.id}
+                                onClick={(e) => handleRestoreClosed(row.id, e)}
+                              >
+                                {restoringId === row.id ? '…' : 'Restore'}
+                              </button>
+                            ) : (
+                              <span className="muted-cell">
+                                {isTerminatedAccount(row) ? 'Terminated' : 'Resigned'}
+                              </span>
+                            )
                           ) : String(row.role || '').toLowerCase() === 'ceo' ||
-                            String(row.id) === String(currentUserId) ? (
+                            String(row.id) === String(currentUserId) ||
+                            !canExitEmployee(row) ? (
                             <span className="muted-cell">—</span>
                           ) : (
                             <div className="exit-actions">
@@ -3409,13 +3548,13 @@ function EmployeesPage() {
                     <DetailFact label="Date of birth">
                       {formatOfficeDate(detail.date_of_birth)}
                     </DetailFact>
-                    <DetailFact label="CNIC">{detail.cnic_number}</DetailFact>
+                    <DetailFact label="CNIC">{formatCnic(detail.cnic_number) || '—'}</DetailFact>
                     <DetailFact label="Education">{detail.education}</DetailFact>
                     <DetailFact label="Last job status">
                       {lastJobLabel(detail.last_job_status)}
                     </DetailFact>
                     <DetailFact label="Email">{detail.email}</DetailFact>
-                    <DetailFact label="Contact">{detail.contact_number}</DetailFact>
+                    <DetailFact label="Contact">{formatContactDisplay(detail.contact_number) || '—'}</DetailFact>
                     <DetailFact label="Address">{detail.address}</DetailFact>
                     <DetailFact label="Reference person">
                       {detail.reference_person_name}
@@ -3710,14 +3849,17 @@ function EmployeesPage() {
                       name="cnic_number"
                       value={editForm.cnic_number}
                       onChange={handleEditChange}
-                      placeholder="13-digit CNIC"
+                      placeholder={CNIC_FORMAT_HINT}
                       inputMode="numeric"
-                      data-input-kind="integer"
-                      maxLength={13}
+                      data-input-kind="cnic"
+                      maxLength={15}
+                      pattern="\d{5}-\d{7}-\d"
+                      title={CNIC_INVALID_MESSAGE}
                       autoComplete="off"
                       required
                       aria-required="true"
                     />
+                    <span className="field-hint">{CNIC_FORMAT_HINT}</span>
                     {fieldErrors.cnic_number && (
                       <span className="field-error">{fieldErrors.cnic_number}</span>
                     )}
@@ -4075,7 +4217,18 @@ function EmployeesPage() {
                         {blockingId === detail.id ? 'Blocking…' : 'Block'}
                       </button>
                     )}
-                    {canDeactivateEmployees &&
+                    {canExitEmployee(detail) &&
+                      isClosedAccount(detail) && (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={restoringId === detail.id || saving || deactivating}
+                        onClick={() => handleRestoreClosed(detail.id)}
+                      >
+                        {restoringId === detail.id ? 'Restoring…' : 'Restore'}
+                      </button>
+                    )}
+                    {canExitEmployee(detail) &&
                       !isClosedAccount(detail) &&
                       String(detail.role || '').toLowerCase() !== 'ceo' &&
                       String(detail.id) !== String(currentUserId) && (
@@ -4426,8 +4579,15 @@ function EmployeesPage() {
                     onChange={handleAddChange}
                     required
                     inputMode="numeric"
-                    data-input-kind="integer"
+                    data-input-kind="contact"
+                    maxLength={12}
+                    minLength={12}
+                    pattern="03\d{2}-\d{7}"
+                    title={CONTACT_INVALID_MESSAGE}
+                    placeholder={CONTACT_FORMAT_HINT}
+                    autoComplete="tel"
                   />
+                  <span className="field-hint">{CONTACT_FORMAT_HINT}</span>
                 </label>
                 <label>
                   Address
@@ -4439,12 +4599,15 @@ function EmployeesPage() {
                     name="cnic_number"
                     value={addForm.cnic_number}
                     onChange={handleAddChange}
-                    placeholder="13-digit CNIC"
+                    placeholder={CNIC_FORMAT_HINT}
                     inputMode="numeric"
-                    data-input-kind="integer"
-                    maxLength={13}
+                    data-input-kind="cnic"
+                    maxLength={15}
+                    pattern="\d{5}-\d{7}-\d"
+                    title={CNIC_INVALID_MESSAGE}
                     autoComplete="off"
                   />
+                  <span className="field-hint">{CNIC_FORMAT_HINT}</span>
                 </label>
                 <label>
                   Employee ID <span className="req-star" aria-hidden="true">*</span>

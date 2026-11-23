@@ -16,6 +16,28 @@ export function currentMonthKey() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }).slice(0, 7);
 }
 
+export const STATEMENT_MODES = [
+  { value: 'month', label: 'Month to month' },
+  { value: 'year', label: 'Year to year' },
+  { value: 'date', label: 'Date to date' },
+];
+
+export function defaultStatementRange(mode, monthKey) {
+  const month = monthKey || currentMonthKey();
+  const year = month.slice(0, 4);
+  if (mode === 'year') return { from: year, to: year };
+  if (mode === 'date') {
+    return { from: `${month}-01`, to: `${month}-28` };
+  }
+  return { from: month, to: month };
+}
+
+export function statementInputType(mode) {
+  if (mode === 'year') return 'number';
+  if (mode === 'date') return 'date';
+  return 'month';
+}
+
 function pad(n) {
   return String(n).padStart(2, '0');
 }

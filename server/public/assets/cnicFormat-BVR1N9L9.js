@@ -1,0 +1,1 @@
+var e=`XXXXX-XXXXXXX-X`,t=`CNIC must be in format XXXXX-XXXXXXX-X.`;function n(e){return String(e||``).replace(/\D/g,``).slice(0,13)}function r(e){let t=n(e);return t?t.length<=5?t:t.length<=12?`${t.slice(0,5)}-${t.slice(5)}`:`${t.slice(0,5)}-${t.slice(5,12)}-${t.slice(12,13)}`:``}function i(e){let t=n(e);return t.length===13?r(t):null}export{i,t as n,r,e as t};

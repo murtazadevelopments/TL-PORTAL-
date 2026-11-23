@@ -11,6 +11,19 @@ import {
   isPhotoAlertLocked,
 } from '../../utils/profileCompleteness';
 import { useFlashSuccess } from '../../utils/successPopup';
+import {
+  CNIC_FORMAT_HINT,
+  CNIC_INVALID_MESSAGE,
+  formatCnic,
+  normalizeCnicForSubmit,
+} from '../../utils/cnicFormat';
+import {
+  CONTACT_FORMAT_HINT,
+  CONTACT_INVALID_MESSAGE,
+  formatContactDisplay,
+  formatContactNumber,
+  normalizeContactForSubmit,
+} from '../../utils/contactFormat';
 import '../../components/ProfileIncompleteLock.css';
 
 const EMPLOYEE_EDIT_FIELDS = [
@@ -55,12 +68,12 @@ function formFromProfile(data) {
   return {
     name: data.name || '',
     email: data.email || '',
-    contact_number: data.contact_number || '',
+    contact_number: formatContactDisplay(data.contact_number || ''),
     address: data.address || '',
     date_of_birth: data.date_of_birth ? String(data.date_of_birth).slice(0, 10) : '',
     reference_person_name: data.reference_person_name || '',
     emergency_contact_name: data.emergency_contact_name || '',
-    emergency_contact_number: data.emergency_contact_number || '',
+    emergency_contact_number: formatContactDisplay(data.emergency_contact_number || ''),
     bank_name: data.bank_name || '',
     account_title: data.account_title || '',
     iban: data.iban || '',
@@ -68,7 +81,7 @@ function formFromProfile(data) {
     education: data.education || '',
     last_job_status: data.last_job_status || '',
     employment_type: data.employment_type || '',
-    cnic_number: data.cnic_number || '',
+    cnic_number: formatCnic(data.cnic_number || ''),
   };
 }
 
@@ -137,17 +150,61 @@ export default function AccountProfile() {
   const missingText = missingEmployeeFields.some((field) => !field.document);
 
   function handleChange(e) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === 'cnic_number') {
+      setForm((prev) => ({ ...prev, cnic_number: formatCnic(value) }));
+      return;
+    }
+    if (name === 'contact_number' || name === 'emergency_contact_number') {
+      setForm((prev) => ({ ...prev, [name]: formatContactNumber(value) }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleSave(e) {
     e.preventDefault();
     setError('');
     setSuccess('');
+    const contactValue = String(form.contact_number || '').trim();
+    if (contactValue) {
+      const normalizedContact = normalizeContactForSubmit(contactValue);
+      if (!normalizedContact) {
+        setError(CONTACT_INVALID_MESSAGE);
+        return;
+      }
+    }
+    const emergencyValue = String(form.emergency_contact_number || '').trim();
+    if (emergencyValue && !normalizeContactForSubmit(emergencyValue)) {
+      setError(`Emergency ${CONTACT_INVALID_MESSAGE}`);
+      return;
+    }
+    const cnicValue = String(form.cnic_number || '').trim();
+    if (cnicValue) {
+      const normalizedCnic = normalizeCnicForSubmit(cnicValue);
+      if (!normalizedCnic) {
+        setError(CNIC_INVALID_MESSAGE);
+        return;
+      }
+    }
     setSaving(true);
     // Send every editable field so the server replaces previous values with this form.
     const payload = {};
     for (const key of EMPLOYEE_EDIT_FIELDS) {
+      if (key === 'cnic_number') {
+        payload.cnic_number = cnicValue ? normalizeCnicForSubmit(cnicValue) : '';
+        continue;
+      }
+      if (key === 'contact_number') {
+        payload.contact_number = contactValue ? normalizeContactForSubmit(contactValue) : '';
+        continue;
+      }
+      if (key === 'emergency_contact_number') {
+        payload.emergency_contact_number = emergencyValue
+          ? normalizeContactForSubmit(emergencyValue)
+          : '';
+        continue;
+      }
       payload[key] = form[key] == null ? '' : form[key];
     }
     try {
@@ -313,7 +370,7 @@ export default function AccountProfile() {
                 </p>
                 <p>
                   <span className="label">CNIC</span>
-                  <strong>{profile.cnic_number}</strong>
+                  <strong>{formatCnic(profile.cnic_number) || '—'}</strong>
                 </p>
                 <p>
                   <span className="label">Role</span>
@@ -359,8 +416,14 @@ export default function AccountProfile() {
                   value={form.contact_number}
                   onChange={handleChange}
                   inputMode="numeric"
-                  data-input-kind="integer"
+                  data-input-kind="contact"
+                  maxLength={12}
+                  pattern="03\d{2}-\d{7}"
+                  title={CONTACT_INVALID_MESSAGE}
+                  placeholder={CONTACT_FORMAT_HINT}
+                  autoComplete="tel"
                 />
+                <span className="field-hint">{CONTACT_FORMAT_HINT}</span>
               </label>
               <label>
                 CNIC number
@@ -369,11 +432,15 @@ export default function AccountProfile() {
                   name="cnic_number"
                   value={form.cnic_number}
                   onChange={handleChange}
-                  placeholder="13-digit CNIC"
+                  placeholder={CNIC_FORMAT_HINT}
                   inputMode="numeric"
-                  data-input-kind="integer"
-                  maxLength={13}
+                  data-input-kind="cnic"
+                  maxLength={15}
+                  pattern="\d{5}-\d{7}-\d"
+                  title={CNIC_INVALID_MESSAGE}
+                  autoComplete="off"
                 />
+                <span className="field-hint">{CNIC_FORMAT_HINT}</span>
               </label>
               <label>
                 Education
@@ -454,7 +521,12 @@ export default function AccountProfile() {
                     onChange={handleChange}
                     required={fieldRequired('emergency_contact_number')}
                     inputMode="numeric"
-                    data-input-kind="integer"
+                    data-input-kind="contact"
+                    maxLength={12}
+                    pattern="03\d{2}-\d{7}"
+                    title={CONTACT_INVALID_MESSAGE}
+                    placeholder={CONTACT_FORMAT_HINT}
+                    autoComplete="tel"
                   />
                 </label>
               </div>

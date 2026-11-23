@@ -6,6 +6,18 @@ import PasswordInput from '../components/PasswordInput';
 import SignupWelcomeModal from '../components/SignupWelcomeModal';
 import logo from '../assets/logo.webp';
 import { useFlashSuccess } from '../utils/successPopup';
+import {
+  CNIC_FORMAT_HINT,
+  CNIC_INVALID_MESSAGE,
+  formatCnic,
+  normalizeCnicForSubmit,
+} from '../utils/cnicFormat';
+import {
+  CONTACT_FORMAT_HINT,
+  CONTACT_INVALID_MESSAGE,
+  formatContactNumber,
+  normalizeContactForSubmit,
+} from '../utils/contactFormat';
 
 const LAST_JOB_OPTIONS = [
   { value: 'still_employed', label: 'Still employed elsewhere' },
@@ -27,6 +39,7 @@ const INITIAL = {
   password: '',
   contact_number: '',
   address: '',
+  date_of_birth: '',
   cnic_number: '',
   education: '',
   last_job_status: '',
@@ -37,6 +50,14 @@ const INITIAL = {
   account_number: '',
   iban: '',
 };
+
+function todayISODate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function LabelText({ children, required: isRequired }) {
   return (
@@ -70,6 +91,20 @@ function SignUp() {
 
   function handleChange(e) {
     const { name, value } = e.target;
+    if (name === 'cnic_number') {
+      setForm((prev) => ({
+        ...prev,
+        cnic_number: formatCnic(value),
+      }));
+      return;
+    }
+    if (name === 'contact_number') {
+      setForm((prev) => ({
+        ...prev,
+        contact_number: formatContactNumber(value),
+      }));
+      return;
+    }
     setForm((prev) => ({
       ...prev,
       [name]: name === 'username' ? value.toLowerCase() : value,
@@ -98,6 +133,23 @@ function SignUp() {
       return;
     }
 
+    if (!form.date_of_birth) {
+      setError('Date of birth is required.');
+      return;
+    }
+
+    const normalizedContact = normalizeContactForSubmit(form.contact_number);
+    if (!normalizedContact) {
+      setError(CONTACT_INVALID_MESSAGE);
+      return;
+    }
+
+    const normalizedCnic = normalizeCnicForSubmit(form.cnic_number);
+    if (!normalizedCnic) {
+      setError(CNIC_INVALID_MESSAGE);
+      return;
+    }
+
     if (!files.profile_picture) {
       setError('Please upload a profile picture.');
       return;
@@ -107,7 +159,12 @@ function SignUp() {
 
     try {
       const body = new FormData();
-      Object.entries({ ...form, username: normalizedUsername }).forEach(([key, value]) => {
+      Object.entries({
+        ...form,
+        username: normalizedUsername,
+        contact_number: normalizedContact,
+        cnic_number: normalizedCnic,
+      }).forEach(([key, value]) => {
         if (value !== '' && value != null) body.append(key, value);
       });
       if (files.cnic_front) body.append('cnic_front', files.cnic_front);
@@ -208,8 +265,15 @@ function SignUp() {
               onChange={handleChange}
               required
               inputMode="numeric"
-              data-input-kind="integer"
+              data-input-kind="contact"
+              maxLength={12}
+              minLength={12}
+              pattern="03\d{2}-\d{7}"
+              title={CONTACT_INVALID_MESSAGE}
+              placeholder={CONTACT_FORMAT_HINT}
+              autoComplete="tel"
             />
+            <span className="field-hint">{CONTACT_FORMAT_HINT}</span>
           </label>
 
           <label>
@@ -220,6 +284,18 @@ function SignUp() {
               value={form.address}
               onChange={handleChange}
               required
+            />
+          </label>
+
+          <label>
+            <LabelText required>Date of birth</LabelText>
+            <input
+              type="date"
+              name="date_of_birth"
+              value={form.date_of_birth}
+              onChange={handleChange}
+              required
+              max={todayISODate()}
             />
           </label>
 
@@ -328,17 +404,23 @@ function SignUp() {
           </div>
 
           <label>
-            CNIC number (optional)
+            <LabelText required>CNIC number</LabelText>
             <input
               type="text"
               name="cnic_number"
               value={form.cnic_number}
               onChange={handleChange}
+              required
               inputMode="numeric"
-              data-input-kind="integer"
-              maxLength={13}
-              placeholder="13-digit CNIC"
+              data-input-kind="cnic"
+              maxLength={15}
+              minLength={15}
+              pattern="\d{5}-\d{7}-\d"
+              title={CNIC_INVALID_MESSAGE}
+              placeholder={CNIC_FORMAT_HINT}
+              autoComplete="off"
             />
+            <span className="field-hint">{CNIC_FORMAT_HINT}</span>
           </label>
 
           <div className="grid-2">

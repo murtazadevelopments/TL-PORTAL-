@@ -63,6 +63,17 @@ const { deliverOneMessage } = require('./messagesController');
 const { notifyAfterResponse } = require('../utils/notifyAfterResponse');
 const { ensureSalaryColumn } = require('../utils/ensureSalaryColumn');
 const { findIdentityConflict } = require('../utils/identityUniqueness');
+const {
+  CNIC_INVALID_MESSAGE,
+  ensureCnicFormatted,
+  normalizeCnicForStorage,
+} = require('../utils/cnicFormat');
+const {
+  CONTACT_INVALID_MESSAGE,
+  ensureContactFormatted,
+  formatContactDisplay,
+  normalizeContactForStorage,
+} = require('../utils/contactFormat');
 
 const USERNAME_REGEX = /^[a-z0-9._]+$/;
 const LAST_JOB_STATUSES = new Set([
@@ -271,6 +282,8 @@ async function listEmployees(req, res) {
     await ensureStaffKindColumn();
     await ensureLowerStaffExtraColumns();
     await ensureSalaryColumn();
+    await ensureCnicFormatted();
+    await ensureContactFormatted();
     const scopes = await resolvePermissionScopes(req);
     const access = directoryAccess(req);
     const canSeeLower = canManageLowerStaff(req);
@@ -800,7 +813,10 @@ async function createEmployee(req, res) {
       .trim()
       .toLowerCase();
     const password = String(body.password || '');
-    const contactNumber = String(body.contact_number || '').trim();
+    const contactNumberRaw = String(body.contact_number || '').trim();
+    const contactNumber = contactNumberRaw
+      ? normalizeContactForStorage(contactNumberRaw)
+      : null;
     const employeeId = String(body.employee_id || '').trim();
     const status = String(body.status || 'inactive')
       .trim()
@@ -811,10 +827,13 @@ async function createEmployee(req, res) {
     const shift = String(body.shift || '').trim();
     const employmentType = normalizeEmploymentType(body.employment_type) || 'onsite';
 
-    if (!username || !name || !email || !password || !contactNumber) {
+    if (!username || !name || !email || !password || !contactNumberRaw) {
       return res.status(400).json({
         message: 'Username, name, email, password, and contact number are required.',
       });
+    }
+    if (!contactNumber) {
+      return res.status(400).json({ message: CONTACT_INVALID_MESSAGE });
     }
     if (username.length < 3 || username.length > 30 || !USERNAME_REGEX.test(username)) {
       return res.status(400).json({
@@ -852,11 +871,12 @@ async function createEmployee(req, res) {
     }
 
     const hours = normalizeWorkHours(body.work_start_hour, body.work_end_hour);
-    const cnicNumber = String(body.cnic_number || '').replace(/\D/g, '').slice(0, 13) || null;
-    if (cnicNumber && !/^\d{13}$/.test(cnicNumber)) {
-      return res.status(400).json({
-        message: 'CNIC must be exactly 13 digits when provided.',
-      });
+    let cnicNumber = null;
+    if (body.cnic_number != null && String(body.cnic_number).trim() !== '') {
+      cnicNumber = normalizeCnicForStorage(body.cnic_number);
+      if (!cnicNumber) {
+        return res.status(400).json({ message: CNIC_INVALID_MESSAGE });
+      }
     }
     const identityConflict = await findIdentityConflict({
       username,
@@ -1070,7 +1090,7 @@ async function updateEmployee(req, res) {
           ? before.cnic_number
           : body.cnic_number === null || String(body.cnic_number).trim() === ''
             ? null
-            : String(body.cnic_number).replace(/\D/g, '').slice(0, 13) || null,
+            : normalizeCnicForStorage(body.cnic_number),
     };
     const hours = normalizeWorkHours(
       body.work_start_hour ?? before.work_start_hour,
@@ -1115,11 +1135,11 @@ async function updateEmployee(req, res) {
     if (!next.employee_id) {
       return res.status(400).json({ message: 'Employee ID is required.' });
     }
-    if (!/^\d{13}$/.test(String(next.cnic_number || ''))) {
-      return res.status(400).json({
-        message: 'CNIC must be exactly 13 digits.',
-      });
+    const normalizedCnic = normalizeCnicForStorage(next.cnic_number);
+    if (!normalizedCnic) {
+      return res.status(400).json({ message: CNIC_INVALID_MESSAGE });
     }
+    next.cnic_number = normalizedCnic;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(next.date_of_joining || ''))) {
       return res.status(400).json({
         message: 'Date of joining is required.',
@@ -1925,6 +1945,109 @@ async function markEmployeeTerminated(req, res) {
   return markEmployeeExit(req, res, 'terminated');
 }
 
+/**
+ * PUT /api/admin/employees/:id/restore-exit
+ * Clears resigned/terminated exit state so the profile works as a normal active account again.
+ */
+async function restoreClosedEmployee(req, res) {
+  try {
+    await ensureBlockedColumn();
+    const { id } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `
+        SELECT id, username, name, role, branch, department, is_active, staff_kind,
+               blocked_at, blocked_reason, resigned_at, terminated_at, last_day_in_office,
+               exit_remarks, status
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [id]
+    );
+    const target = existingRows[0];
+    if (!target || target.is_active === false) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+    if (!isClosedAccount(target)) {
+      return res.status(400).json({
+        message: 'This employee is not resigned or terminated.',
+      });
+    }
+
+    if (isLowerStaff(target)) {
+      if (!canManageLowerStaff(req)) {
+        return res.status(403).json({
+          message: 'Only admins with Subordinate staff permission can restore subordinate staff.',
+        });
+      }
+    } else {
+      const scopes = await resolvePermissionScopes(req);
+      const editScope = scopes['employees:edit']
+        ? scopeForPermission(scopes, 'employees:edit')
+        : scopeForPermission(scopes, 'employees:view');
+      if (!employeeMatchesScope(target, editScope)) {
+        return res.status(403).json({
+          message: 'This employee is outside your assigned scope.',
+        });
+      }
+    }
+
+    const wasTerminated = isTerminatedAccount(target);
+    const { rows } = await pool.query(
+      `
+        UPDATE users
+        SET status = 'active',
+            resigned_at = NULL,
+            terminated_at = NULL,
+            last_day_in_office = NULL,
+            exit_remarks = NULL,
+            blocked_at = NULL,
+            blocked_reason = NULL,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, employee_id, username, name, email, role, status,
+                  failed_login_attempts, locked_at, blocked_at, blocked_reason,
+                  last_day_in_office, resigned_at, terminated_at, exit_remarks, is_active
+      `,
+      [id]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    invalidateAccountStatus(rows[0].id);
+    try {
+      await writeAuditLog({
+        actorId: req.user.id,
+        actorUsername: req.user.username || null,
+        action: 'employee_exit_restored',
+        targetTable: 'users',
+        targetId: rows[0].id,
+        reason: `Restored ${wasTerminated ? 'terminated' : 'resigned'} account ${rows[0].username || rows[0].name || id}`,
+      });
+    } catch (auditErr) {
+      console.warn('employee_exit_restored audit failed:', auditErr.message || auditErr);
+    }
+
+    res.json({
+      message: 'Employee restored. The profile is active again and they can sign in.',
+      user: rows[0],
+    });
+    queueCeoBranchManagerNotice(req, {
+      action: wasTerminated
+        ? 'Restored terminated employee'
+        : 'Restored resigned employee',
+      targetName: rows[0].name || rows[0].username,
+      targetId: rows[0].id,
+    });
+    return;
+  } catch (err) {
+    console.error('restoreClosedEmployee error:', err);
+    return res.status(500).json({ message: 'Server error restoring employee.' });
+  }
+}
+
 async function loadMessageSender(req) {
   const { rows: senderRows } = await pool.query(
     `
@@ -2430,6 +2553,7 @@ module.exports = {
   unblockAccount,
   markEmployeeResigned,
   markEmployeeTerminated,
+  restoreClosedEmployee,
   sendProfileAlert,
   sendBulkProfileAlert,
   sendPhotoAlert,

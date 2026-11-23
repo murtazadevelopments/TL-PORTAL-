@@ -26,8 +26,18 @@ const {
   preferOpenAccounts,
   digitsOnly,
 } = require('../utils/identityUniqueness');
+const {
+  CNIC_INVALID_MESSAGE,
+  ensureCnicFormatted,
+  normalizeCnicForStorage,
+} = require('../utils/cnicFormat');
+const {
+  CONTACT_INVALID_MESSAGE,
+  ensureContactFormatted,
+  normalizeContactForStorage,
+} = require('../utils/contactFormat');
 
-const INVALID_CNIC_MESSAGE = 'Invalid CNIC number.';
+const INVALID_CNIC_MESSAGE = CNIC_INVALID_MESSAGE;
 
 const MAX_FAILED_LOGINS = 5;
 
@@ -110,6 +120,24 @@ async function signupIdentityTaken({ username, email, contactNumber, cnicNumber 
   return Boolean(conflict);
 }
 
+function parseSignupDateOfBirth(value) {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  if (date.getTime() > todayUtc) return null;
+  return raw;
+}
+
 /**
  * POST /api/auth/signup
  * employee_id is NOT set here — admin assigns it later in the admin panel.
@@ -118,6 +146,8 @@ async function signup(req, res) {
   try {
     await ensureEmploymentTypeColumn();
     await ensureUsersTextColumns();
+    await ensureCnicFormatted();
+    await ensureContactFormatted();
 
     const {
       username,
@@ -126,6 +156,7 @@ async function signup(req, res) {
       password,
       contact_number,
       address,
+      date_of_birth,
       cnic_number,
       education,
       last_job_status,
@@ -150,6 +181,8 @@ async function signup(req, res) {
       !password ||
       !contact_number ||
       !address ||
+      !date_of_birth ||
+      !cnic_number ||
       !education ||
       !last_job_status ||
       !employment_type ||
@@ -160,8 +193,25 @@ async function signup(req, res) {
     ) {
       return res.status(400).json({
         message:
-          'username, name, email, password, contact_number, address, education, last_job_status, employment_type, bank_name, account_title, account_number, and iban are required.',
+          'username, name, email, password, contact_number, address, date_of_birth, cnic_number, education, last_job_status, employment_type, bank_name, account_title, account_number, and iban are required.',
       });
+    }
+
+    const normalizedDob = parseSignupDateOfBirth(date_of_birth);
+    if (!normalizedDob) {
+      return res.status(400).json({
+        message: 'date_of_birth must be a valid date (YYYY-MM-DD) and cannot be in the future.',
+      });
+    }
+
+    const normalizedContact = normalizeContactForStorage(contact_number);
+    if (!normalizedContact) {
+      return res.status(400).json({ message: CONTACT_INVALID_MESSAGE });
+    }
+
+    const normalizedCnic = normalizeCnicForStorage(cnic_number);
+    if (!normalizedCnic) {
+      return res.status(400).json({ message: INVALID_CNIC_MESSAGE });
     }
 
     const teamName = String(team || department || '').trim();
@@ -217,8 +267,6 @@ async function signup(req, res) {
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedContact = String(contact_number).trim();
-    const normalizedCnic = cnic_number ? String(cnic_number).trim() : null;
     if (
       await signupIdentityTaken({
         username: normalizedUsername,
@@ -235,7 +283,7 @@ async function signup(req, res) {
     const insertQuery = `
       INSERT INTO users (
         employee_id, username, name, email, password,
-        contact_number, address, cnic_number,
+        contact_number, address, cnic_number, date_of_birth,
         cnic_front_url, cnic_back_url, cv_url, profile_picture_url,
         role, department, education, last_job_status, employment_type,
         bank_name, account_title, account_number, iban,
@@ -243,10 +291,10 @@ async function signup(req, res) {
       )
       VALUES (
         NULL, $1, $2, $3, $4,
-        $5, $6, $7,
+        $5, $6, $7, $8::date,
         NULL, NULL, NULL, NULL,
-        $8, $9, $10, $11, $12,
-        $13, $14, $15, $16,
+        $9, $10, $11, $12, $13,
+        $14, $15, $16, $17,
         'inactive', NOW()
       )
       RETURNING ${USER_PUBLIC_COLUMNS}
@@ -260,6 +308,7 @@ async function signup(req, res) {
       normalizedContact,
       String(address).trim(),
       normalizedCnic,
+      normalizedDob,
       'employee',
       teamName,
       String(education).trim(),

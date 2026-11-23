@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router';
 import api from '../../api/client';
 import { useFlashSuccess } from '../../utils/successPopup';
 import {
+  STATEMENT_MODES,
   currentMonthKey,
+  defaultStatementRange,
   formatDate,
   formatMoney,
   formatTime,
   localInputToIso,
+  statementInputType,
   toDateTimeLocalValue,
   useHardwareLedgerGuard,
 } from './hardwareLedgerUtils';
@@ -37,9 +40,17 @@ function HardwareVendorLedger({ vendorId }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [vendor, setVendor] = useState(null);
-  const [summary, setSummary] = useState({ total_amount: 0, paid_amount: 0, pending_amount: 0 });
+  const [summary, setSummary] = useState({
+    total_amount: 0,
+    paid_amount: 0,
+    month_pending_amount: 0,
+    prior_pending_amount: 0,
+    pending_amount: 0,
+  });
+  const [priorPendingMonths, setPriorPendingMonths] = useState([]);
   const [records, setRecords] = useState([]);
   const [month, setMonth] = useState(currentMonthKey);
+  const [monthLabelText, setMonthLabelText] = useState('');
   const [canRemoveVendor, setCanRemoveVendor] = useState(false);
   const [itemForm, setItemForm] = useState(() => emptyItem());
   const [paidForm, setPaidForm] = useState(() => emptyPaid());
@@ -52,13 +63,31 @@ function HardwareVendorLedger({ vendorId }) {
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [filter, setFilter] = useState('all');
+  const [statementMode, setStatementMode] = useState('month');
+  const [statementFrom, setStatementFrom] = useState(() => defaultStatementRange('month').from);
+  const [statementTo, setStatementTo] = useState(() => defaultStatementRange('month').to);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementError, setStatementError] = useState('');
+  const [statement, setStatement] = useState(null);
   useFlashSuccess(success);
 
   function applyPayload(data) {
     setVendor(data.vendor || null);
-    setSummary(data.summary || { total_amount: 0, paid_amount: 0, pending_amount: 0 });
+    setSummary(
+      data.summary || {
+        total_amount: 0,
+        paid_amount: 0,
+        month_pending_amount: 0,
+        prior_pending_amount: 0,
+        pending_amount: 0,
+      }
+    );
+    setPriorPendingMonths(
+      Array.isArray(data.prior_pending_months) ? data.prior_pending_months : []
+    );
     setRecords(Array.isArray(data.records) ? data.records : []);
     if (data.month) setMonth(data.month);
+    if (data.month_label) setMonthLabelText(data.month_label);
     if (typeof data.can_remove_vendor === 'boolean') {
       setCanRemoveVendor(data.can_remove_vendor);
     }
@@ -251,6 +280,45 @@ function HardwareVendorLedger({ vendorId }) {
 
   const visible = filter === 'all' ? records : records.filter((r) => r.kind === filter);
 
+  const statementFromType = useMemo(
+    () => statementInputType(statementMode),
+    [statementMode]
+  );
+
+  function changeStatementMode(nextMode) {
+    const range = defaultStatementRange(nextMode, month);
+    setStatementMode(nextMode);
+    setStatementFrom(range.from);
+    setStatementTo(range.to);
+    setStatement(null);
+    setStatementError('');
+  }
+
+  async function handleGenerateStatement(e) {
+    e?.preventDefault?.();
+    setStatementLoading(true);
+    setStatementError('');
+    try {
+      const { data } = await api.get(`/api/hardware-ledger/vendors/${vendorId}/statement`, {
+        params: {
+          mode: statementMode,
+          from: statementFrom,
+          to: statementTo,
+        },
+      });
+      setStatement(data);
+    } catch (err) {
+      setStatement(null);
+      setStatementError(err.response?.data?.message || 'Failed to generate statement.');
+    } finally {
+      setStatementLoading(false);
+    }
+  }
+
+  function printStatement() {
+    window.print();
+  }
+
   return (
     <div className="petty-page">
       <p className="petty-sub">
@@ -269,7 +337,10 @@ function HardwareVendorLedger({ vendorId }) {
           </button>
         ) : null}
       </div>
-      <p className="petty-sub">Pending amount = Total amount − Paid amount.</p>
+      <p className="petty-sub">
+        Overall pending is the whole amount still owed through this month. This month pending =
+        Total − Paid for the selected month only.
+      </p>
 
       {error ? <p className="error">{error}</p> : null}
 
@@ -286,6 +357,21 @@ function HardwareVendorLedger({ vendorId }) {
         </label>
       </div>
 
+      {priorPendingMonths.length > 0 ? (
+        <div className="hw-prior-box" role="status">
+          <p className="hw-prior-title">
+            Brought forward · {formatMoney(summary.prior_pending_amount || 0)}
+          </p>
+          <ul className="hw-prior-list">
+            {priorPendingMonths.map((row) => (
+              <li key={row.month}>
+                <strong>{formatMoney(row.pending_amount)}</strong> — {row.status}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="petty-tabs" aria-label="Vendor amounts">
         <div className="petty-tab">
           <span className="petty-tab-label">Total Amount</span>
@@ -295,9 +381,19 @@ function HardwareVendorLedger({ vendorId }) {
           <span className="petty-tab-label">Paid Amount</span>
           <span className="petty-tab-amount">{formatMoney(summary.paid_amount)}</span>
         </div>
+        <div className="petty-tab">
+          <span className="petty-tab-label">
+            This month pending{monthLabelText ? ` (${monthLabelText})` : ''}
+          </span>
+          <span className="petty-tab-amount">
+            {formatMoney(summary.month_pending_amount ?? summary.pending_amount)}
+          </span>
+        </div>
         <div className="petty-tab active">
-          <span className="petty-tab-label">Pending Amount</span>
-          <span className="petty-tab-amount">{formatMoney(summary.pending_amount)}</span>
+          <span className="petty-tab-label">Overall pending</span>
+          <span className="petty-tab-amount">
+            {formatMoney(Math.max(0, summary.pending_amount || 0))}
+          </span>
         </div>
       </div>
 
@@ -491,6 +587,163 @@ function HardwareVendorLedger({ vendorId }) {
             document.body
           )
         : null}
+
+      <section className="hw-statement-section">
+        <h2 className="petty-section-title">Statement</h2>
+        <p className="petty-sub">
+          Choose month-to-month, year-to-year, or date-to-date and generate a complete statement.
+        </p>
+        <form className="hw-statement-form" onSubmit={handleGenerateStatement}>
+          <label>
+            Range type
+            <select
+              className="hw-filter"
+              value={statementMode}
+              onChange={(e) => changeStatementMode(e.target.value)}
+            >
+              {STATEMENT_MODES.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            From
+            <input
+              type={statementFromType}
+              className="hw-month"
+              value={statementFrom}
+              onChange={(e) => setStatementFrom(e.target.value)}
+              min={statementMode === 'year' ? '2000' : undefined}
+              max={statementMode === 'year' ? '2100' : undefined}
+              required
+            />
+          </label>
+          <label>
+            To
+            <input
+              type={statementFromType}
+              className="hw-month"
+              value={statementTo}
+              onChange={(e) => setStatementTo(e.target.value)}
+              min={statementMode === 'year' ? '2000' : undefined}
+              max={statementMode === 'year' ? '2100' : undefined}
+              required
+            />
+          </label>
+          <div className="petty-form-actions">
+            <button type="submit" className="btn btn-primary" disabled={statementLoading}>
+              {statementLoading ? 'Generating…' : 'Generate statement'}
+            </button>
+            {statement ? (
+              <button type="button" className="btn btn-ghost" onClick={printStatement}>
+                Print / save PDF
+              </button>
+            ) : null}
+          </div>
+        </form>
+        {statementError ? <p className="error">{statementError}</p> : null}
+
+        {statement ? (
+          <div className="hw-statement-print" id="hw-statement-print">
+            <div className="hw-statement-head">
+              <h3>{statement.vendor?.name || vendor?.name || 'Vendor'} — statement</h3>
+              <p className="petty-sub">
+                {statement.range_label}
+                {statement.generated_at
+                  ? ` · Generated ${formatDate(statement.generated_at)} ${formatTime(statement.generated_at)}`
+                  : ''}
+              </p>
+            </div>
+
+            <div className="petty-tabs" aria-label="Statement totals">
+              <div className="petty-tab">
+                <span className="petty-tab-label">Opening prior pending</span>
+                <span className="petty-tab-amount">
+                  {formatMoney(statement.summary?.prior_pending_amount)}
+                </span>
+              </div>
+              <div className="petty-tab">
+                <span className="petty-tab-label">Range total</span>
+                <span className="petty-tab-amount">
+                  {formatMoney(statement.summary?.total_amount)}
+                </span>
+              </div>
+              <div className="petty-tab">
+                <span className="petty-tab-label">Range paid</span>
+                <span className="petty-tab-amount">
+                  {formatMoney(statement.summary?.paid_amount)}
+                </span>
+              </div>
+              <div className="petty-tab active">
+                <span className="petty-tab-label">Closing pending</span>
+                <span className="petty-tab-amount">
+                  {formatMoney(statement.summary?.pending_amount)}
+                </span>
+              </div>
+            </div>
+
+            {Array.isArray(statement.months) && statement.months.length > 0 ? (
+              <div className="petty-table-wrap">
+                <table className="petty-table">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Total</th>
+                      <th>Paid</th>
+                      <th>Pending</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statement.months.map((m) => (
+                      <tr key={m.month}>
+                        <td>{m.month_label}</td>
+                        <td>{formatMoney(m.total_amount)}</td>
+                        <td>{formatMoney(m.paid_amount)}</td>
+                        <td>{formatMoney(m.pending_amount)}</td>
+                        <td>{m.status || 'Settled for this month'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <div className="petty-table-wrap" style={{ marginTop: '1rem' }}>
+              <table className="petty-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Type</th>
+                    <th>Item</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(statement.records || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>No records in this range.</td>
+                    </tr>
+                  ) : (
+                    statement.records.map((r) => (
+                      <tr key={r.id}>
+                        <td>{formatDate(r.occurred_at)}</td>
+                        <td>{formatTime(r.occurred_at)}</td>
+                        <td>{KIND_LABELS[r.kind] || r.kind}</td>
+                        <td>{r.kind === 'total' ? r.item || '—' : '—'}</td>
+                        <td>{formatMoney(r.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </section>
 
       <RemoveVendorModal
         vendor={removeOpen ? vendor : null}
